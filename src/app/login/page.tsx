@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ShoppingBasket, Loader2, ArrowLeft } from 'lucide-react'
+import { ShoppingBasket, Loader2, ArrowLeft, Mail, Lock, MapPin } from 'lucide-react'
 
 export default function LoginPage() {
   const [isSignup, setIsSignup] = useState(false)
@@ -14,168 +12,230 @@ export default function LoginPage() {
   const [postcode, setPostcode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setMessage('')
 
     if (isSignup) {
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email,
-        password,
-      })
-
+      const { data, error: signupError } = await supabase.auth.signUp({ email, password })
       if (signupError) {
         setError(signupError.message)
       } else if (data.user) {
-        // Save postcode to profile
         if (postcode) {
-          await supabase
-            .from('profiles')
-            .update({ postcode })
-            .eq('id', data.user.id)
+          await supabase.from('profiles').update({ postcode }).eq('id', data.user.id)
         }
-        // Redirect to dashboard
         window.location.href = '/dashboard'
       }
     } else {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
       if (loginError) {
         setError(loginError.message)
       } else {
         window.location.href = '/dashboard'
       }
     }
-
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8] flex flex-col">
-      {/* Back nav */}
-      <nav className="px-6 py-5 max-w-6xl mx-auto w-full">
-        <a href="/" className="inline-flex items-center gap-2 text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors text-sm">
+    <div className="min-h-screen bg-[#0A0A0A] text-white flex">
+      {/* Background orb */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <motion.div
+          className="absolute w-[500px] h-[500px] rounded-full opacity-15"
+          style={{ background: 'radial-gradient(circle, #E07A5F 0%, transparent 70%)', top: '-150px', left: '50%', transform: 'translateX(-50%)' }}
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+
+      {/* Desktop left panel */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #111111 0%, #0A0A0A 100%)' }}>
+        <div className="flex items-center gap-2">
+          <ShoppingBasket className="w-6 h-6 text-[#E07A5F]" strokeWidth={2.5} />
+          <span className="text-lg font-bold">Basket</span>
+        </div>
+        <div>
+          <h2 className="text-5xl font-extrabold leading-tight mb-6">
+            Payez moins<br />
+            pour vos<br />
+            <span className="gradient-text">courses.</span>
+          </h2>
+          <p className="text-[#6B7280] text-lg leading-relaxed max-w-sm">
+            Scannez vos tickets, comparez les prix, économisez chaque semaine.
+          </p>
+        </div>
+        <p className="text-[#4B5563] text-sm">© 2026 Basket · Fait en France 🇫🇷</p>
+        {/* Decorative orbs */}
+        <motion.div
+          className="absolute bottom-0 right-0 w-80 h-80 rounded-full opacity-10"
+          style={{ background: 'radial-gradient(circle, #E07A5F 0%, transparent 70%)' }}
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ duration: 8, repeat: Infinity }}
+        />
+      </div>
+
+      {/* Right / mobile auth area */}
+      <div className="flex-1 flex flex-col px-6 py-6 relative z-10">
+        {/* Back nav */}
+        <a href="/" className="inline-flex items-center gap-2 text-[#6B7280] hover:text-white transition-colors text-sm mb-auto lg:mb-0">
           <ArrowLeft className="w-4 h-4" />
           Retour
         </a>
-      </nav>
 
-      <div className="flex-1 flex items-center justify-center px-6 pb-20">
-        <div className="w-full max-w-sm">
-          {/* Logo */}
-          <div className="flex items-center justify-center gap-2 mb-10">
-            <ShoppingBasket className="w-8 h-8 text-[#E07A5F]" strokeWidth={2.5} />
-            <span className="text-2xl font-bold tracking-tight">Basket</span>
-          </div>
-
-          {/* Card */}
-          <div className="bg-white rounded-2xl border border-[#EDECE8] p-8">
-            <h1 className="text-xl font-bold mb-1 text-center">
-              {isSignup ? 'Créer un compte' : 'Se connecter'}
-            </h1>
-            <p className="text-sm text-[#6B6B6B] mb-6 text-center">
-              {isSignup
-                ? 'Commencez à économiser sur vos courses'
-                : 'Content de vous revoir'}
-            </p>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="email" className="text-sm font-medium mb-1.5 block">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="votre@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="h-11 rounded-xl border-[#E0DDD8] focus-visible:ring-[#E07A5F]"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="password" className="text-sm font-medium mb-1.5 block">
-                  Mot de passe
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="h-11 rounded-xl border-[#E0DDD8] focus-visible:ring-[#E07A5F]"
-                />
-              </div>
-
-              {isSignup && (
-                <div>
-                  <Label htmlFor="postcode" className="text-sm font-medium mb-1.5 block">
-                    Code postal
-                  </Label>
-                  <Input
-                    id="postcode"
-                    type="text"
-                    placeholder="75001"
-                    value={postcode}
-                    onChange={(e) => setPostcode(e.target.value)}
-                    className="h-11 rounded-xl border-[#E0DDD8] focus-visible:ring-[#E07A5F]"
-                  />
-                  <p className="text-xs text-[#9B9B9B] mt-1">
-                    Pour comparer les prix près de chez vous
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-              )}
-              {message && (
-                <p className="text-emerald-600 text-sm bg-emerald-50 px-3 py-2 rounded-lg">{message}</p>
-              )}
-
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full h-11 rounded-xl bg-[#E07A5F] hover:bg-[#C96A52] text-white font-semibold transition-all"
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : isSignup ? (
-                  "Créer mon compte"
-                ) : (
-                  "Se connecter"
-                )}
-              </Button>
-            </form>
-          </div>
-
-          {/* Toggle */}
-          <p className="text-center text-sm text-[#6B6B6B] mt-6">
-            {isSignup ? 'Déjà un compte ?' : 'Pas encore de compte ?'}{' '}
-            <button
-              onClick={() => {
-                setIsSignup(!isSignup)
-                setError('')
-                setMessage('')
-              }}
-              className="text-[#E07A5F] font-medium hover:underline"
+        <div className="flex-1 flex items-center justify-center py-12">
+          <div className="w-full max-w-sm">
+            {/* Animated logo */}
+            <motion.div
+              className="flex items-center justify-center gap-2 mb-10"
+              animate={{ y: [0, -6, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
             >
-              {isSignup ? 'Se connecter' : "S'inscrire"}
-            </button>
-          </p>
+              <ShoppingBasket className="w-9 h-9 text-[#E07A5F]" strokeWidth={2.5} />
+              <span className="text-2xl font-bold tracking-tight">Basket</span>
+            </motion.div>
+
+            {/* Toggle tabs */}
+            <div className="relative flex glass rounded-xl p-1 mb-8">
+              <motion.div
+                className="absolute top-1 bottom-1 rounded-lg"
+                style={{ background: '#E07A5F', width: 'calc(50% - 4px)' }}
+                animate={{ left: isSignup ? 'calc(50%)' : '4px' }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              />
+              {['Connexion', 'Inscription'].map((label, i) => (
+                <button
+                  key={label}
+                  onClick={() => { setIsSignup(i === 1); setError('') }}
+                  className="relative z-10 flex-1 py-2 text-sm font-semibold transition-colors"
+                  style={{ color: isSignup === (i === 1) ? '#FFFFFF' : '#6B7280' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Form card */}
+            <motion.div
+              className="glass-strong rounded-2xl p-8"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <AnimatePresence mode="wait">
+                <motion.form
+                  key={isSignup ? 'signup' : 'login'}
+                  onSubmit={handleSubmit}
+                  initial={{ opacity: 0, x: isSignup ? 20 : -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: isSignup ? -20 : 20 }}
+                  transition={{ duration: 0.25 }}
+                  className="space-y-4"
+                >
+                  <div className="text-center mb-6">
+                    <h1 className="text-xl font-bold mb-1">
+                      {isSignup ? 'Créer un compte' : 'Content de vous revoir'}
+                    </h1>
+                    <p className="text-[#6B7280] text-sm">
+                      {isSignup ? 'Commencez à économiser dès maintenant' : 'Connectez-vous pour continuer'}
+                    </p>
+                  </div>
+
+                  <InputField icon={<Mail className="w-4 h-4" />} type="email" placeholder="votre@email.com" value={email} onChange={setEmail} required />
+                  <InputField icon={<Lock className="w-4 h-4" />} type="password" placeholder="••••••••" value={password} onChange={setPassword} required minLength={6} />
+                  {isSignup && (
+                    <InputField icon={<MapPin className="w-4 h-4" />} type="text" placeholder="75001 (code postal)" value={postcode} onChange={setPostcode} hint="Pour comparer les prix près de chez vous" />
+                  )}
+
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-400 text-sm px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(239,68,68,0.1)' }}
+                    >
+                      {error}
+                    </motion.p>
+                  )}
+
+                  <motion.button
+                    type="submit"
+                    disabled={loading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center"
+                    style={{ background: '#E07A5F' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isSignup ? 'Créer mon compte' : 'Continuer'}
+                  </motion.button>
+                </motion.form>
+              </AnimatePresence>
+            </motion.div>
+
+            {/* Social login placeholders */}
+            <div className="mt-4 space-y-3">
+              <div className="relative flex items-center gap-3">
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                <span className="text-xs text-[#4B5563]">ou</span>
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full h-11 rounded-xl text-sm font-medium flex items-center justify-center gap-3 glass"
+                style={{ color: '#9CA3AF' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.04a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+                Continuer avec Google
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full h-11 rounded-xl text-sm font-medium flex items-center justify-center gap-3 glass"
+                style={{ color: '#9CA3AF' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="white"><path d="M13.5 1A4.5 4.5 0 0 0 9.5 4a4.5 4.5 0 0 0-4 4.5A4.5 4.5 0 0 0 10 13a4.5 4.5 0 0 0 4-4.5A4.5 4.5 0 0 0 13.5 1zM9 17c-1.11 0-2-.89-2-2s.89-2 2-2 2 .89 2 2-.89 2-2 2z"/></svg>
+                Continuer avec Apple
+              </motion.button>
+            </div>
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function InputField({
+  icon, type, placeholder, value, onChange, required, minLength, hint
+}: {
+  icon: React.ReactNode
+  type: string
+  placeholder: string
+  value: string
+  onChange: (v: string) => void
+  required?: boolean
+  minLength?: number
+  hint?: string
+}) {
+  return (
+    <div>
+      <div className="relative">
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280]">{icon}</div>
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          minLength={minLength}
+          className="w-full h-11 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] transition-all"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+      </div>
+      {hint && <p className="text-xs text-[#4B5563] mt-1 pl-1">{hint}</p>}
     </div>
   )
 }

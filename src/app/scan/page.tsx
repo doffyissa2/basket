@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
-import { ShoppingBasket, Camera, Upload, ArrowLeft, Loader2, Check, X, Share2 } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
+import BottomNav from '@/components/BottomNav'
 
 interface ParsedItem {
   name: string
@@ -26,6 +27,55 @@ interface ComparisonItem {
   cheaper_store: string | null
 }
 
+const PARSE_MESSAGES = [
+  'Lecture du ticket...',
+  'Détection des articles...',
+  'Analyse des prix...',
+  'Calcul de vos économies...',
+]
+
+function useCountUp(target: number, duration = 1200) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (target === 0) return
+    const start = performance.now()
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setCount(Math.round(target * eased * 100) / 100)
+      if (progress < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target, duration])
+  return count
+}
+
+function ConfettiParticles() {
+  const particles = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 300 - 150,
+    y: -(Math.random() * 200 + 80),
+    color: ['#E07A5F', '#FF9B7B', '#00D09C', '#FFFFFF', '#E07A5F'][Math.floor(Math.random() * 5)],
+    size: Math.random() * 6 + 4,
+    delay: Math.random() * 0.4,
+  }))
+
+  return (
+    <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full"
+          style={{ width: p.size, height: p.size, background: p.color }}
+          initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+          animate={{ opacity: 0, x: p.x, y: p.y, scale: 0 }}
+          transition={{ duration: 1.5, delay: p.delay, ease: 'easeOut' }}
+        />
+      ))}
+    </div>
+  )
+}
+
 export default function ScanPage() {
   const [user, setUser] = useState<User | null>(null)
   const [step, setStep] = useState<'upload' | 'parsing' | 'results' | 'comparison'>('upload')
@@ -34,131 +84,93 @@ export default function ScanPage() {
   const [parsedReceipt, setParsedReceipt] = useState<ParsedReceipt | null>(null)
   const [comparisons, setComparisons] = useState<ComparisonItem[]>([])
   const [error, setError] = useState('')
+  const [parseMessageIdx, setParseMessageIdx] = useState(0)
+  const [showConfetti, setShowConfetti] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        window.location.href = '/login'
-        return
-      }
+      if (!user) { window.location.href = '/login'; return }
       setUser(user)
     }
     getUser()
   }, [])
 
+  // Cycle parse messages
+  useEffect(() => {
+    if (step !== 'parsing') return
+    const interval = setInterval(() => {
+      setParseMessageIdx((i) => (i + 1) % PARSE_MESSAGES.length)
+    }, 1800)
+    return () => clearInterval(interval)
+  }, [step])
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     setImageFile(file)
     setError('')
-
     const reader = new FileReader()
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string)
-    }
+    reader.onloadend = () => setImagePreview(reader.result as string)
     reader.readAsDataURL(file)
   }
 
   const handleScan = async () => {
     if (!imageFile || !user) return
-
     setStep('parsing')
+    setParseMessageIdx(0)
     setError('')
 
     try {
-      // Upload image to Supabase Storage
       const fileName = `${user.id}/${Date.now()}-${imageFile.name}`
-      const { error: uploadError } = await supabase.storage
-        .from('receipts')
-        .upload(fileName, imageFile)
-
+      const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, imageFile)
       if (uploadError) throw new Error('Erreur upload: ' + uploadError.message)
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('receipts')
-        .getPublicUrl(fileName)
+      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
-      // Convert image to base64 for Claude
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader()
-        reader.onloadend = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1])
-        }
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1])
         reader.readAsDataURL(imageFile)
       })
 
-      // Send to our API route for Claude parsing
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_base64: base64,
-          media_type: imageFile.type,
-        }),
+        body: JSON.stringify({ image_base64: base64, media_type: imageFile.type }),
       })
-
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
 
       const parsed: ParsedReceipt = await parseResponse.json()
       setParsedReceipt(parsed)
 
-      // Get user postcode
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('postcode')
-        .eq('id', user.id)
-        .single()
+      const { data: profile } = await supabase.from('profiles').select('postcode').eq('id', user.id).single()
 
-      // Save receipt to database
       const { data: receiptRow, error: receiptError } = await supabase
         .from('receipts')
-        .insert({
-          user_id: user.id,
-          store_name: parsed.store_name,
-          total_amount: parsed.total,
-          receipt_date: new Date().toISOString().split('T')[0],
-          image_url: publicUrl,
-          postcode: profile?.postcode || null,
-        })
-        .select()
-        .single()
-
+        .insert({ user_id: user.id, store_name: parsed.store_name, total_amount: parsed.total, receipt_date: new Date().toISOString().split('T')[0], image_url: publicUrl, postcode: profile?.postcode || null })
+        .select().single()
       if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
 
-      // Save individual items
-      const itemsToInsert = parsed.items.map((item) => ({
-        receipt_id: receiptRow.id,
-        user_id: user.id,
-        item_name: item.name,
-        item_name_normalised: item.name.toLowerCase().trim(),
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity,
-        store_name: parsed.store_name,
-        postcode: profile?.postcode || null,
-      }))
-
-      await supabase.from('price_items').insert(itemsToInsert)
+      await supabase.from('price_items').insert(
+        parsed.items.map((item) => ({
+          receipt_id: receiptRow.id, user_id: user.id, item_name: item.name,
+          item_name_normalised: item.name.toLowerCase().trim(), quantity: item.quantity,
+          unit_price: item.price, total_price: item.price * item.quantity,
+          store_name: parsed.store_name, postcode: profile?.postcode || null,
+        }))
+      )
 
       setStep('results')
 
-      // Now get price comparisons
       const compareResponse = await fetch('/api/compare-prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: parsed.items.map((i) => ({
-            name: i.name,
-            normalised: i.name.toLowerCase().trim(),
-            price: i.price,
-          })),
-          postcode: profile?.postcode || null,
-          store_name: parsed.store_name,
+          items: parsed.items.map((i) => ({ name: i.name, normalised: i.name.toLowerCase().trim(), price: i.price })),
+          postcode: profile?.postcode || null, store_name: parsed.store_name,
         }),
       })
 
@@ -166,6 +178,8 @@ export default function ScanPage() {
         const comparisonData = await compareResponse.json()
         setComparisons(comparisonData.comparisons || [])
         setStep('comparison')
+        const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
+        if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue')
@@ -174,200 +188,316 @@ export default function ScanPage() {
   }
 
   const totalSavings = comparisons.reduce((sum, item) => sum + Math.max(0, item.savings), 0)
+  const animatedSavings = useCountUp(totalSavings)
 
-  const handleShare = () => {
+  const handleShare = (method: 'whatsapp' | 'copy' | 'sms') => {
     const text = `🧺 Basket m'a trouvé ${totalSavings.toFixed(2)}€ d'économies possibles cette semaine !\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basket.fr`
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
-    window.open(whatsappUrl, '_blank')
+    if (method === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+    if (method === 'copy') navigator.clipboard.writeText(text)
+    if (method === 'sms') window.open(`sms:?body=${encodeURIComponent(text)}`, '_blank')
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8]">
+    <div className="min-h-screen bg-[#0A0A0A] text-white pb-28 md:pb-0">
       {/* Nav */}
-      <nav className="flex items-center justify-between px-6 py-5 max-w-4xl mx-auto">
-        <a href="/dashboard" className="flex items-center gap-2 text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors text-sm">
+      <div className="flex items-center justify-between px-5 pt-14 pb-6">
+        <a href="/dashboard" className="flex items-center gap-2 text-[#6B7280] hover:text-white transition-colors text-sm">
           <ArrowLeft className="w-4 h-4" />
           Retour
         </a>
-        <div className="flex items-center gap-2">
-          <ShoppingBasket className="w-6 h-6 text-[#E07A5F]" strokeWidth={2.5} />
-          <span className="text-lg font-bold">Basket</span>
-        </div>
+        <p className="text-sm font-semibold text-white">Scanner</p>
         <div className="w-16" />
-      </nav>
+      </div>
 
-      <main className="max-w-lg mx-auto px-6 pb-20">
-        {/* Upload step */}
-        {step === 'upload' && (
-          <div>
-            <h1 className="text-2xl font-bold mb-2 text-center">Scanner un ticket</h1>
-            <p className="text-[#6B6B6B] text-center mb-8 text-sm">
-              Prenez en photo ou importez votre ticket de caisse
-            </p>
+      <main className="max-w-lg mx-auto px-5 pb-10">
+        <AnimatePresence mode="wait">
 
-            {imagePreview ? (
-              <div className="mb-6">
-                <div className="relative rounded-2xl overflow-hidden border border-[#EDECE8]">
-                  <img src={imagePreview} alt="Ticket" className="w-full" />
-                  <button
-                    onClick={() => {
-                      setImageFile(null)
-                      setImagePreview(null)
-                    }}
-                    className="absolute top-3 right-3 bg-black/50 text-white rounded-full p-1.5 hover:bg-black/70"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <Button
-                  onClick={handleScan}
-                  className="w-full h-12 mt-4 rounded-xl bg-[#E07A5F] hover:bg-[#C96A52] text-white font-semibold text-base"
-                >
-                  Analyser ce ticket
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Camera button */}
-                <button
-                  onClick={() => cameraInputRef.current?.click()}
-                  className="w-full bg-[#E07A5F] text-white rounded-2xl p-8 hover:bg-[#C96A52] transition-all text-center"
-                >
-                  <Camera className="w-10 h-10 mx-auto mb-3" />
-                  <p className="font-bold text-lg">Prendre une photo</p>
-                  <p className="text-white/70 text-sm mt-1">Utilisez votre caméra</p>
-                </button>
+          {/* Upload step */}
+          {step === 'upload' && (
+            <motion.div
+              key="upload"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.35 }}
+            >
+              <h1 className="text-2xl font-extrabold mb-1">Scanner un ticket</h1>
+              <p className="text-[#6B7280] text-sm mb-8">Prenez en photo ou importez votre ticket de caisse</p>
 
-                {/* Upload button */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full bg-white text-[#1A1A1A] rounded-2xl p-8 border border-[#EDECE8] hover:shadow-md transition-all text-center"
-                >
-                  <Upload className="w-10 h-10 mx-auto mb-3 text-[#6B6B6B]" />
-                  <p className="font-bold text-lg">Importer une image</p>
-                  <p className="text-[#6B6B6B] text-sm mt-1">Depuis votre galerie</p>
-                </button>
-              </div>
-            )}
-
-            {error && (
-              <p className="text-red-500 text-sm bg-red-50 px-4 py-3 rounded-xl mt-4">{error}</p>
-            )}
-
-            {/* Hidden file inputs */}
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-        )}
-
-        {/* Parsing step */}
-        {step === 'parsing' && (
-          <div className="text-center py-20">
-            <Loader2 className="w-12 h-12 text-[#E07A5F] animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Analyse en cours...</h2>
-            <p className="text-[#6B6B6B] text-sm">Notre IA lit votre ticket de caisse</p>
-          </div>
-        )}
-
-        {/* Results / Comparison step */}
-        {(step === 'results' || step === 'comparison') && parsedReceipt && (
-          <div>
-            {/* Savings banner */}
-            {step === 'comparison' && totalSavings > 0 && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 mb-6 text-center">
-                <p className="text-sm text-emerald-600 font-medium mb-1">Économies possibles</p>
-                <p className="text-4xl font-extrabold text-emerald-700">{totalSavings.toFixed(2)} €</p>
-                <p className="text-sm text-emerald-600 mt-2">
-                  en achetant ces produits ailleurs cette semaine
-                </p>
-                <Button
-                  onClick={handleShare}
-                  className="mt-4 bg-[#25D366] hover:bg-[#1DA851] text-white rounded-xl px-6 h-10 text-sm font-semibold"
-                >
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Partager sur WhatsApp
-                </Button>
-              </div>
-            )}
-
-            {/* Receipt summary */}
-            <div className="bg-white rounded-2xl border border-[#EDECE8] p-6 mb-4">
-              <div className="flex items-center justify-between mb-4">
+              {imagePreview ? (
                 <div>
-                  <h2 className="font-bold text-lg">{parsedReceipt.store_name}</h2>
-                  <p className="text-xs text-[#9B9B9B]">
-                    {parsedReceipt.items.length} articles détectés
-                  </p>
+                  <div className="relative rounded-2xl overflow-hidden border border-white/10 mb-4">
+                    <img src={imagePreview} alt="Ticket" className="w-full" />
+                    <button
+                      onClick={() => { setImageFile(null); setImagePreview(null) }}
+                      className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(0,0,0,0.6)' }}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <motion.button
+                    onClick={handleScan}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full h-14 rounded-2xl font-bold text-white text-base"
+                    style={{ background: '#E07A5F' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    Analyser ce ticket
+                  </motion.button>
                 </div>
-                <p className="text-xl font-bold">{parsedReceipt.total.toFixed(2)} €</p>
+              ) : (
+                <div className="space-y-3">
+                  <motion.button
+                    onClick={() => cameraInputRef.current?.click()}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center"
+                    style={{ background: '#E07A5F', boxShadow: '0 8px 30px rgba(224,122,95,0.3)' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    <Camera className="w-10 h-10 text-white" />
+                    <div>
+                      <p className="font-bold text-lg text-white">Prendre une photo</p>
+                      <p className="text-white/70 text-sm mt-0.5">Utilisez votre caméra</p>
+                    </div>
+                  </motion.button>
+
+                  <motion.button
+                    onClick={() => fileInputRef.current?.click()}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center glass"
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    <Upload className="w-10 h-10 text-[#6B7280]" />
+                    <div>
+                      <p className="font-bold text-lg text-white">Importer une image</p>
+                      <p className="text-[#6B7280] text-sm mt-0.5">Depuis votre galerie</p>
+                    </div>
+                  </motion.button>
+                </div>
+              )}
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-3 mt-4 px-4 py-3 rounded-xl text-red-400 text-sm"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
+                >
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {error}
+                </motion.div>
+              )}
+
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+            </motion.div>
+          )}
+
+          {/* Parsing step */}
+          {step === 'parsing' && (
+            <motion.div
+              key="parsing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-20"
+            >
+              {imagePreview && (
+                <div className="relative w-48 rounded-2xl overflow-hidden mb-8">
+                  <img src={imagePreview} alt="Ticket" className="w-full opacity-40" />
+                  {/* Scanning line */}
+                  <motion.div
+                    className="absolute left-0 right-0 h-0.5"
+                    style={{ background: 'linear-gradient(90deg, transparent, #E07A5F, transparent)' }}
+                    animate={{ y: [0, 192, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                </div>
+              )}
+              <div className="h-8 mb-3 overflow-hidden">
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={parseMessageIdx}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -12 }}
+                    transition={{ duration: 0.3 }}
+                    className="text-lg font-semibold text-white text-center"
+                  >
+                    {PARSE_MESSAGES[parseMessageIdx]}
+                  </motion.p>
+                </AnimatePresence>
+              </div>
+              <p className="text-[#4B5563] text-sm">Notre IA analyse votre ticket</p>
+            </motion.div>
+          )}
+
+          {/* Results / Comparison */}
+          {(step === 'results' || step === 'comparison') && parsedReceipt && (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {/* Savings banner */}
+              {step === 'comparison' && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="relative rounded-3xl p-6 mb-5 text-center overflow-hidden"
+                  style={{
+                    background: totalSavings > 0
+                      ? 'linear-gradient(135deg, rgba(0,208,156,0.15) 0%, rgba(0,208,156,0.05) 100%)'
+                      : 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+                    border: totalSavings > 0 ? '1px solid rgba(0,208,156,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  {showConfetti && <ConfettiParticles />}
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: totalSavings > 0 ? '#00D09C' : '#6B7280' }}>
+                    {totalSavings > 0 ? 'Économies possibles' : 'Prix analysés'}
+                  </p>
+                  <p className="text-5xl font-extrabold mb-1" style={{ color: totalSavings > 0 ? '#00D09C' : '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+                    {totalSavings > 0 ? `${animatedSavings.toFixed(2)} €` : '—'}
+                  </p>
+                  {totalSavings > 0 && (
+                    <p className="text-sm mt-1" style={{ color: 'rgba(0,208,156,0.7)' }}>en achetant ailleurs cette semaine</p>
+                  )}
+                </motion.div>
+              )}
+
+              {/* Receipt header */}
+              <div className="glass rounded-2xl p-5 mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="font-bold text-lg">{parsedReceipt.store_name}</h2>
+                  <p className="text-xl font-extrabold">{parsedReceipt.total.toFixed(2)} €</p>
+                </div>
+                <p className="text-xs text-[#4B5563]">{parsedReceipt.items.length} articles détectés</p>
               </div>
 
-              <div className="space-y-2">
+              {/* Items */}
+              <div className="space-y-2 mb-5">
                 {parsedReceipt.items.map((item, idx) => {
-                  const comparison = comparisons.find(
-                    (c) => c.name.toLowerCase() === item.name.toLowerCase()
-                  )
-                  const hasSaving = comparison && comparison.savings > 0
+                  const comparison = comparisons.find((c) => c.name.toLowerCase() === item.name.toLowerCase())
+                  const hasSaving = comparison && comparison.savings > 0.01
 
                   return (
-                    <div
+                    <motion.div
                       key={idx}
-                      className={`flex items-center justify-between py-2.5 px-3 rounded-lg ${
-                        hasSaving ? 'bg-emerald-50' : 'bg-[#FAFAF8]'
-                      }`}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.06, duration: 0.35 }}
+                      className="flex items-center justify-between rounded-xl px-4 py-3"
+                      style={{
+                        background: hasSaving ? 'rgba(0,208,156,0.08)' : 'rgba(255,255,255,0.04)',
+                        border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(255,255,255,0.06)',
+                        borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
+                      }}
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.name}</p>
+                      <div className="flex-1 min-w-0 pr-3">
+                        <p className="text-sm font-medium text-white truncate">{item.name}</p>
                         {hasSaving && comparison && (
-                          <p className="text-xs text-emerald-600">
-                            {comparison.avg_price.toFixed(2)} € en moyenne
-                            {comparison.cheaper_store && ` chez ${comparison.cheaper_store}`}
+                          <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
+                            Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                          </p>
+                        )}
+                        {!hasSaving && step === 'comparison' && (
+                          <p className="text-xs mt-0.5 text-[#4B5563] flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-[#00D09C]" />
+                            Bon prix
                           </p>
                         )}
                       </div>
-                      <div className="text-right ml-3">
-                        <p className="text-sm font-bold">{item.price.toFixed(2)} €</p>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-white">{item.price.toFixed(2)} €</p>
                         {hasSaving && comparison && (
-                          <p className="text-xs font-medium text-emerald-600">
-                            -{comparison.savings.toFixed(2)} €
-                          </p>
+                          <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   )
                 })}
               </div>
-            </div>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <a href="/scan" className="flex-1">
-                <Button variant="outline" className="w-full h-11 rounded-xl border-[#E0DDD8]">
-                  Scanner un autre ticket
-                </Button>
-              </a>
-              <a href="/dashboard" className="flex-1">
-                <Button className="w-full h-11 rounded-xl bg-[#E07A5F] hover:bg-[#C96A52] text-white">
-                  Tableau de bord
-                </Button>
-              </a>
-            </div>
-          </div>
-        )}
+              {/* Share card */}
+              {step === 'comparison' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="glass rounded-2xl p-5 mb-4"
+                >
+                  <p className="text-sm font-semibold mb-3">Partager vos résultats</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <motion.button
+                      onClick={() => handleShare('whatsapp')}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-white font-semibold text-xs"
+                      style={{ background: '#25D366' }}
+                    >
+                      <Share2 className="w-4 h-4" />
+                      WhatsApp
+                    </motion.button>
+                    <motion.button
+                      onClick={() => handleShare('copy')}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-white font-semibold text-xs glass"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copier
+                    </motion.button>
+                    <motion.button
+                      onClick={() => handleShare('sms')}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-white font-semibold text-xs glass"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      SMS
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <a href="/scan" className="flex-1">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full h-12 rounded-2xl font-semibold text-sm text-white glass"
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    Nouveau ticket
+                  </motion.button>
+                </a>
+                <a href="/dashboard" className="flex-1">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full h-12 rounded-2xl font-semibold text-sm text-white"
+                    style={{ background: '#E07A5F' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    Tableau de bord
+                  </motion.button>
+                </a>
+              </div>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
       </main>
+
+      <BottomNav active="scan" />
     </div>
   )
 }
