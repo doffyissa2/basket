@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { fuzzyMatch } from '@/lib/fuzzy-match'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,15 +10,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })
     }
 
-    // Use service role key on the server to bypass RLS and access all users' price data.
-    // The anon key would only see the current user's rows due to row-level security.
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    // Get all unique product names from OTHER stores for matching
-    // (exclude the user's store so Claude doesn't match items back to themselves)
+    // Fetch all unique product names from OTHER stores once — reused for every item
     let productsQuery = supabase
       .from('price_items')
       .select('item_name_normalised')
@@ -28,11 +26,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: allProducts } = await productsQuery
-
-    const uniqueProducts = [...new Set(allProducts?.map((p) => p.item_name_normalised) || [])]
+    const uniqueProducts = [...new Set(allProducts?.map((p) => p.item_name_normalised) || [])] as string[]
 
     if (uniqueProducts.length === 0) {
-      // No comparison data at all
       return NextResponse.json({
         comparisons: items.map((item: { name: string; price: number }) => ({
           name: item.name,
@@ -45,29 +41,53 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Use Claude to match scanned items to database products
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    let matchMap: Record<string, string> = {}
+    // ── Step 1: local fuzzy matching ─────────────────────────────────────────
+    const HIGH_CONFIDENCE = 0.6
+    const LOW_CONFIDENCE = 0.3
 
-    if (apiKey) {
-      try {
-        const matchResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-            messages: [
-              {
-                role: 'user',
-                content: `Tu dois faire correspondre des noms de produits scannés depuis un ticket de caisse avec des noms de produits dans une base de données.
+    const localResults = items.map((item: { name: string; price: number }) => {
+      const result = fuzzyMatch(item.name, uniqueProducts)
+      return { item, ...result }
+    })
+
+    const needsClaude = localResults.filter((r) => r.confidence < LOW_CONFIDENCE)
+    const locallyMatched = localResults.filter((r) => r.confidence >= LOW_CONFIDENCE)
+
+    console.log(
+      `[compare-prices] Local match: ${locallyMatched.length}/${items.length} items resolved locally. ` +
+      `High confidence (≥${HIGH_CONFIDENCE}): ${localResults.filter(r => r.confidence >= HIGH_CONFIDENCE).length}. ` +
+      `Needs Claude: ${needsClaude.length}.`
+    )
+    for (const r of localResults) {
+      console.log(
+        `  [${r.strategy.padEnd(13)}] conf=${r.confidence.toFixed(2)} | "${r.item.name}" → ${r.matched ?? '(no match)'}`
+      )
+    }
+
+    // ── Step 2: Claude API only for unresolved items ─────────────────────────
+    let claudeMatchMap: Record<string, string> = {}
+
+    if (needsClaude.length > 0) {
+      const apiKey = process.env.ANTHROPIC_API_KEY
+      if (apiKey) {
+        try {
+          const matchResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 1000,
+              messages: [
+                {
+                  role: 'user',
+                  content: `Tu dois faire correspondre des noms de produits scannés depuis un ticket de caisse avec des noms de produits dans une base de données.
 
 Produits scannés:
-${items.map((i: { name: string }) => `- "${i.name}"`).join('\n')}
+${needsClaude.map((r) => `- "${r.item.name}"`).join('\n')}
 
 Produits dans la base de données:
 ${uniqueProducts.map((p) => `- "${p}"`).join('\n')}
@@ -82,48 +102,58 @@ Réponds UNIQUEMENT en JSON valide sans backticks, avec ce format:
 }
 
 Si aucun produit de la base ne correspond, mets null comme valeur.`,
-              },
-            ],
-          }),
-        })
+                },
+              ],
+            }),
+          })
 
-        if (matchResponse.ok) {
-          const matchData = await matchResponse.json()
-          const matchText = matchData.content?.[0]?.text || ''
-          const cleaned = matchText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-          const parsed = JSON.parse(cleaned)
-          matchMap = parsed.matches || {}
+          if (matchResponse.ok) {
+            const matchData = await matchResponse.json()
+            const matchText = matchData.content?.[0]?.text || ''
+            const cleaned = matchText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+            const parsed = JSON.parse(cleaned)
+            claudeMatchMap = parsed.matches || {}
+            console.log(`[compare-prices] Claude resolved ${Object.keys(claudeMatchMap).length} items.`)
+          }
+        } catch (matchError) {
+          console.error('[compare-prices] Claude matching error:', matchError)
         }
-      } catch (matchError) {
-        console.error('Claude matching error:', matchError)
-        // Fall back to substring matching below
       }
     }
 
+    // ── Step 3: Build final match map ────────────────────────────────────────
+    // Merge: local results take precedence when confidence ≥ LOW_CONFIDENCE
+    const finalMatchMap: Record<string, string | null> = {}
+
+    for (const r of localResults) {
+      const key = r.item.name.toLowerCase().trim()
+      if (r.confidence >= LOW_CONFIDENCE && r.matched) {
+        finalMatchMap[key] = r.matched
+      } else {
+        // Try Claude result
+        const claudeKey = Object.entries(claudeMatchMap).find(
+          ([k]) => k.toLowerCase().trim() === key
+        )
+        finalMatchMap[key] = claudeKey?.[1] ?? null
+      }
+    }
+
+    // ── Step 4: Query prices and build comparison ─────────────────────────────
     const comparisons = []
 
-    for (const item of items) {
+    for (const item of items as { name: string; price: number }[]) {
       const itemLower = item.name.toLowerCase().trim()
-      
-      // Try Claude's match — do a case-insensitive key lookup since Claude
-      // may return keys in any casing despite the prompt asking for lowercase
-      const matchedProduct =
-        matchMap[itemLower] ??
-        matchMap[item.name] ??
-        (Object.entries(matchMap).find(([k]) => k.toLowerCase().trim() === itemLower)?.[1] ?? null)
+      const matchedProduct = finalMatchMap[itemLower] ?? null
 
       let query = supabase
         .from('price_items')
         .select('unit_price, store_name, postcode')
 
       if (matchedProduct) {
-        // Claude returns the exact string from uniqueProducts — use exact match
         query = query.eq('item_name_normalised', matchedProduct)
       } else {
-        // Fallback: try substring match with key words
         const words = itemLower.split(/\s+/).filter((w: string) => w.length > 2)
         if (words.length > 0) {
-          // Try matching the longest word
           const keyword = words.reduce((a: string, b: string) => (a.length >= b.length ? a : b))
           query = query.ilike('item_name_normalised', `%${keyword}%`)
         } else {
@@ -131,7 +161,6 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
         }
       }
 
-      // Exclude the user's current store to show alternatives
       if (store_name) {
         query = query.neq('store_name', store_name)
       }
@@ -140,7 +169,7 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
 
       if (priceData && priceData.length > 0) {
         const prices = priceData.map((p) => p.unit_price)
-        const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length
+        const avgPrice = prices.reduce((a: number, b: number) => a + b, 0) / prices.length
         const minPrice = Math.min(...prices)
         const cheapestEntry = priceData.find((p) => p.unit_price === minPrice)
 
