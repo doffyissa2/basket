@@ -250,6 +250,51 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
         }
       : null
 
+    // ── Step 7: Price watch — notify watchers if item is now cheaper ──────────
+    const matchedNormalisedNames = Object.values(finalMatchMap).filter(Boolean) as string[]
+    if (matchedNormalisedNames.length > 0) {
+      const { data: watches } = await supabase
+        .from('price_watches')
+        .select('user_id, item_name, item_name_normalised, last_seen_price')
+        .in('item_name_normalised', matchedNormalisedNames)
+
+      if (watches && watches.length > 0) {
+        const notifications: {
+          user_id: string
+          type: string
+          title: string
+          body: string
+          metadata: object
+          read: boolean
+        }[] = []
+
+        for (const watch of watches) {
+          const comp = comparisons.find(
+            (c) => (finalMatchMap[c.name.toLowerCase().trim()] ?? '') === watch.item_name_normalised
+          )
+          if (comp && watch.last_seen_price && comp.avg_price < watch.last_seen_price * 0.95) {
+            notifications.push({
+              user_id: watch.user_id,
+              type: 'price_drop',
+              title: `Prix en baisse sur ${watch.item_name}`,
+              body: `Disponible à €${comp.avg_price.toFixed(2)} chez ${comp.cheaper_store || 'une autre enseigne'} (vous payiez €${watch.last_seen_price.toFixed(2)})`,
+              metadata: {
+                item_name: watch.item_name,
+                new_price: comp.avg_price,
+                old_price: watch.last_seen_price,
+                store: comp.cheaper_store,
+              },
+              read: false,
+            })
+          }
+        }
+
+        if (notifications.length > 0) {
+          await supabase.from('notifications').insert(notifications)
+        }
+      }
+    }
+
     return NextResponse.json({
       comparisons,
       total_savings: Math.round(totalSavings * 100) / 100,

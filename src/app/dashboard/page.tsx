@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Camera, Settings, History, TrendingUp, Share2, Lightbulb } from 'lucide-react'
+import { Camera, Settings, History, BarChart2, ShoppingCart, Bell, Lightbulb } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import OnboardingFlow from '@/components/OnboardingFlow'
@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalItems, setTotalItems] = useState(0)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
     const init = async () => {
@@ -48,17 +49,25 @@ export default function DashboardPage() {
       if (!user) { window.location.href = '/login'; return }
       setUser(user)
 
-      const { data: receipts } = await supabase
-        .from('receipts')
-        .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10)
+      const [{ data: receipts }, { count }] = await Promise.all([
+        supabase
+          .from('receipts')
+          .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('read', false),
+      ])
       if (receipts) {
         setRecentReceipts(receipts)
         const saved = receipts.reduce((s, r) => s + (r.savings_amount || 0), 0)
         setTotalItems(saved)
       }
+      if (count) setUnreadCount(count)
       setLoading(false)
     }
     init()
@@ -70,8 +79,8 @@ export default function DashboardPage() {
   const QUICK_ACTIONS = [
     { icon: Camera, label: 'Scanner', href: '/scan', color: '#E07A5F' },
     { icon: History, label: 'Historique', href: '#', color: '#6B7280' },
-    { icon: TrendingUp, label: 'Tendances', href: '#', color: '#6B7280' },
-    { icon: Share2, label: 'Partager', href: '#', color: '#6B7280' },
+    { icon: BarChart2, label: 'Mon bilan', href: '/bilan', color: '#FF9B7B' },
+    { icon: ShoppingCart, label: 'Ma liste', href: '/liste', color: '#6B7280' },
   ]
 
   if (loading) {
@@ -99,15 +108,31 @@ export default function DashboardPage() {
           <p className="text-xs text-[#4B5563] font-medium uppercase tracking-wider mb-0.5">Tableau de bord</p>
           <h1 className="text-xl font-bold">Bonjour, {greeting} 👋</h1>
         </div>
-        <a href="/profile">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-10 h-10 rounded-full flex items-center justify-center glass"
-          >
-            <Settings className="w-4 h-4 text-[#6B7280]" />
-          </motion.button>
-        </a>
+        <div className="flex items-center gap-2">
+          <a href="/notifications" className="relative">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-10 h-10 rounded-full flex items-center justify-center glass"
+            >
+              <Bell className="w-4 h-4 text-[#6B7280]" />
+              {unreadCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white" style={{ background: '#E07A5F' }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </motion.button>
+          </a>
+          <a href="/profile">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-10 h-10 rounded-full flex items-center justify-center glass"
+            >
+              <Settings className="w-4 h-4 text-[#6B7280]" />
+            </motion.button>
+          </a>
+        </div>
       </div>
 
       <main className="px-5 space-y-5 max-w-lg mx-auto">

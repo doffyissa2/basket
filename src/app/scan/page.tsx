@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 
@@ -206,6 +206,28 @@ export default function ScanPage() {
 
   const totalSavings = comparisons.reduce((sum, item) => sum + Math.max(0, item.savings), 0)
   const animatedSavings = useCountUp(totalSavings)
+
+  const addToList = async (itemName: string) => {
+    if (!user) return
+    await supabase.from('shopping_list_items').upsert(
+      { user_id: user.id, item_name: itemName, item_name_normalised: itemName.toLowerCase().trim() },
+      { onConflict: 'user_id,item_name_normalised' }
+    )
+  }
+
+  const watchItem = async (itemName: string, price: number) => {
+    if (!user) return
+    await supabase.from('price_watches').upsert(
+      {
+        user_id: user.id,
+        item_name: itemName,
+        item_name_normalised: itemName.toLowerCase().trim(),
+        last_seen_price: price,
+        last_seen_store: parsedReceipt?.store_name ?? null,
+      },
+      { onConflict: 'user_id,item_name_normalised' }
+    )
+  }
 
   const handleShare = (method: 'whatsapp' | 'copy' | 'sms') => {
     const text = `🧺 Basket m'a trouvé ${totalSavings.toFixed(2)}€ d'économies possibles cette semaine !\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basket.fr`
@@ -429,58 +451,79 @@ export default function ScanPage() {
                   const hasSaving = comparison && comparison.savings > 0.01
 
                   return (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.06, duration: 0.35 }}
-                      className="flex items-center justify-between rounded-xl px-4 py-3"
-                      style={{
-                        background: hasSaving ? 'rgba(0,208,156,0.08)' : 'rgba(255,255,255,0.04)',
-                        border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(255,255,255,0.06)',
-                        borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
-                      }}
-                    >
-                      <div className="flex-1 min-w-0 pr-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium text-white truncate">{item.name}</p>
-                          {step === 'comparison' && comparison && (
-                            <span
-                              className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
-                              style={{
-                                background: comparison.is_local ? 'rgba(0,208,156,0.15)' : 'rgba(107,114,128,0.15)',
-                                color: comparison.is_local ? '#00D09C' : '#6B7280',
-                              }}
-                            >
-                              {comparison.is_local ? 'Région' : 'National'}
-                            </span>
+                    <div key={idx}>
+                      <motion.div
+                        initial={{ opacity: 0, x: -16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.06, duration: 0.35 }}
+                        className="flex items-center justify-between rounded-xl px-4 py-3"
+                        style={{
+                          background: hasSaving ? 'rgba(0,208,156,0.08)' : 'rgba(255,255,255,0.04)',
+                          border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(255,255,255,0.06)',
+                          borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
+                        }}
+                      >
+                        <div className="flex-1 min-w-0 pr-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                            {step === 'comparison' && comparison && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                style={{
+                                  background: comparison.is_local ? 'rgba(0,208,156,0.15)' : 'rgba(107,114,128,0.15)',
+                                  color: comparison.is_local ? '#00D09C' : '#6B7280',
+                                }}
+                              >
+                                {comparison.is_local ? 'Région' : 'National'}
+                              </span>
+                            )}
+                          </div>
+                          {hasSaving && comparison && (
+                            <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
+                              Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                              {comparison.avg_normalized_price && (
+                                <span className="text-[#4B5563]"> · {comparison.avg_normalized_price}</span>
+                              )}
+                            </p>
+                          )}
+                          {!hasSaving && step === 'comparison' && (
+                            <p className="text-xs mt-0.5 text-[#4B5563] flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-[#00D09C]" />
+                              Bon prix
+                            </p>
                           )}
                         </div>
-                        {hasSaving && comparison && (
-                          <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
-                            Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
-                            {comparison.avg_normalized_price && (
-                              <span className="text-[#4B5563]"> · {comparison.avg_normalized_price}</span>
-                            )}
-                          </p>
-                        )}
-                        {!hasSaving && step === 'comparison' && (
-                          <p className="text-xs mt-0.5 text-[#4B5563] flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-[#00D09C]" />
-                            Bon prix
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold text-white">{item.price.toFixed(2)} €</p>
-                        {comparison?.normalized_price && (
-                          <p className="text-[10px] text-[#4B5563]">{comparison.normalized_price}</p>
-                        )}
-                        {hasSaving && comparison && (
-                          <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
-                        )}
-                      </div>
-                    </motion.div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-bold text-white">{item.price.toFixed(2)} €</p>
+                          {comparison?.normalized_price && (
+                            <p className="text-[10px] text-[#4B5563]">{comparison.normalized_price}</p>
+                          )}
+                          {hasSaving && comparison && (
+                            <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
+                          )}
+                        </div>
+                      </motion.div>
+                      {step === 'comparison' && (
+                        <div className="flex gap-2 px-1 pt-1">
+                          <button
+                            onClick={() => addToList(item.name)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold glass"
+                            style={{ color: '#E07A5F' }}
+                          >
+                            <Plus className="w-3 h-3" />
+                            Liste
+                          </button>
+                          <button
+                            onClick={() => watchItem(item.name, item.price)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold glass"
+                            style={{ color: '#6B7280' }}
+                          >
+                            <Bell className="w-3 h-3" />
+                            Surveiller
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
