@@ -1,0 +1,22 @@
+{
+  "name": "Basket — Payez moins pour vos courses",
+  "short_name": "Basket",
+  "description": "Scannez vos tickets de caisse et découvrez si vous payez plus cher que vos voisins.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#FAFAF8",
+  "theme_color": "#E07A5F",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
