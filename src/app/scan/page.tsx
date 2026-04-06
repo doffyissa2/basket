@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 
@@ -25,6 +25,15 @@ interface ComparisonItem {
   avg_price: number
   savings: number
   cheaper_store: string | null
+  normalized_price: string | null
+  avg_normalized_price: string | null
+  is_local: boolean
+}
+
+interface BestStore {
+  name: string
+  items_cheaper: number
+  total_savings: number
 }
 
 const PARSE_MESSAGES = [
@@ -83,6 +92,8 @@ export default function ScanPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [parsedReceipt, setParsedReceipt] = useState<ParsedReceipt | null>(null)
   const [comparisons, setComparisons] = useState<ComparisonItem[]>([])
+  const [bestStore, setBestStore] = useState<BestStore | null>(null)
+  const [receiptId, setReceiptId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [parseMessageIdx, setParseMessageIdx] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
@@ -153,6 +164,7 @@ export default function ScanPage() {
         .insert({ user_id: user.id, store_name: parsed.store_name, total_amount: parsed.total, receipt_date: new Date().toISOString().split('T')[0], image_url: publicUrl, postcode: profile?.postcode || null })
         .select().single()
       if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
+      setReceiptId(receiptRow.id)
 
       await supabase.from('price_items').insert(
         parsed.items.map((item) => ({
@@ -177,9 +189,14 @@ export default function ScanPage() {
       if (compareResponse.ok) {
         const comparisonData = await compareResponse.json()
         setComparisons(comparisonData.comparisons || [])
+        setBestStore(comparisonData.best_store || null)
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
+        // Persist savings_amount on the receipt row
+        if (receiptRow.id && savings > 0) {
+          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', receiptRow.id)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue')
@@ -372,6 +389,30 @@ export default function ScanPage() {
                 </motion.div>
               )}
 
+              {/* Best store recommendation */}
+              {step === 'comparison' && bestStore && bestStore.items_cheaper >= 2 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="glass rounded-2xl p-4 mb-4 flex items-center gap-4"
+                  style={{ borderLeft: '3px solid #E07A5F' }}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'rgba(224,122,95,0.15)' }}>
+                    <Store className="w-5 h-5 text-[#E07A5F]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Chez {bestStore.name}</p>
+                    <p className="text-xs text-[#6B7280]">
+                      vous auriez économisé{' '}
+                      <span style={{ color: '#00D09C' }}>€{bestStore.total_savings.toFixed(2)}</span>
+                      {' '}sur {bestStore.items_cheaper} articles
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Receipt header */}
               <div className="glass rounded-2xl p-5 mb-4">
                 <div className="flex items-center justify-between mb-1">
@@ -401,10 +442,26 @@ export default function ScanPage() {
                       }}
                     >
                       <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                          {step === 'comparison' && comparison && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                              style={{
+                                background: comparison.is_local ? 'rgba(0,208,156,0.15)' : 'rgba(107,114,128,0.15)',
+                                color: comparison.is_local ? '#00D09C' : '#6B7280',
+                              }}
+                            >
+                              {comparison.is_local ? 'Région' : 'National'}
+                            </span>
+                          )}
+                        </div>
                         {hasSaving && comparison && (
                           <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
                             Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                            {comparison.avg_normalized_price && (
+                              <span className="text-[#4B5563]"> · {comparison.avg_normalized_price}</span>
+                            )}
                           </p>
                         )}
                         {!hasSaving && step === 'comparison' && (
@@ -416,6 +473,9 @@ export default function ScanPage() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-sm font-bold text-white">{item.price.toFixed(2)} €</p>
+                        {comparison?.normalized_price && (
+                          <p className="text-[10px] text-[#4B5563]">{comparison.normalized_price}</p>
+                        )}
                         {hasSaving && comparison && (
                           <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
                         )}

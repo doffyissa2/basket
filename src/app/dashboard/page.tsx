@@ -14,6 +14,7 @@ interface RecentReceipt {
   total_amount: number | null
   receipt_date: string | null
   created_at: string
+  savings_amount?: number | null
 }
 
 function useCountUp(target: number, duration = 1500) {
@@ -49,17 +50,15 @@ export default function DashboardPage() {
 
       const { data: receipts } = await supabase
         .from('receipts')
-        .select('id, store_name, total_amount, receipt_date, created_at')
+        .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(10)
-      if (receipts) setRecentReceipts(receipts)
-
-      const { count } = await supabase
-        .from('price_items')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-      setTotalItems(count || 0)
+      if (receipts) {
+        setRecentReceipts(receipts)
+        const saved = receipts.reduce((s, r) => s + (r.savings_amount || 0), 0)
+        setTotalItems(saved)
+      }
       setLoading(false)
     }
     init()
@@ -128,23 +127,22 @@ export default function DashboardPage() {
 
           <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-2">Économies totales</p>
           <AnimatePresence mode="wait">
-            {totalItems > 0 ? (
-              <motion.p
-                key="savings"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-5xl font-extrabold text-white mb-1"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {animatedItems.toFixed(0)} <span className="text-2xl text-[#6B7280]">articles</span>
-              </motion.p>
-            ) : (
-              <motion.p key="zero" className="text-5xl font-extrabold text-white mb-1">
-                0 €
-              </motion.p>
-            )}
+            <motion.p
+              key={totalItems > 0 ? 'savings' : 'zero'}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-5xl font-extrabold mb-1"
+              style={{
+                fontVariantNumeric: 'tabular-nums',
+                color: totalItems > 0 ? '#00D09C' : '#FFFFFF',
+              }}
+            >
+              €{animatedItems.toFixed(2)}
+            </motion.p>
           </AnimatePresence>
-          <p className="text-sm text-[#4B5563]">analysés ce mois-ci</p>
+          <p className="text-sm text-[#4B5563]">
+            sur {recentReceipts.length} ticket{recentReceipts.length !== 1 ? 's' : ''} scannés
+          </p>
 
           {/* Dots indicator */}
           <div className="flex gap-1.5 mt-5">

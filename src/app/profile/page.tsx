@@ -11,11 +11,12 @@ interface ProfileStats {
   receipts: number
   items: number
   favoriteStore: string | null
+  totalSaved: number
 }
 
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null)
-  const [stats, setStats] = useState<ProfileStats>({ receipts: 0, items: 0, favoriteStore: null })
+  const [stats, setStats] = useState<ProfileStats>({ receipts: 0, items: 0, favoriteStore: null, totalSaved: 0 })
   const [loading, setLoading] = useState(true)
   const [postcode, setPostcode] = useState('')
   const [editingPostcode, setEditingPostcode] = useState(false)
@@ -27,11 +28,12 @@ export default function ProfilePage() {
       if (!user) { window.location.href = '/login'; return }
       setUser(user)
 
-      const [{ count: receiptsCount }, { count: itemsCount }, { data: profile }, { data: topStore }] = await Promise.all([
+      const [{ count: receiptsCount }, { count: itemsCount }, { data: profile }, { data: topStore }, { data: savingsData }] = await Promise.all([
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('price_items').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('profiles').select('postcode').eq('id', user.id).single(),
         supabase.from('receipts').select('store_name').eq('user_id', user.id).not('store_name', 'is', null),
+        supabase.from('receipts').select('savings_amount').eq('user_id', user.id),
       ])
 
       if (profile?.postcode) setPostcode(profile.postcode)
@@ -45,7 +47,8 @@ export default function ProfilePage() {
         favStore = Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null
       }
 
-      setStats({ receipts: receiptsCount || 0, items: itemsCount || 0, favoriteStore: favStore })
+      const totalSaved = savingsData?.reduce((s, r) => s + (r.savings_amount || 0), 0) ?? 0
+      setStats({ receipts: receiptsCount || 0, items: itemsCount || 0, favoriteStore: favStore, totalSaved })
       setLoading(false)
     }
     init()
@@ -67,7 +70,7 @@ export default function ProfilePage() {
   const STAT_CARDS = [
     { icon: Receipt, label: 'Tickets scannés', value: stats.receipts, color: '#E07A5F' },
     { icon: Package, label: 'Produits analysés', value: stats.items, color: '#FF9B7B' },
-    { icon: TrendingDown, label: 'Économies totales', value: '—', color: '#00D09C' },
+    { icon: TrendingDown, label: 'Économies totales', value: `€${stats.totalSaved.toFixed(2)}`, color: '#00D09C' },
     { icon: Store, label: 'Magasin favori', value: stats.favoriteStore || '—', color: '#6B7280' },
   ]
 

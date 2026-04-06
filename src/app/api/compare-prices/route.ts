@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { fuzzyMatch } from '@/lib/fuzzy-match'
+import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,13 +37,16 @@ export async function POST(request: NextRequest) {
           avg_price: item.price,
           savings: 0,
           cheaper_store: null,
+          normalized_price: null,
+          avg_normalized_price: null,
+          is_local: false,
         })),
         total_savings: 0,
+        best_store: null,
       })
     }
 
     // ── Step 1: local fuzzy matching ─────────────────────────────────────────
-    const HIGH_CONFIDENCE = 0.6
     const LOW_CONFIDENCE = 0.3
 
     const localResults = items.map((item: { name: string; price: number }) => {
@@ -54,9 +58,7 @@ export async function POST(request: NextRequest) {
     const locallyMatched = localResults.filter((r) => r.confidence >= LOW_CONFIDENCE)
 
     console.log(
-      `[compare-prices] Local match: ${locallyMatched.length}/${items.length} items resolved locally. ` +
-      `High confidence (≥${HIGH_CONFIDENCE}): ${localResults.filter(r => r.confidence >= HIGH_CONFIDENCE).length}. ` +
-      `Needs Claude: ${needsClaude.length}.`
+      `[compare-prices] Local: ${locallyMatched.length}/${items.length} resolved. Needs Claude: ${needsClaude.length}.`
     )
     for (const r of localResults) {
       console.log(
@@ -122,7 +124,6 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
     }
 
     // ── Step 3: Build final match map ────────────────────────────────────────
-    // Merge: local results take precedence when confidence ≥ LOW_CONFIDENCE
     const finalMatchMap: Record<string, string | null> = {}
 
     for (const r of localResults) {
@@ -130,7 +131,6 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
       if (r.confidence >= LOW_CONFIDENCE && r.matched) {
         finalMatchMap[key] = r.matched
       } else {
-        // Try Claude result
         const claudeKey = Object.entries(claudeMatchMap).find(
           ([k]) => k.toLowerCase().trim() === key
         )
@@ -138,40 +138,69 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
       }
     }
 
-    // ── Step 4: Query prices and build comparison ─────────────────────────────
+    // ── Step 4: Query prices with postcode-aware two-pass strategy ────────────
+    const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
+
     const comparisons = []
 
     for (const item of items as { name: string; price: number }[]) {
       const itemLower = item.name.toLowerCase().trim()
       const matchedProduct = finalMatchMap[itemLower] ?? null
 
-      let query = supabase
-        .from('price_items')
-        .select('unit_price, store_name, postcode')
+      // Build the base price query (shared between local and national passes)
+      const buildQuery = () => {
+        let q = supabase
+          .from('price_items')
+          .select('unit_price, store_name, postcode')
 
-      if (matchedProduct) {
-        query = query.eq('item_name_normalised', matchedProduct)
-      } else {
-        const words = itemLower.split(/\s+/).filter((w: string) => w.length > 2)
-        if (words.length > 0) {
-          const keyword = words.reduce((a: string, b: string) => (a.length >= b.length ? a : b))
-          query = query.ilike('item_name_normalised', `%${keyword}%`)
+        if (matchedProduct) {
+          q = q.eq('item_name_normalised', matchedProduct)
         } else {
-          query = query.ilike('item_name_normalised', `%${itemLower}%`)
+          const words = itemLower.split(/\s+/).filter((w: string) => w.length > 2)
+          const keyword = words.length > 0
+            ? words.reduce((a: string, b: string) => (a.length >= b.length ? a : b))
+            : itemLower
+          q = q.ilike('item_name_normalised', `%${keyword}%`)
+        }
+
+        if (store_name) {
+          q = q.neq('store_name', store_name)
+        }
+
+        return q
+      }
+
+      // Pass 1: local (same département)
+      let priceData: { unit_price: number; store_name: string; postcode: string | null }[] | null = null
+      let isLocal = false
+
+      if (dept) {
+        const { data: localData } = await buildQuery()
+          .like('postcode', `${dept}%`)
+          .limit(50)
+        if (localData && localData.length >= 3) {
+          priceData = localData
+          isLocal = true
         }
       }
 
-      if (store_name) {
-        query = query.neq('store_name', store_name)
+      // Pass 2: national fallback
+      if (!priceData || priceData.length < 3) {
+        const { data: nationalData } = await buildQuery().limit(50)
+        priceData = nationalData
+        isLocal = false
       }
 
-      const { data: priceData } = await query.limit(50)
+      // Compute normalized price per unit (€/100g or €/L)
+      const weightStr = extractWeight(matchedProduct ?? item.name)
+      const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
 
       if (priceData && priceData.length > 0) {
         const prices = priceData.map((p) => p.unit_price)
         const avgPrice = prices.reduce((a: number, b: number) => a + b, 0) / prices.length
         const minPrice = Math.min(...prices)
         const cheapestEntry = priceData.find((p) => p.unit_price === minPrice)
+        const avgNormalized = weightStr ? computeNormalizedPrice(avgPrice, weightStr) : null
 
         comparisons.push({
           name: item.name,
@@ -179,6 +208,9 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
           avg_price: Math.round(avgPrice * 100) / 100,
           savings: Math.round((item.price - avgPrice) * 100) / 100,
           cheaper_store: cheapestEntry?.store_name || null,
+          normalized_price: normalized?.label ?? null,
+          avg_normalized_price: avgNormalized?.label ?? null,
+          is_local: isLocal,
         })
       } else {
         comparisons.push({
@@ -187,18 +219,41 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
           avg_price: item.price,
           savings: 0,
           cheaper_store: null,
+          normalized_price: normalized?.label ?? null,
+          avg_normalized_price: null,
+          is_local: false,
         })
       }
     }
 
+    // ── Step 5: Total savings ─────────────────────────────────────────────────
     const totalSavings = comparisons.reduce(
       (sum, item) => sum + Math.max(0, item.savings),
       0
     )
 
+    // ── Step 6: Best store recommendation ─────────────────────────────────────
+    const storeTally: Record<string, { count: number; savings: number }> = {}
+    for (const c of comparisons) {
+      if (c.cheaper_store && c.savings > 0) {
+        if (!storeTally[c.cheaper_store]) storeTally[c.cheaper_store] = { count: 0, savings: 0 }
+        storeTally[c.cheaper_store].count += 1
+        storeTally[c.cheaper_store].savings += c.savings
+      }
+    }
+    const bestEntry = Object.entries(storeTally).sort((a, b) => b[1].savings - a[1].savings)[0]
+    const best_store = bestEntry
+      ? {
+          name: bestEntry[0],
+          items_cheaper: bestEntry[1].count,
+          total_savings: Math.round(bestEntry[1].savings * 100) / 100,
+        }
+      : null
+
     return NextResponse.json({
       comparisons,
       total_savings: Math.round(totalSavings * 100) / 100,
+      best_store,
     })
   } catch (error) {
     console.error('Compare prices error:', error)

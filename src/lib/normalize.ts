@@ -155,3 +155,32 @@ export function brandToCategory(str: string): string[] | null {
   if (!brand) return null
   return BRAND_CATEGORY_MAP[brand] ?? null
 }
+
+/**
+ * Compute a normalized price per standard unit so items of different sizes
+ * can be compared fairly (e.g. 400g vs 750g).
+ * Returns €/100g for solids, €/L for liquids, or null if weight can't be parsed.
+ */
+export function computeNormalizedPrice(
+  price: number,
+  weightStr: string
+): { value: number; label: string } | null {
+  const lower = weightStr.toLowerCase().replace(',', '.')
+  const match = lower.match(/^(\d+(?:\.\d+)?)(kg|g|l|ml|cl|dl)$/)
+  if (!match) return null
+  const amount = parseFloat(match[1])
+  const unit = match[2]
+  if (isNaN(amount) || amount === 0) return null
+
+  let normalized: number
+  let unitLabel: string
+  if (unit === 'g')       { normalized = (price / amount) * 100;        unitLabel = '100g' }
+  else if (unit === 'kg') { normalized = (price / (amount * 1000)) * 100; unitLabel = '100g' }
+  else if (unit === 'l')  { normalized = price / amount;                 unitLabel = 'L' }
+  else if (unit === 'cl') { normalized = (price / amount) * 100;         unitLabel = 'L' }
+  else if (unit === 'dl') { normalized = (price / amount) * 10;          unitLabel = 'L' }
+  else if (unit === 'ml') { normalized = (price / amount) * 1000;        unitLabel = 'L' }
+  else return null
+
+  return { value: Math.round(normalized * 100) / 100, label: `€${normalized.toFixed(2)}/${unitLabel}` }
+}
