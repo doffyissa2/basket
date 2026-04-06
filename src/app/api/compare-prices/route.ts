@@ -121,10 +121,10 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
         query = query.eq('item_name_normalised', matchedProduct)
       } else {
         // Fallback: try substring match with key words
-        const words = itemLower.split(/\s+/).filter((w) => w.length > 2)
+        const words = itemLower.split(/\s+/).filter((w: string) => w.length > 2)
         if (words.length > 0) {
           // Try matching the longest word
-          const keyword = words.reduce((a, b) => (a.length >= b.length ? a : b))
+          const keyword = words.reduce((a: string, b: string) => (a.length >= b.length ? a : b))
           query = query.ilike('item_name_normalised', `%${keyword}%`)
         } else {
           query = query.ilike('item_name_normalised', `%${itemLower}%`)
