@@ -100,13 +100,15 @@ export default function DashboardPage() {
           <p className="text-xs text-[#4B5563] font-medium uppercase tracking-wider mb-0.5">Tableau de bord</p>
           <h1 className="text-xl font-bold">Bonjour, {greeting} 👋</h1>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="w-10 h-10 rounded-full flex items-center justify-center glass"
-        >
-          <Settings className="w-4 h-4 text-[#6B7280]" />
-        </motion.button>
+        <a href="/profile">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-10 h-10 rounded-full flex items-center justify-center glass"
+          >
+            <Settings className="w-4 h-4 text-[#6B7280]" />
+          </motion.button>
+        </a>
       </div>
 
       <main className="px-5 space-y-5 max-w-lg mx-auto">
