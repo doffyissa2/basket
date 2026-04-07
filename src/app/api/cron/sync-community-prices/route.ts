@@ -202,8 +202,8 @@ function extractPricesFromText(text: string): Array<{ name: string; price: numbe
 // Community-submitted real prices from French stores. No auth, no IP block.
 
 async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: number; store: string | null; date: string | null }>> {
-  // Fetch recent EUR prices — no category filter (that filter returns 0 results)
-  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&page=${page}&size=100`
+  // Filter to France only, EUR, recent prices
+  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&page=${page}&size=100`
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/json' },
@@ -212,22 +212,36 @@ async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: nu
     if (!res.ok) return []
     const raw = await res.json() as Record<string, unknown>
 
-    // Handle both {items:[]} and {results:[]} response shapes
-    const list = (Array.isArray(raw.items) ? raw.items : Array.isArray(raw.results) ? raw.results : []) as Array<{
+    // Real shape: { items: [...], total: N, page: N, size: N }
+    // Each item: { price, currency, date, product_name, product_code,
+    //   location: { osm_name, osm_address_city, osm_address_country_code },
+    //   product: { product_name_fr, product_name } | null }
+    const list = (Array.isArray(raw.items) ? raw.items : []) as Array<{
       price?: unknown
       currency?: string
       date?: string | null
-      product_name?: string
-      product?: { product_name_fr?: string; product_name?: string }
-      location?: { osm_name?: string; name?: string }
+      product_name?: string | null
+      product?: { product_name_fr?: string | null; product_name?: string | null } | null
+      location?: {
+        osm_name?: string | null
+        osm_address_city?: string | null
+        osm_address_country_code?: string | null
+      } | null
     }>
 
     return list
-      .filter(i => i.currency === 'EUR' && typeof i.price === 'number' && (i.price as number) > 0.10 && (i.price as number) < 200)
+      .filter(i =>
+        i.currency === 'EUR' &&
+        typeof i.price === 'number' &&
+        (i.price as number) > 0.10 &&
+        (i.price as number) < 200 &&
+        // Only French locations
+        (!i.location?.osm_address_country_code || i.location.osm_address_country_code === 'FR')
+      )
       .map(i => ({
-        name: i.product?.product_name_fr ?? i.product?.product_name ?? i.product_name ?? '',
+        name: (i.product?.product_name_fr ?? i.product?.product_name ?? i.product_name ?? '').trim(),
         price: i.price as number,
-        store: i.location?.osm_name ?? i.location?.name ?? null,
+        store: i.location?.osm_name ?? null,
         date: i.date ?? null,
       }))
       .filter(i => i.name.length > 2)
