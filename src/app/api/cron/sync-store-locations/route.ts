@@ -43,14 +43,13 @@ function buildQueryForChain(patterns: string[]): string {
   // Use the first (most distinctive) pattern as the Overpass filter,
   // keeping the regex simple so Overpass doesn't time out.
   const regex = patterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  // France relation ID on OSM is 2202162 → area ID = relation + 3600000000
-  return `[out:json][timeout:55];
-area(3600002202162)->.fr;
+  // Bounding box covers metropolitan France + Corsica: S,W,N,E
+  return `[out:json][timeout:55][bbox:41.3,-5.2,51.1,9.6];
 (
-  node["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i](area.fr);
-  way["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i](area.fr);
-  node["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i](area.fr);
-  way["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i](area.fr);
+  node["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i];
+  way["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i];
+  node["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i];
+  way["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i];
 );
 out center tags;`
 }
