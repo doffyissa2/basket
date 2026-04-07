@@ -36,15 +36,51 @@ const CHAIN_BRANDS: Record<string, string> = {
   'Netto': 'Netto',
 }
 
-function buildQuery(): string {
-  const brands = Object.keys(CHAIN_BRANDS).join('|')
+// Query one canonical chain at a time to avoid Overpass timeout
+function buildQueryForChain(canonicalChain: string): string {
+  // Collect all brand tags that map to this canonical chain
+  const brandPatterns = Object.entries(CHAIN_BRANDS)
+    .filter(([, v]) => v === canonicalChain)
+    .map(([k]) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+
   return `[out:json][timeout:60];
 area["ISO3166-1"="FR"]["admin_level"="2"]->.fr;
 (
-  node["shop"~"supermarket|convenience"]["brand"~"${brands}"](area.fr);
-  way["shop"~"supermarket|convenience"]["brand"~"${brands}"](area.fr);
+  node["shop"~"supermarket|convenience|hypermarket"]["brand"~"${brandPatterns}",i](area.fr);
+  way["shop"~"supermarket|convenience|hypermarket"]["brand"~"${brandPatterns}",i](area.fr);
+  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${brandPatterns}",i](area.fr);
+  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${brandPatterns}",i](area.fr);
 );
 out center tags;`
+}
+
+type OsmElement = {
+  type: string
+  id: number
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
+  tags?: Record<string, string>
+}
+
+async function fetchChain(chain: string): Promise<OsmElement[]> {
+  const query = buildQueryForChain(chain)
+  const res = await fetch(OVERPASS_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': UA,
+    },
+    body: `data=${encodeURIComponent(query)}`,
+    signal: AbortSignal.timeout(70_000),
+  })
+  if (!res.ok) {
+    console.warn(`[sync-store-locations] Overpass ${res.status} for chain ${chain}`)
+    return []
+  }
+  const data = await res.json() as { elements?: OsmElement[] }
+  return data.elements ?? []
 }
 
 function authorizeCron(request: NextRequest): boolean {
@@ -66,26 +102,27 @@ export async function POST(request: NextRequest) {
 
   const startedAt = Date.now()
 
-  try {
-    console.log('[sync-store-locations] querying Overpass API...')
+  // Unique canonical chains
+  const chains = [...new Set(Object.values(CHAIN_BRANDS))]
 
-    const res = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': UA,
-      },
-      body: `data=${encodeURIComponent(buildQuery())}`,
-    })
+  const allElements: OsmElement[] = []
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Overpass returned ${res.status}` },
-        { status: 502 }
-      )
+  console.log(`[sync-store-locations] querying ${chains.length} chains sequentially...`)
+
+  for (const chain of chains) {
+    try {
+      const elements = await fetchChain(chain)
+      console.log(`[sync-store-locations] ${chain}: ${elements.length} elements`)
+      allElements.push(...elements)
+      // Polite delay between Overpass requests
+      await new Promise((r) => setTimeout(r, 2000))
+    } catch (err) {
+      console.warn(`[sync-store-locations] skipping ${chain}:`, err)
     }
+  }
 
-    const data = await res.json() as {
+  try {
+    const data = { elements: allElements } as {
       elements: Array<{
         type: string
         id: number
@@ -115,7 +152,9 @@ export async function POST(request: NextRequest) {
     for (const el of data.elements) {
       const tags = el.tags ?? {}
       const brand = tags['brand'] ?? tags['name'] ?? ''
-      const chain = CHAIN_BRANDS[brand]
+      // Exact match first, then case-insensitive fallback
+      const chain = CHAIN_BRANDS[brand] ??
+        CHAIN_BRANDS[Object.keys(CHAIN_BRANDS).find(k => k.toLowerCase() === brand.toLowerCase()) ?? '']
       if (!chain) continue
 
       const lat = el.lat ?? el.center?.lat
