@@ -70,8 +70,8 @@ export default function CartePage() {
         <p className="text-xs text-[#4B5563]">Données communautaires</p>
       </div>
 
-      {/* Map fills remaining space */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Map fills remaining space — explicit height so Leaflet renders correctly */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <MapWithNoSSR userCoords={userCoords} />
       </div>
 

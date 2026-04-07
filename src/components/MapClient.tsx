@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import type { StorePin } from '@/app/api/price-map/route'
 
 // Fix default icon paths (webpack strips them otherwise)
@@ -101,12 +100,14 @@ export default function MapClient({ userCoords }: MapClientProps) {
         <MapContainer
           center={[46.603354, 1.888334]}
           zoom={6}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '100%', width: '100%', background: '#1a1a2e' }}
           zoomControl={true}
         >
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            subdomains="abcd"
+            maxZoom={20}
           />
           <FlyToUser coords={userCoords ?? null} />
 
