@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 // ── Supabase service-role client (bypasses RLS) ────────────────────────────
 function getServiceClient() {
@@ -43,6 +44,9 @@ interface ComparisonResult {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimitResponse = await checkRateLimit(request, 'comparePrices')
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const { items, postcode, store_name } = await request.json()
 

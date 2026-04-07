@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  const rateLimitResponse = await checkRateLimit(request, 'parseReceipt')
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const { image_base64, media_type } = await request.json()
 
