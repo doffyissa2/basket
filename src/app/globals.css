@@ -183,3 +183,39 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Safe area helpers for notched phones */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Tap highlight removal — makes mobile feel native */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth momentum scrolling on iOS */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text-size adjustment on rotation */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Full-height on mobile browsers (accounts for dynamic chrome) */
+.min-h-screen {
+  min-height: 100dvh;
+}
+
+/* Touch-friendly active states */
+@media (hover: none) {
+  button:active, a:active {
+    opacity: 0.7;
+  }
+}

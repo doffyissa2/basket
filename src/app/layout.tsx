@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
+import PWASetup from '@/components/PWASetup'
 
 export const metadata: Metadata = {
   title: 'Basket — Payez-vous trop cher vos courses ?',
@@ -8,16 +9,26 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'Basket',
+    startupImage: '/icon-512.png',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'black-translucent',
+    'msapplication-TileColor': '#0A0A0A',
+    'msapplication-tap-highlight': 'no',
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#E07A5F',
+  themeColor: '#0A0A0A',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -29,9 +40,12 @@ export default function RootLayout({
     <html lang="fr" className="dark">
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+        <meta name="format-detection" content="telephone=no" />
       </head>
       <body style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         {children}
+        <PWASetup />
         <Toaster />
       </body>
     </html>

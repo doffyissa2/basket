@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Basket — Hors ligne</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100dvh;
+      background: #0A0A0A;
+      color: #fff;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px;
+      text-align: center;
+    }
+    .icon {
+      width: 72px; height: 72px;
+      border-radius: 24px;
+      background: rgba(224,122,95,0.15);
+      border: 1px solid rgba(224,122,95,0.3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+    }
+    h1 { font-size: 24px; font-weight: 800; }
+    p { color: #6B7280; font-size: 15px; max-width: 280px; line-height: 1.6; }
+    button {
+      margin-top: 8px;
+      height: 48px; padding: 0 28px;
+      border-radius: 14px;
+      background: #E07A5F;
+      color: #fff;
+      font-size: 15px; font-weight: 600;
+      border: none; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">🧺</div>
+  <h1>Vous êtes hors ligne</h1>
+  <p>Vérifiez votre connexion internet pour accéder à Basket.</p>
+  <button onclick="window.location.reload()">Réessayer</button>
+</body>
+</html>
