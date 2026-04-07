@@ -13,46 +13,21 @@ import { createClient } from '@supabase/supabase-js'
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 const UA = 'Basket-App/1.0 (basket.fr; open-source grocery price tracker)'
 
-const CHAIN_BRANDS: Record<string, string> = {
-  'Carrefour': 'Carrefour',
-  'Carrefour Market': 'Carrefour',
-  'Carrefour City': 'Carrefour',
-  'Carrefour Contact': 'Carrefour',
-  'Carrefour Express': 'Carrefour',
-  'E.Leclerc': 'Leclerc',
-  'Leclerc': 'Leclerc',
-  'Intermarché': 'Intermarché',
-  'Lidl': 'Lidl',
-  'Aldi': 'Aldi',
-  'Auchan': 'Auchan',
-  'Super U': 'Super U',
-  'Hyper U': 'Super U',
-  'U Express': 'Super U',
-  'Casino': 'Casino',
-  'Monoprix': 'Monoprix',
-  'Franprix': 'Franprix',
-  'Picard': 'Picard',
-  'Biocoop': 'Biocoop',
-  'Netto': 'Netto',
-}
-
-// Query one canonical chain at a time to avoid Overpass timeout
-function buildQueryForChain(canonicalChain: string): string {
-  // Collect all brand tags that map to this canonical chain
-  const brandPatterns = Object.entries(CHAIN_BRANDS)
-    .filter(([, v]) => v === canonicalChain)
-    .map(([k]) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|')
-
-  return `[out:json][timeout:60];
-area["ISO3166-1"="FR"]["admin_level"="2"]->.fr;
-(
-  node["shop"~"supermarket|convenience|hypermarket"]["brand"~"${brandPatterns}",i](area.fr);
-  way["shop"~"supermarket|convenience|hypermarket"]["brand"~"${brandPatterns}",i](area.fr);
-  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${brandPatterns}",i](area.fr);
-  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${brandPatterns}",i](area.fr);
-);
-out center tags;`
+// canonical chain name → brand/name patterns to match (case-insensitive substrings)
+const CHAINS: Record<string, string[]> = {
+  'Carrefour':    ['carrefour'],
+  'Leclerc':      ['leclerc'],
+  'Intermarché':  ['intermarché', 'intermarche', 'itm'],
+  'Lidl':         ['lidl'],
+  'Aldi':         ['aldi'],
+  'Auchan':       ['auchan'],
+  'Super U':      ['super u', 'hyper u', 'u express', 'utile'],
+  'Casino':       ['casino supermarché', 'casino supérette', 'géant casino'],
+  'Monoprix':     ['monoprix', "monop'"],
+  'Franprix':     ['franprix'],
+  'Picard':       ['picard'],
+  'Biocoop':      ['biocoop'],
+  'Netto':        ['netto'],
 }
 
 type OsmElement = {
@@ -64,30 +39,58 @@ type OsmElement = {
   tags?: Record<string, string>
 }
 
-async function fetchChain(chain: string): Promise<OsmElement[]> {
-  const query = buildQueryForChain(chain)
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': UA,
-    },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(70_000),
-  })
-  if (!res.ok) {
-    console.warn(`[sync-store-locations] Overpass ${res.status} for chain ${chain}`)
-    return []
+function buildQueryForChain(patterns: string[]): string {
+  // Use the first (most distinctive) pattern as the Overpass filter,
+  // keeping the regex simple so Overpass doesn't time out.
+  const regex = patterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  return `[out:json][timeout:55];
+area["ISO3166-1"="FR"]["admin_level"="2"]->.fr;
+(
+  node["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i](area.fr);
+  way["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i](area.fr);
+  node["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i](area.fr);
+  way["shop"~"supermarket|hypermarket|convenience"]["name"~"${regex}",i](area.fr);
+);
+out center tags;`
+}
+
+function resolveChain(brandTag: string): string | null {
+  const lower = brandTag.toLowerCase()
+  for (const [chain, patterns] of Object.entries(CHAINS)) {
+    if (patterns.some(p => lower.includes(p))) return chain
   }
-  const data = await res.json() as { elements?: OsmElement[] }
-  return data.elements ?? []
+  return null
+}
+
+async function fetchChain(chain: string): Promise<{ chain: string; elements: OsmElement[] }> {
+  const patterns = CHAINS[chain]
+  const query = buildQueryForChain(patterns)
+  try {
+    const res = await fetch(OVERPASS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': UA,
+      },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(65_000),
+    })
+    if (!res.ok) {
+      console.warn(`[sync-store-locations] Overpass ${res.status} for ${chain}`)
+      return { chain, elements: [] }
+    }
+    const data = await res.json() as { elements?: OsmElement[] }
+    return { chain, elements: data.elements ?? [] }
+  } catch (err) {
+    console.warn(`[sync-store-locations] fetch error for ${chain}:`, err)
+    return { chain, elements: [] }
+  }
 }
 
 function authorizeCron(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return true
-  const auth = request.headers.get('authorization')
-  return auth === `Bearer ${secret}`
+  return request.headers.get('authorization') === `Bearer ${secret}`
 }
 
 export async function POST(request: NextRequest) {
@@ -101,64 +104,47 @@ export async function POST(request: NextRequest) {
   )
 
   const startedAt = Date.now()
+  const chainNames = Object.keys(CHAINS)
 
-  // Unique canonical chains
-  const chains = [...new Set(Object.values(CHAIN_BRANDS))]
+  console.log(`[sync-store-locations] querying ${chainNames.length} chains in parallel...`)
 
-  const allElements: OsmElement[] = []
+  const settled = await Promise.allSettled(chainNames.map(fetchChain))
 
-  console.log(`[sync-store-locations] querying ${chains.length} chains sequentially...`)
+  const rows: Array<{
+    osm_id: string
+    chain: string
+    name: string
+    address: string | null
+    postcode: string | null
+    city: string | null
+    latitude: number
+    longitude: number
+    source: string
+    updated_at: string
+  }> = []
 
-  const results = await Promise.allSettled(chains.map(fetchChain))
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i]
-    if (r.status === 'fulfilled') {
-      console.log(`[sync-store-locations] ${chains[i]}: ${r.value.length} elements`)
-      allElements.push(...r.value)
-    } else {
-      console.warn(`[sync-store-locations] skipping ${chains[i]}:`, r.reason)
-    }
-  }
+  const seen = new Set<string>()
 
-  try {
-    const data = { elements: allElements } as {
-      elements: Array<{
-        type: string
-        id: number
-        lat?: number
-        lon?: number
-        center?: { lat: number; lon: number }
-        tags?: Record<string, string>
-      }>
-    }
+  for (const result of settled) {
+    if (result.status === 'rejected') continue
+    const { chain: canonicalChain, elements } = result.value
 
-    console.log(`[sync-store-locations] got ${data.elements.length} OSM elements`)
+    console.log(`[sync-store-locations] ${canonicalChain}: ${elements.length} raw elements`)
 
-    // Parse elements into store rows
-    const rows: Array<{
-      osm_id: string
-      chain: string
-      name: string
-      address: string | null
-      postcode: string | null
-      city: string | null
-      latitude: number
-      longitude: number
-      source: string
-      updated_at: string
-    }> = []
-
-    for (const el of data.elements) {
+    for (const el of elements) {
       const tags = el.tags ?? {}
-      const brand = tags['brand'] ?? tags['name'] ?? ''
-      // Exact match first, then case-insensitive fallback
-      const chain = CHAIN_BRANDS[brand] ??
-        CHAIN_BRANDS[Object.keys(CHAIN_BRANDS).find(k => k.toLowerCase() === brand.toLowerCase()) ?? '']
-      if (!chain) continue
-
+      const brandTag = tags['brand'] ?? tags['name'] ?? ''
       const lat = el.lat ?? el.center?.lat
       const lon = el.lon ?? el.center?.lon
       if (!lat || !lon) continue
+
+      // Use the canonical chain we already know from the query,
+      // but double-check via substring match to filter unrelated results.
+      const resolvedChain = resolveChain(brandTag) ?? canonicalChain
+
+      const osmId = `${el.type}/${el.id}`
+      if (seen.has(osmId)) continue
+      seen.add(osmId)
 
       const postcode = tags['addr:postcode'] ?? null
       const city = tags['addr:city'] ?? tags['addr:town'] ?? null
@@ -167,9 +153,9 @@ export async function POST(request: NextRequest) {
       const address = [housenumber, street, city].filter(Boolean).join(' ') || null
 
       rows.push({
-        osm_id: `${el.type}/${el.id}`,
-        chain,
-        name: tags['name'] ?? brand,
+        osm_id: osmId,
+        chain: resolvedChain,
+        name: tags['name'] ?? (brandTag || resolvedChain),
         address,
         postcode,
         city,
@@ -179,43 +165,35 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
     }
-
-    console.log(`[sync-store-locations] parsed ${rows.length} valid stores`)
-
-    if (rows.length === 0) {
-      return NextResponse.json({ ok: false, message: 'No stores parsed from OSM response' })
-    }
-
-    // Upsert in chunks of 500
-    const CHUNK = 500
-    let upserted = 0
-
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from('store_locations') as any)
-        .upsert(chunk, { onConflict: 'osm_id', ignoreDuplicates: false })
-
-      if (error) {
-        console.error('[sync-store-locations] upsert error:', error.message)
-      } else {
-        upserted += chunk.length
-      }
-    }
-
-    const elapsed = Math.round((Date.now() - startedAt) / 1000)
-    console.log(`[sync-store-locations] done: ${upserted}/${rows.length} stores in ${elapsed}s`)
-
-    return NextResponse.json({
-      ok: true,
-      total: rows.length,
-      upserted,
-      elapsed_s: elapsed,
-    })
-  } catch (err) {
-    console.error('[sync-store-locations] error:', err)
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
+
+  console.log(`[sync-store-locations] parsed ${rows.length} unique stores`)
+
+  if (rows.length === 0) {
+    return NextResponse.json({ ok: false, message: 'No stores parsed from OSM response' })
+  }
+
+  // Upsert in chunks of 500
+  const CHUNK = 500
+  let upserted = 0
+
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('store_locations') as any)
+      .upsert(chunk, { onConflict: 'osm_id', ignoreDuplicates: false })
+
+    if (error) {
+      console.error('[sync-store-locations] upsert error:', error.message)
+    } else {
+      upserted += chunk.length
+    }
+  }
+
+  const elapsed = Math.round((Date.now() - startedAt) / 1000)
+  console.log(`[sync-store-locations] done: ${upserted}/${rows.length} in ${elapsed}s`)
+
+  return NextResponse.json({ ok: true, total: rows.length, upserted, elapsed_s: elapsed })
 }
 
 export const GET = POST
