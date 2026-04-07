@@ -201,9 +201,18 @@ function extractPricesFromText(text: string): Array<{ name: string; price: numbe
 // ── Open Food Facts Prices API ───────────────────────────────────────────────
 // Community-submitted real prices from French stores. No auth, no IP block.
 
-async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: number; store: string | null; date: string | null }>> {
-  // Filter to France only, EUR, recent prices
-  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&page=${page}&size=100`
+interface OFFPriceItem {
+  name: string
+  price: number
+  ean: string | null
+  store: string | null
+  city: string | null
+  date: string | null
+}
+
+async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
+  // country_code=FR, EUR only — order by newest
+  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&order_by=-date&page=${page}&size=100`
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/json' },
@@ -211,17 +220,16 @@ async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: nu
     })
     if (!res.ok) return []
     const raw = await res.json() as Record<string, unknown>
-
-    // Real shape: { items: [...], total: N, page: N, size: N }
-    // Each item: { price, currency, date, product_name, product_code,
-    //   location: { osm_name, osm_address_city, osm_address_country_code },
-    //   product: { product_name_fr, product_name } | null }
     const list = (Array.isArray(raw.items) ? raw.items : []) as Array<{
       price?: unknown
       currency?: string
       date?: string | null
-      product_name?: string | null
-      product?: { product_name_fr?: string | null; product_name?: string | null } | null
+      product_code?: string | null
+      product?: {
+        product_name_fr?: string | null
+        product_name?: string | null
+        code?: string | null
+      } | null
       location?: {
         osm_name?: string | null
         osm_address_city?: string | null
@@ -234,14 +242,17 @@ async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: nu
         i.currency === 'EUR' &&
         typeof i.price === 'number' &&
         (i.price as number) > 0.10 &&
-        (i.price as number) < 200 &&
-        // Only French locations
-        (!i.location?.osm_address_country_code || i.location.osm_address_country_code === 'FR')
+        (i.price as number) < 500 &&
+        (!i.location?.osm_address_country_code || i.location.osm_address_country_code === 'FR') &&
+        // Must have a product name
+        !!(i.product?.product_name_fr ?? i.product?.product_name)
       )
       .map(i => ({
-        name: (i.product?.product_name_fr ?? i.product?.product_name ?? i.product_name ?? '').trim(),
+        name: (i.product!.product_name_fr ?? i.product!.product_name ?? '').trim(),
         price: i.price as number,
+        ean: i.product?.code ?? i.product_code ?? null,
         store: i.location?.osm_name ?? null,
+        city: i.location?.osm_address_city ?? null,
         date: i.date ?? null,
       }))
       .filter(i => i.name.length > 2)
@@ -263,22 +274,16 @@ export async function GET(request: NextRequest) {
   const mode = new URL(request.url).searchParams.get('mode')
 
   if (mode === 'test') {
-    const dealabsRes = await fetch('https://www.dealabs.com/groupe/courses-supermarche?format=json&order=new&limit=3', {
+    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&order_by=-date&page=1&size=5', {
       headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8_000),
     }).then(async r => {
       const j = await r.json() as Record<string, unknown>
-      return { status: r.status, ok: r.ok, keys: Object.keys(j), sample_count: Array.isArray(j.data) ? j.data.length : Array.isArray(j.threads) ? j.threads.length : 0 }
+      const list = (Array.isArray(j.items) ? j.items : []) as Array<Record<string, unknown>>
+      const withNames = list.filter(i => (i.product as Record<string, unknown> | null)?.product_name_fr || (i.product as Record<string, unknown> | null)?.product_name)
+      return { status: r.status, ok: r.ok, total_items: list.length, items_with_names: withNames.length, sample: withNames[0] }
     }).catch(e => ({ status: 0, ok: false, error: String(e) }))
 
-    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&page=1&size=5', {
-      headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8_000),
-    }).then(async r => {
-      const j = await r.json() as Record<string, unknown>
-      const list = Array.isArray(j.items) ? j.items : Array.isArray(j.results) ? j.results : []
-      return { status: r.status, ok: r.ok, keys: Object.keys(j), sample_count: list.length, first: list[0] }
-    }).catch(e => ({ status: 0, ok: false, error: String(e) }))
-
-    return NextResponse.json({ dealabs: dealabsRes, open_food_facts_prices: offRes })
+    return NextResponse.json({ open_food_facts_prices: offRes })
   }
 
   return POST(request)
@@ -301,6 +306,8 @@ export async function POST(request: NextRequest) {
     item_name: string
     item_name_normalised: string
     unit_price: number
+    ean: string | null
+    city: string | null
     source: string
     source_date: string | null
     processed_at: string
@@ -309,8 +316,11 @@ export async function POST(request: NextRequest) {
   let postsProcessed = 0
 
   // ── Open Food Facts Prices API (works from any IP, no auth) ─────────────
-  // ── Open Food Facts Prices (pages 1–5 = up to 500 real FR prices) ─────────
-  const offPages = await Promise.all([1, 2, 3, 4, 5].map(p => fetchOFFPrices(p)))
+  // ── Open Food Facts Prices (10 pages = up to 1000 real FR prices) ─────────
+  // Fetch pages in parallel — each page has 100 items, filter to those with names
+  const offPages = await Promise.all(
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(p => fetchOFFPrices(p))
+  )
   for (const items of offPages) {
     for (const item of items) {
       rows.push({
@@ -319,6 +329,8 @@ export async function POST(request: NextRequest) {
         item_name: item.name,
         item_name_normalised: normaliseProductName(item.name),
         unit_price: item.price,
+        ean: item.ean,
+        city: item.city,
         source: 'open_food_facts_prices',
         source_date: item.date?.split('T')[0] ?? null,
         processed_at: new Date().toISOString(),
@@ -326,34 +338,7 @@ export async function POST(request: NextRequest) {
       postsProcessed++
     }
   }
-  console.log(`[sync-community-prices] OFF prices: ${rows.length} items`)
-
-  // ── Dealabs (regex extraction — no AI key required) ──────────────────────
-  const deals = await fetchDealabsDeals(50)
-  for (const deal of deals) {
-    const text = scrubPII([deal.title, deal.description ?? ''].join(' '))
-    const items = extractPricesFromText(text)
-    if (items.length === 0) continue
-
-    postsProcessed++
-    const storeName = deal.merchant?.name ?? deal.store_name ?? null
-    const chain = normalizeChain(storeName)
-    const date = (deal.published_at ?? deal.publishedAt ?? '').split('T')[0] || null
-
-    for (const item of items) {
-      rows.push({
-        store_chain: chain,
-        postcode_dept: null,
-        item_name: item.name,
-        item_name_normalised: normaliseProductName(item.name),
-        unit_price: item.price,
-        source: 'dealabs',
-        source_date: date,
-        processed_at: new Date().toISOString(),
-      })
-    }
-  }
-  console.log(`[sync-community-prices] Dealabs: ${deals.length} deals processed`)
+  console.log(`[sync-community-prices] OFF prices: ${rows.length} items from 10 pages`)
 
   console.log(`[sync-community-prices] ${postsProcessed} posts → ${rows.length} items`)
 
