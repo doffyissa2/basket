@@ -124,12 +124,19 @@ export async function POST(request: NextRequest) {
   }> = []
 
   const seen = new Set<string>()
+  const debug: Record<string, { raw: number; parsed: number }> = {}
 
   for (const result of settled) {
     if (result.status === 'rejected') continue
     const { chain: canonicalChain, elements } = result.value
 
+    debug[canonicalChain] = { raw: elements.length, parsed: 0 }
     console.log(`[sync-store-locations] ${canonicalChain}: ${elements.length} raw elements`)
+
+    // Log a sample element for debugging
+    if (elements.length > 0) {
+      console.log(`[sync-store-locations] sample:`, JSON.stringify(elements[0]).slice(0, 300))
+    }
 
     for (const el of elements) {
       const tags = el.tags ?? {}
@@ -164,13 +171,14 @@ export async function POST(request: NextRequest) {
         source: 'osm',
         updated_at: new Date().toISOString(),
       })
+      debug[canonicalChain].parsed++
     }
   }
 
   console.log(`[sync-store-locations] parsed ${rows.length} unique stores`)
 
   if (rows.length === 0) {
-    return NextResponse.json({ ok: false, message: 'No stores parsed from OSM response' })
+    return NextResponse.json({ ok: false, message: 'No stores parsed from OSM response', debug })
   }
 
   // Upsert in chunks of 500
