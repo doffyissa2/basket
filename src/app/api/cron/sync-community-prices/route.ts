@@ -204,6 +204,54 @@ async function fetchDealabsDeals(limit = 25): Promise<DealabsDeal[]> {
   }
 }
 
+// ── Open Food Facts — public French product prices ───────────────────────────
+// No auth, no IP restrictions, 3M+ products, free forever.
+
+interface OFFProduct {
+  product_name_fr?: string
+  product_name?: string
+  categories_tags?: string[]
+  stores?: string
+  price?: number
+  prices?: Array<{ price: number; currency: string; date: string; location_osm_id?: string }>
+}
+
+async function fetchOFFPrices(category: string, page = 1): Promise<Array<{ name: string; price: number; store: string | null; date: string | null }>> {
+  const url = `https://prices.openfoodfacts.org/api/v1/prices?category_tag=${encodeURIComponent(category)}&currency=EUR&page=${page}&page_size=50`
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) return []
+    const data = await res.json() as {
+      items?: Array<{
+        price: number
+        currency: string
+        date: string | null
+        product?: { product_name?: string; product_name_fr?: string; stores_tags?: string[] }
+        location?: { osm_name?: string }
+      }>
+    }
+    return (data.items ?? [])
+      .filter(i => i.currency === 'EUR' && i.price > 0.10 && i.price < 200 && i.product?.product_name_fr)
+      .map(i => ({
+        name: i.product!.product_name_fr ?? i.product!.product_name ?? '',
+        price: i.price,
+        store: i.location?.osm_name ?? null,
+        date: i.date ?? null,
+      }))
+  } catch {
+    return []
+  }
+}
+
+const OFF_CATEGORIES = [
+  'en:fresh-foods', 'en:dairy-products', 'en:meats', 'en:fruits',
+  'en:vegetables', 'en:breads', 'en:beverages', 'en:frozen-foods',
+  'en:snacks', 'en:cereals-and-potatoes',
+]
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 function authorizeCron(req: NextRequest): boolean {
@@ -213,6 +261,34 @@ function authorizeCron(req: NextRequest): boolean {
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
+
+export async function GET(request: NextRequest) {
+  if (!authorizeCron(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const mode = new URL(request.url).searchParams.get('mode')
+
+  if (mode === 'test') {
+    // Test each source individually to see which ones work from Vercel's IP
+    const redditRes = await fetch('https://www.reddit.com/r/france/search.json?q=courses&sort=new&limit=3&restrict_sr=1', {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(8_000),
+    }).then(r => ({ status: r.status, ok: r.ok })).catch(e => ({ status: 0, ok: false, error: String(e) }))
+
+    const dealabsRes = await fetch('https://www.dealabs.com/groupe/courses-supermarche?format=json&order=new&limit=3', {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(8_000),
+    }).then(r => ({ status: r.status, ok: r.ok })).catch(e => ({ status: 0, ok: false, error: String(e) }))
+
+    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?category_tag=en:dairy-products&currency=EUR&page_size=3', {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(8_000),
+    }).then(async r => ({ status: r.status, ok: r.ok, sample: r.ok ? (await r.json() as { items?: unknown[] }).items?.length : 0 }))
+      .catch(e => ({ status: 0, ok: false, error: String(e) }))
+
+    return NextResponse.json({ reddit: redditRes, dealabs: dealabsRes, open_food_facts_prices: offRes })
+  }
+
+  return POST(request)
+}
 
 export async function POST(request: NextRequest) {
   if (!authorizeCron(request)) {
@@ -237,6 +313,27 @@ export async function POST(request: NextRequest) {
   }> = []
 
   let postsProcessed = 0
+
+  // ── Open Food Facts Prices API (works from any IP, no auth) ─────────────
+  for (const category of OFF_CATEGORIES) {
+    const items = await fetchOFFPrices(category)
+    for (const item of items) {
+      if (!item.name) continue
+      rows.push({
+        store_chain: normalizeChain(item.store),
+        postcode_dept: null,
+        item_name: item.name,
+        item_name_normalised: normaliseProductName(item.name),
+        unit_price: item.price,
+        source: 'open_food_facts_prices',
+        source_date: item.date?.split('T')[0] ?? null,
+        processed_at: new Date().toISOString(),
+      })
+      postsProcessed++
+    }
+  }
+
+  console.log(`[sync-community-prices] OFF: ${rows.length} items`)
 
   // ── Reddit ──────────────────────────────────────────────────────────────
   for (const subreddit of SUBREDDITS) {
@@ -322,4 +419,3 @@ export async function POST(request: NextRequest) {
   })
 }
 
-export const GET = POST
