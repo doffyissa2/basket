@@ -46,13 +46,13 @@ type OsmElement = {
   tags?: Record<string, string>
 }
 
-// Build a query using exact brand values — fast indexed lookups, no regex
+// Build a query using exact brand values + bbox — fast indexed lookups,
+// no area filter (avoids area_tags_local.bin server dependency)
 function buildExactQuery(brandValues: string[]): string {
   const unions = brandValues
-    .map(b => `  nwr["brand"="${b}"][~"^shop$"~"supermarket|hypermarket|convenience|discount"](area.fr);`)
+    .map(b => `  nwr["brand"="${b}"]["shop"~"supermarket|hypermarket|convenience|discount"];`)
     .join('\n')
-  return `[out:json][timeout:30];
-area["ISO3166-1:alpha2"="FR"]->.fr;
+  return `[out:json][timeout:30][bbox:41.3,-5.2,51.1,9.6];
 (
 ${unions}
 );
