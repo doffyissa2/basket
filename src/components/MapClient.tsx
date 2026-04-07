@@ -82,7 +82,7 @@ export default function MapClient({ userCoords }: MapClientProps) {
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(10,10,10,0.8)' }}>
             <div className="w-8 h-8 rounded-full border-2 border-[#E07A5F] border-t-transparent animate-spin" />

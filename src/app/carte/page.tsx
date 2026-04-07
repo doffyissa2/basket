@@ -49,7 +49,7 @@ export default function CartePage() {
   }
 
   return (
-    <div className="flex flex-col min-h-[100dvh] bg-[#0A0A0A] text-white pb-20 md:pb-0">
+    <div className="flex flex-col bg-[#0A0A0A] text-white pb-20 md:pb-0 overflow-hidden" style={{ height: '100dvh' }}>
       {/* Header */}
       <div
         className="flex items-center gap-3 px-5 pt-14 pb-4 flex-shrink-0"
