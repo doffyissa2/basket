@@ -125,7 +125,6 @@ export default function ListePage() {
       const data: BestStoreResult = await res.json()
       setResult(data)
 
-      // Update per-item best_store/best_price in DB
       for (const pi of data.per_item) {
         const item = unchecked.find((i) => i.item_name === pi.name)
         if (item && pi.best_store) {
@@ -147,24 +146,24 @@ export default function ListePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <div className="w-6 h-6 rounded-full border-2 border-[#E07A5F] border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white pb-28">
+    <div className="min-h-screen bg-paper text-graphite pb-28">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-14 pb-4">
-        <a href="/dashboard" className="flex items-center gap-2 text-[#6B7280] hover:text-white transition-colors text-sm">
+        <a href="/dashboard" className="flex items-center gap-2 text-graphite/50 hover:text-graphite transition-colors text-sm">
           <ArrowLeft className="w-4 h-4" />
         </a>
         <div className="flex items-center gap-2">
-          <ShoppingCart className="w-5 h-5 text-[#E07A5F]" />
-          <h1 className="text-lg font-bold">Ma liste de courses</h1>
+          <ShoppingCart className="w-5 h-5" style={{ color: '#7ed957' }} />
+          <h1 className="text-lg font-bold text-graphite">Ma liste de courses</h1>
         </div>
-        <button onClick={importLastReceipt} className="text-xs text-[#E07A5F] font-semibold flex items-center gap-1">
+        <button onClick={importLastReceipt} className="text-xs font-semibold flex items-center gap-1" style={{ color: '#7ed957' }}>
           <Receipt className="w-3.5 h-3.5" />
           Importer
         </button>
@@ -180,15 +179,20 @@ export default function ListePage() {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') addItem() }}
             placeholder="Ajouter un article…"
-            className="flex-1 h-12 rounded-2xl px-4 text-sm text-white placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] transition-all"
-            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
+            className="flex-1 h-12 rounded-2xl px-4 text-sm text-graphite placeholder:text-graphite/30 focus:outline-none transition-all"
+            style={{
+              background: 'rgba(255,255,255,0.8)',
+              border: '1px solid rgba(17,17,17,0.1)',
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = '#7ed957')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.1)')}
           />
           <motion.button
             onClick={addItem}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: '#E07A5F' }}
+            style={{ background: '#111111' }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           >
             <Plus className="w-5 h-5 text-white" />
@@ -203,13 +207,13 @@ export default function ListePage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               className="rounded-2xl p-4 flex items-center gap-4"
-              style={{ background: 'rgba(0,208,156,0.12)', border: '1px solid rgba(0,208,156,0.3)' }}
+              style={{ background: 'rgba(0,208,156,0.08)', border: '1px solid rgba(0,208,156,0.2)' }}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(0,208,156,0.2)' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(0,208,156,0.15)' }}>
                 <Store className="w-5 h-5" style={{ color: '#00D09C' }} />
               </div>
               <div>
-                <p className="font-bold text-sm text-white">Allez chez {result.best_store}</p>
+                <p className="font-bold text-sm text-graphite">Allez chez {result.best_store}</p>
                 <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
                   Économie estimée <span className="font-bold">€{result.estimated_savings.toFixed(2)}</span> sur {result.items_count} article{result.items_count !== 1 ? 's' : ''}
                 </p>
@@ -226,10 +230,10 @@ export default function ListePage() {
             className="text-center py-16"
           >
             <div className="w-16 h-16 rounded-3xl glass flex items-center justify-center mx-auto mb-4">
-              <ShoppingCart className="w-8 h-8 text-[#4B5563]" />
+              <ShoppingCart className="w-8 h-8 text-graphite/25" />
             </div>
-            <p className="text-sm font-medium text-white mb-1">Votre liste est vide</p>
-            <p className="text-xs text-[#4B5563]">Ajoutez des articles pour comparer les prix avant de faire vos courses</p>
+            <p className="text-sm font-medium text-graphite mb-1">Votre liste est vide</p>
+            <p className="text-xs text-graphite/40">Ajoutez des articles pour comparer les prix avant de faire vos courses</p>
           </motion.div>
         )}
 
@@ -249,10 +253,10 @@ export default function ListePage() {
                 onClick={() => toggleItem(item.id, item.checked)}
                 whileTap={{ scale: 0.85 }}
                 className="w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                style={{ borderColor: 'rgba(255,255,255,0.2)' }}
+                style={{ borderColor: 'rgba(17,17,17,0.2)' }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{item.item_name}</p>
+                <p className="text-sm font-medium text-graphite truncate">{item.item_name}</p>
                 {item.best_store && (
                   <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
                     {item.best_store} · {item.best_price != null ? `€${item.best_price.toFixed(2)}` : ''}
@@ -262,7 +266,7 @@ export default function ListePage() {
               <motion.button
                 onClick={() => deleteItem(item.id)}
                 whileTap={{ scale: 0.85 }}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[#4B5563] hover:text-white transition-colors flex-shrink-0"
+                className="w-7 h-7 rounded-full flex items-center justify-center text-graphite/30 hover:text-graphite transition-colors flex-shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </motion.button>
@@ -274,7 +278,7 @@ export default function ListePage() {
         <AnimatePresence initial={false}>
           {checked.length > 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
-              <p className="text-xs text-[#4B5563] font-semibold uppercase tracking-wider px-1">
+              <p className="text-xs text-graphite/35 font-semibold uppercase tracking-wider px-1">
                 Dans le panier ({checked.length})
               </p>
               {checked.map((item) => (
@@ -290,12 +294,12 @@ export default function ListePage() {
                     onClick={() => toggleItem(item.id, item.checked)}
                     whileTap={{ scale: 0.85 }}
                     className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
-                    style={{ background: '#E07A5F' }}
+                    style={{ background: '#7ed957' }}
                   >
                     <Check className="w-3.5 h-3.5 text-white" />
                   </motion.button>
-                  <p className="text-sm text-[#6B7280] line-through flex-1 truncate">{item.item_name}</p>
-                  <motion.button onClick={() => deleteItem(item.id)} whileTap={{ scale: 0.85 }} className="text-[#4B5563] flex-shrink-0">
+                  <p className="text-sm text-graphite/50 line-through flex-1 truncate">{item.item_name}</p>
+                  <motion.button onClick={() => deleteItem(item.id)} whileTap={{ scale: 0.85 }} className="text-graphite/30 flex-shrink-0">
                     <X className="w-3.5 h-3.5" />
                   </motion.button>
                 </motion.div>
@@ -312,7 +316,7 @@ export default function ListePage() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             className="w-full h-14 rounded-2xl font-bold text-white text-base flex items-center justify-center gap-2"
-            style={{ background: '#E07A5F', boxShadow: '0 6px 24px rgba(224,122,95,0.3)' }}
+            style={{ background: '#111111', boxShadow: '0 6px 24px rgba(17,17,17,0.15)' }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           >
             {computing ? (

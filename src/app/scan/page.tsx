@@ -66,7 +66,7 @@ function ConfettiParticles() {
     id: i,
     x: Math.random() * 300 - 150,
     y: -(Math.random() * 200 + 80),
-    color: ['#E07A5F', '#FF9B7B', '#00D09C', '#FFFFFF', '#E07A5F'][Math.floor(Math.random() * 5)],
+    color: ['#7ed957', '#00D09C', '#111111', '#a3f07a', '#7ed957'][Math.floor(Math.random() * 5)],
     size: Math.random() * 6 + 4,
     delay: Math.random() * 0.4,
   }))
@@ -118,7 +118,6 @@ export default function ScanPage() {
   const [postcode, setPostcode] = useState<string | null>(null)
   const [userCoords, setUserCoords] = useState<Coords | null>(null)
   const [locationReady, setLocationReady] = useState(() => {
-    // Synchronous check to avoid flashing modal on returning users
     if (typeof window === 'undefined') return false
     return readLocationCache() !== null
   })
@@ -130,7 +129,6 @@ export default function ScanPage() {
       setUser(user)
     }
     getUser()
-    // Restore cached location values
     const cached = readLocationCache()
     if (cached) {
       setPostcode(cached.postcode)
@@ -236,7 +234,6 @@ export default function ScanPage() {
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-        // Persist savings_amount on the receipt row
         if (receiptRow.id && savings > 0) {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', receiptRow.id)
         }
@@ -273,15 +270,15 @@ export default function ScanPage() {
   }
 
   const handleShare = (method: 'whatsapp' | 'copy' | 'sms') => {
-    const text = `🧺 Basket m'a trouvé ${totalSavings.toFixed(2)}€ d'économies possibles cette semaine !\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basket.fr`
+    const text = `Basket m'a trouvé ${totalSavings.toFixed(2)}€ d'économies possibles cette semaine !\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basket.fr`
     if (method === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
     if (method === 'copy') navigator.clipboard.writeText(text)
     if (method === 'sms') window.open(`sms:?body=${encodeURIComponent(text)}`, '_blank')
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white pb-28 md:pb-0">
-      {/* Location gate — shown until user grants location or enters postcode */}
+    <div className="min-h-screen bg-paper text-graphite pb-28 md:pb-0">
+      {/* Location gate */}
       {!locationReady && user && (
         <LocationGateModal
           userId={user.id}
@@ -302,11 +299,11 @@ export default function ScanPage() {
 
       {/* Nav */}
       <div className="flex items-center justify-between px-5 pt-14 pb-6">
-        <a href="/dashboard" className="flex items-center gap-2 text-[#6B7280] hover:text-white transition-colors text-sm">
+        <a href="/dashboard" className="flex items-center gap-2 text-graphite/50 hover:text-graphite transition-colors text-sm">
           <ArrowLeft className="w-4 h-4" />
           Retour
         </a>
-        <p className="text-sm font-semibold text-white">Scanner</p>
+        <p className="text-sm font-semibold text-graphite">Scanner</p>
         <div className="w-16" />
       </div>
 
@@ -322,19 +319,19 @@ export default function ScanPage() {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35 }}
             >
-              <h1 className="text-2xl font-extrabold mb-1">Scanner un ticket</h1>
-              <p className="text-[#6B7280] text-sm mb-8">Prenez en photo ou importez votre ticket de caisse</p>
+              <h1 className="text-2xl font-extrabold mb-1 text-graphite">Scanner un ticket</h1>
+              <p className="text-graphite/50 text-sm mb-8">Prenez en photo ou importez votre ticket de caisse</p>
 
               {imagePreview ? (
                 <div>
-                  <div className="relative rounded-2xl overflow-hidden border border-white/10 mb-4">
+                  <div className="relative rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid rgba(17,17,17,0.1)' }}>
                     <img src={imagePreview} alt="Ticket" className="w-full" />
                     <button
                       onClick={() => { setImageFile(null); setImagePreview(null) }}
                       className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,0.6)' }}
+                      style={{ background: 'rgba(255,255,255,0.85)' }}
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-4 h-4 text-graphite" />
                     </button>
                   </div>
                   <motion.button
@@ -342,7 +339,7 @@ export default function ScanPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full h-14 rounded-2xl font-bold text-white text-base"
-                    style={{ background: '#E07A5F' }}
+                    style={{ background: '#111111' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
                     Analyser ce ticket
@@ -355,13 +352,13 @@ export default function ScanPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center"
-                    style={{ background: '#E07A5F', boxShadow: '0 8px 30px rgba(224,122,95,0.3)' }}
+                    style={{ background: '#111111', boxShadow: '0 8px 30px rgba(17,17,17,0.2)' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
                     <Camera className="w-10 h-10 text-white" />
                     <div>
                       <p className="font-bold text-lg text-white">Prendre une photo</p>
-                      <p className="text-white/70 text-sm mt-0.5">Utilisez votre caméra</p>
+                      <p className="text-white/60 text-sm mt-0.5">Utilisez votre caméra</p>
                     </div>
                   </motion.button>
 
@@ -372,10 +369,10 @@ export default function ScanPage() {
                     className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center glass"
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
-                    <Upload className="w-10 h-10 text-[#6B7280]" />
+                    <Upload className="w-10 h-10 text-graphite/50" />
                     <div>
-                      <p className="font-bold text-lg text-white">Importer une image</p>
-                      <p className="text-[#6B7280] text-sm mt-0.5">Depuis votre galerie</p>
+                      <p className="font-bold text-lg text-graphite">Importer une image</p>
+                      <p className="text-graphite/40 text-sm mt-0.5">Depuis votre galerie</p>
                     </div>
                   </motion.button>
                 </div>
@@ -385,8 +382,8 @@ export default function ScanPage() {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center gap-3 mt-4 px-4 py-3 rounded-xl text-red-400 text-sm"
-                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
+                  className="flex items-center gap-3 mt-4 px-4 py-3 rounded-xl text-red-500 text-sm"
+                  style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
                 >
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
@@ -408,12 +405,12 @@ export default function ScanPage() {
               className="flex flex-col items-center justify-center py-20"
             >
               {imagePreview && (
-                <div className="relative w-48 rounded-2xl overflow-hidden mb-8">
-                  <img src={imagePreview} alt="Ticket" className="w-full opacity-40" />
+                <div className="relative w-48 rounded-2xl overflow-hidden mb-8" style={{ border: '1px solid rgba(17,17,17,0.1)' }}>
+                  <img src={imagePreview} alt="Ticket" className="w-full opacity-50" />
                   {/* Scanning line */}
                   <motion.div
                     className="absolute left-0 right-0 h-0.5"
-                    style={{ background: 'linear-gradient(90deg, transparent, #E07A5F, transparent)' }}
+                    style={{ background: 'linear-gradient(90deg, transparent, #7ed957, transparent)' }}
                     animate={{ y: [0, 192, 0] }}
                     transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
                   />
@@ -427,13 +424,13 @@ export default function ScanPage() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -12 }}
                     transition={{ duration: 0.3 }}
-                    className="text-lg font-semibold text-white text-center"
+                    className="text-lg font-semibold text-graphite text-center"
                   >
                     {PARSE_MESSAGES[parseMessageIdx]}
                   </motion.p>
                 </AnimatePresence>
               </div>
-              <p className="text-[#4B5563] text-sm">Notre IA analyse votre ticket</p>
+              <p className="text-graphite/40 text-sm">Notre IA analyse votre ticket</p>
             </motion.div>
           )}
 
@@ -452,23 +449,20 @@ export default function ScanPage() {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  className="relative rounded-3xl p-6 mb-5 text-center overflow-hidden"
+                  className="relative rounded-3xl p-6 mb-5 text-center overflow-hidden bg-white"
                   style={{
-                    background: totalSavings > 0
-                      ? 'linear-gradient(135deg, rgba(0,208,156,0.15) 0%, rgba(0,208,156,0.05) 100%)'
-                      : 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
-                    border: totalSavings > 0 ? '1px solid rgba(0,208,156,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                    border: totalSavings > 0 ? '1px solid rgba(0,208,156,0.25)' : '1px solid rgba(17,17,17,0.08)',
                   }}
                 >
                   {showConfetti && <ConfettiParticles />}
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: totalSavings > 0 ? '#00D09C' : '#6B7280' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: totalSavings > 0 ? '#00D09C' : 'rgba(17,17,17,0.4)' }}>
                     {totalSavings > 0 ? 'Économies possibles' : 'Prix analysés'}
                   </p>
-                  <p className="text-5xl font-extrabold mb-1" style={{ color: totalSavings > 0 ? '#00D09C' : '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+                  <p className="text-5xl font-extrabold mb-1" style={{ color: totalSavings > 0 ? '#00D09C' : '#111111', fontVariantNumeric: 'tabular-nums' }}>
                     {totalSavings > 0 ? `${animatedSavings.toFixed(2)} €` : '—'}
                   </p>
                   {totalSavings > 0 && (
-                    <p className="text-sm mt-1" style={{ color: 'rgba(0,208,156,0.7)' }}>en achetant ailleurs cette semaine</p>
+                    <p className="text-sm mt-1 text-graphite/50">en achetant ailleurs cette semaine</p>
                   )}
                 </motion.div>
               )}
@@ -480,15 +474,15 @@ export default function ScanPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                   className="glass rounded-2xl p-4 mb-4 flex items-center gap-4"
-                  style={{ borderLeft: '3px solid #E07A5F' }}
+                  style={{ borderLeft: '3px solid #7ed957' }}
                 >
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'rgba(224,122,95,0.15)' }}>
-                    <Store className="w-5 h-5 text-[#E07A5F]" />
+                    style={{ background: 'rgba(126,217,87,0.12)' }}>
+                    <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white">Chez {bestStore.name}</p>
-                    <p className="text-xs text-[#6B7280]">
+                    <p className="text-sm font-bold text-graphite">Chez {bestStore.name}</p>
+                    <p className="text-xs text-graphite/50">
                       vous auriez économisé{' '}
                       <span style={{ color: '#00D09C' }}>€{bestStore.total_savings.toFixed(2)}</span>
                       {' '}sur {bestStore.items_cheaper} articles
@@ -500,10 +494,10 @@ export default function ScanPage() {
               {/* Receipt header */}
               <div className="glass rounded-2xl p-5 mb-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h2 className="font-bold text-lg">{parsedReceipt.store_name}</h2>
-                  <p className="text-xl font-extrabold">{parsedReceipt.total.toFixed(2)} €</p>
+                  <h2 className="font-bold text-lg text-graphite">{parsedReceipt.store_name}</h2>
+                  <p className="text-xl font-extrabold text-graphite">{parsedReceipt.total.toFixed(2)} €</p>
                 </div>
-                <p className="text-xs text-[#4B5563]">{parsedReceipt.items.length} articles détectés</p>
+                <p className="text-xs text-graphite/40">{parsedReceipt.items.length} articles détectés</p>
               </div>
 
               {/* Items */}
@@ -520,20 +514,20 @@ export default function ScanPage() {
                         transition={{ delay: idx * 0.06, duration: 0.35 }}
                         className="flex items-center justify-between rounded-xl px-4 py-3"
                         style={{
-                          background: hasSaving ? 'rgba(0,208,156,0.08)' : 'rgba(255,255,255,0.04)',
-                          border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(255,255,255,0.06)',
+                          background: hasSaving ? 'rgba(0,208,156,0.06)' : 'rgba(17,17,17,0.04)',
+                          border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(17,17,17,0.06)',
                           borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
                         }}
                       >
                         <div className="flex-1 min-w-0 pr-3">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                            <p className="text-sm font-medium text-graphite truncate">{item.name}</p>
                             {step === 'comparison' && comparison && (
                               <span
                                 className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
                                 style={{
-                                  background: comparison.is_local ? 'rgba(0,208,156,0.15)' : 'rgba(107,114,128,0.15)',
-                                  color: comparison.is_local ? '#00D09C' : '#6B7280',
+                                  background: comparison.is_local ? 'rgba(0,208,156,0.12)' : 'rgba(17,17,17,0.08)',
+                                  color: comparison.is_local ? '#00D09C' : 'rgba(17,17,17,0.5)',
                                 }}
                               >
                                 {comparison.is_local ? 'Région' : 'National'}
@@ -544,21 +538,21 @@ export default function ScanPage() {
                             <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
                               Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
                               {comparison.avg_normalized_price && (
-                                <span className="text-[#4B5563]"> · {comparison.avg_normalized_price}</span>
+                                <span className="text-graphite/35"> · {comparison.avg_normalized_price}</span>
                               )}
                             </p>
                           )}
                           {!hasSaving && step === 'comparison' && (
-                            <p className="text-xs mt-0.5 text-[#4B5563] flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-[#00D09C]" />
+                            <p className="text-xs mt-0.5 text-graphite/35 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" style={{ color: '#00D09C' }} />
                               Bon prix
                             </p>
                           )}
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-white">{item.price.toFixed(2)} €</p>
+                          <p className="text-sm font-bold text-graphite">{item.price.toFixed(2)} €</p>
                           {comparison?.normalized_price && (
-                            <p className="text-[10px] text-[#4B5563]">{comparison.normalized_price}</p>
+                            <p className="text-[10px] text-graphite/35">{comparison.normalized_price}</p>
                           )}
                           {hasSaving && comparison && (
                             <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
@@ -570,7 +564,7 @@ export default function ScanPage() {
                           <button
                             onClick={() => addToList(item.name)}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold glass"
-                            style={{ color: '#E07A5F' }}
+                            style={{ color: '#7ed957' }}
                           >
                             <Plus className="w-3 h-3" />
                             Liste
@@ -578,7 +572,7 @@ export default function ScanPage() {
                           <button
                             onClick={() => watchItem(item.name, item.price)}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold glass"
-                            style={{ color: '#6B7280' }}
+                            style={{ color: 'rgba(17,17,17,0.5)' }}
                           >
                             <Bell className="w-3 h-3" />
                             Surveiller
@@ -598,7 +592,7 @@ export default function ScanPage() {
                   transition={{ delay: 0.3 }}
                   className="glass rounded-2xl p-5 mb-4"
                 >
-                  <p className="text-sm font-semibold mb-3">Partager vos résultats</p>
+                  <p className="text-sm font-semibold text-graphite mb-3">Partager vos résultats</p>
                   <div className="grid grid-cols-3 gap-2">
                     <motion.button
                       onClick={() => handleShare('whatsapp')}
@@ -614,7 +608,7 @@ export default function ScanPage() {
                       onClick={() => handleShare('copy')}
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
-                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-white font-semibold text-xs glass"
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-xs glass text-graphite"
                     >
                       <Copy className="w-4 h-4" />
                       Copier
@@ -623,7 +617,7 @@ export default function ScanPage() {
                       onClick={() => handleShare('sms')}
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
-                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-white font-semibold text-xs glass"
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-xs glass text-graphite"
                     >
                       <MessageSquare className="w-4 h-4" />
                       SMS
@@ -638,7 +632,7 @@ export default function ScanPage() {
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full h-12 rounded-2xl font-semibold text-sm text-white glass"
+                    className="w-full h-12 rounded-2xl font-semibold text-sm text-graphite glass"
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
                     Nouveau ticket
@@ -649,7 +643,7 @@ export default function ScanPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full h-12 rounded-2xl font-semibold text-sm text-white"
-                    style={{ background: '#E07A5F' }}
+                    style={{ background: '#111111' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
                     Tableau de bord

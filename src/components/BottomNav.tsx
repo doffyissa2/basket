@@ -16,10 +16,10 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
       style={{
-        background: 'rgba(10,10,10,0.9)',
+        background: 'rgba(245,243,238,0.95)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        borderTop: '1px solid rgba(17,17,17,0.08)',
       }}
     >
       <LayoutGroup>
@@ -40,14 +40,14 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                     style={{
                       width: 52,
                       height: 52,
-                      background: '#E07A5F',
-                      boxShadow: '0 4px 20px rgba(224,122,95,0.5)',
+                      background: '#111111',
+                      boxShadow: '0 4px 20px rgba(17,17,17,0.25)',
                     }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
                     <tab.icon className="w-6 h-6 text-white" />
                   </motion.div>
-                  <span className="text-[10px] mt-1 font-medium" style={{ color: '#E07A5F' }}>{tab.label}</span>
+                  <span className="text-[10px] mt-1 font-medium text-graphite/60">{tab.label}</span>
                 </a>
               )
             }
@@ -59,8 +59,14 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   className="flex flex-col items-center gap-1"
                 >
-                  <tab.icon className="w-5 h-5 transition-colors" style={{ color: isActive ? '#E07A5F' : '#4B5563' }} />
-                  <span className="text-[10px] font-medium transition-colors" style={{ color: isActive ? '#E07A5F' : '#4B5563' }}>
+                  <tab.icon
+                    className="w-5 h-5 transition-colors"
+                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.35)' }}
+                  />
+                  <span
+                    className="text-[10px] font-semibold transition-colors"
+                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.35)' }}
+                  >
                     {tab.label}
                   </span>
                 </motion.div>
@@ -68,7 +74,7 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                   <motion.div
                     layoutId="activeTabIndicator"
                     className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                    style={{ background: '#E07A5F' }}
+                    style={{ background: '#7ed957' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}

@@ -44,7 +44,6 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
         }
       },
       () => {
-        // Permission denied or error → fallback to manual
         setStatus('manual')
       },
       { timeout: 10000, enableHighAccuracy: false }
@@ -65,7 +64,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
   return (
     <div
       className="fixed inset-0 z-[200] flex flex-col items-center justify-center px-6"
-      style={{ background: 'rgba(10,10,10,0.97)' }}
+      style={{ background: 'rgba(245,243,238,0.98)' }}
     >
       <AnimatePresence mode="wait">
         {(status === 'initial' || status === 'error') && (
@@ -78,15 +77,15 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
           >
             <motion.div
               className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{ background: 'rgba(224,122,95,0.15)', border: '1px solid rgba(224,122,95,0.3)' }}
+              style={{ background: 'rgba(126,217,87,0.15)', border: '1px solid rgba(126,217,87,0.35)' }}
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
             >
-              <MapPin className="w-9 h-9 text-[#E07A5F]" />
+              <MapPin className="w-9 h-9" style={{ color: '#7ed957' }} />
             </motion.div>
 
-            <h2 className="text-2xl font-extrabold text-white mb-2">Où faites-vous vos courses ?</h2>
-            <p className="text-sm text-[#6B7280] leading-relaxed mb-8">
+            <h2 className="text-2xl font-extrabold text-graphite mb-2">Où faites-vous vos courses ?</h2>
+            <p className="text-sm text-graphite/60 leading-relaxed mb-8">
               Votre position nous aide à comparer les prix dans votre secteur et à vous trouver les meilleures offres à proximité.
             </p>
 
@@ -95,7 +94,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
               className="w-full h-14 rounded-2xl font-bold text-white text-base mb-3"
-              style={{ background: '#E07A5F', boxShadow: '0 8px 24px rgba(224,122,95,0.35)' }}
+              style={{ background: '#111111', boxShadow: '0 8px 24px rgba(17,17,17,0.2)' }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             >
               Utiliser ma position
@@ -103,7 +102,10 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
 
             <button
               onClick={() => setStatus('manual')}
-              className="text-sm text-[#6B7280] hover:text-white transition-colors py-2"
+              className="text-sm font-medium py-2 transition-colors"
+              style={{ color: 'rgba(17,17,17,0.5)' }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#111111')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = 'rgba(17,17,17,0.5)')}
             >
               Saisir mon code postal manuellement
             </button>
@@ -118,11 +120,11 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
             exit={{ opacity: 0, scale: 0.9 }}
             className="flex flex-col items-center text-center"
           >
-            <Loader2 className="w-12 h-12 text-[#E07A5F] animate-spin mb-4" />
-            <p className="text-base font-semibold text-white">
+            <Loader2 className="w-12 h-12 animate-spin mb-4" style={{ color: '#7ed957' }} />
+            <p className="text-base font-semibold text-graphite">
               {status === 'requesting' ? 'Détection en cours...' : 'Recherche du code postal...'}
             </p>
-            <p className="text-sm text-[#4B5563] mt-2">Un instant...</p>
+            <p className="text-sm text-graphite/40 mt-2">Un instant...</p>
           </motion.div>
         )}
 
@@ -136,13 +138,13 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
           >
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
-              style={{ background: 'rgba(224,122,95,0.12)', border: '1px solid rgba(224,122,95,0.25)' }}
+              style={{ background: 'rgba(126,217,87,0.12)', border: '1px solid rgba(126,217,87,0.25)' }}
             >
-              <MapPin className="w-7 h-7 text-[#E07A5F]" />
+              <MapPin className="w-7 h-7" style={{ color: '#7ed957' }} />
             </div>
 
-            <h2 className="text-xl font-extrabold text-white mb-2">Votre code postal</h2>
-            <p className="text-sm text-[#6B7280] mb-6">Saisissez votre code postal pour localiser les prix de votre secteur.</p>
+            <h2 className="text-xl font-extrabold text-graphite mb-2">Votre code postal</h2>
+            <p className="text-sm text-graphite/60 mb-6">Saisissez votre code postal pour localiser les prix de votre secteur.</p>
 
             <input
               type="text"
@@ -156,11 +158,11 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
                 setManualError('')
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') confirmManual() }}
-              className="w-full h-14 rounded-2xl text-center text-xl font-bold text-white placeholder-[#4B5563] outline-none mb-3"
+              className="w-full h-14 rounded-2xl text-center text-xl font-bold text-graphite placeholder-graphite/30 outline-none mb-3"
               style={{
-                background: 'rgba(255,255,255,0.07)',
-                border: manualError ? '1px solid rgba(239,68,68,0.6)' : '1px solid rgba(255,255,255,0.12)',
-                caretColor: '#E07A5F',
+                background: 'rgba(17,17,17,0.05)',
+                border: manualError ? '1px solid rgba(239,68,68,0.6)' : '1px solid rgba(17,17,17,0.12)',
+                caretColor: '#7ed957',
               }}
               autoFocus
             />
@@ -169,7 +171,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 text-xs text-red-400 mb-3"
+                className="flex items-center gap-2 text-xs text-red-500 mb-3"
               >
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                 {manualError}
@@ -181,7 +183,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
               className="w-full h-14 rounded-2xl font-bold text-white text-base"
-              style={{ background: '#E07A5F' }}
+              style={{ background: '#111111' }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             >
               Confirmer
@@ -189,7 +191,10 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
 
             <button
               onClick={() => setStatus('initial')}
-              className="text-sm text-[#4B5563] hover:text-[#6B7280] transition-colors py-3 mt-1"
+              className="text-sm py-3 mt-1 transition-colors"
+              style={{ color: 'rgba(17,17,17,0.4)' }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = 'rgba(17,17,17,0.7)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = 'rgba(17,17,17,0.4)')}
             >
               Retour
             </button>
