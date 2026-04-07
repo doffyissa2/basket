@@ -460,7 +460,7 @@ export default function DashboardPage() {
                 {recentReceipts.slice(0, 5).map((receipt, i) => (
                   <motion.a
                     key={receipt.id}
-                    href="/bilan"
+                    href={`/receipt/${receipt.id}`}
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.22 + i * 0.05 }}
