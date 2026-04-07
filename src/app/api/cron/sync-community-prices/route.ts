@@ -211,8 +211,8 @@ interface OFFPriceItem {
 }
 
 async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
-  // country_code=FR, EUR only — order by newest
-  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&order_by=-date&page=${page}&size=100`
+  // country_code param doesn't filter server-side — we filter client-side on osm_address_country_code
+  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&order_by=-date&page=${page}&size=100`
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/json' },
@@ -243,8 +243,7 @@ async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
         typeof i.price === 'number' &&
         (i.price as number) > 0.10 &&
         (i.price as number) < 500 &&
-        (!i.location?.osm_address_country_code || i.location.osm_address_country_code === 'FR') &&
-        // Must have a product name
+        i.location?.osm_address_country_code === 'FR' &&
         !!(i.product?.product_name_fr ?? i.product?.product_name)
       )
       .map(i => ({
@@ -274,13 +273,14 @@ export async function GET(request: NextRequest) {
   const mode = new URL(request.url).searchParams.get('mode')
 
   if (mode === 'test') {
-    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&country_code=FR&order_by=-date&page=1&size=5', {
+    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&order_by=-date&page=1&size=20', {
       headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8_000),
     }).then(async r => {
       const j = await r.json() as Record<string, unknown>
       const list = (Array.isArray(j.items) ? j.items : []) as Array<Record<string, unknown>>
-      const withNames = list.filter(i => (i.product as Record<string, unknown> | null)?.product_name_fr || (i.product as Record<string, unknown> | null)?.product_name)
-      return { status: r.status, ok: r.ok, total_items: list.length, items_with_names: withNames.length, sample: withNames[0] }
+      const fr = list.filter(i => (i.location as Record<string, unknown> | null)?.osm_address_country_code === 'FR')
+      const withNames = fr.filter(i => (i.product as Record<string, unknown> | null)?.product_name_fr || (i.product as Record<string, unknown> | null)?.product_name)
+      return { status: r.status, ok: r.ok, total_items: list.length, fr_items: fr.length, fr_with_names: withNames.length, sample: withNames[0] }
     }).catch(e => ({ status: 0, ok: false, error: String(e) }))
 
     return NextResponse.json({ open_food_facts_prices: offRes })
@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
   // ── Open Food Facts Prices (10 pages = up to 1000 real FR prices) ─────────
   // Fetch pages in parallel — each page has 100 items, filter to those with names
   const offPages = await Promise.all(
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(p => fetchOFFPrices(p))
+    Array.from({ length: 20 }, (_, i) => i + 1).map(p => fetchOFFPrices(p))
   )
   for (const items of offPages) {
     for (const item of items) {
