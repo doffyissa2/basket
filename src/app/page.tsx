@@ -56,26 +56,6 @@ export default function HomePage() {
     document.body.style.backgroundColor = '#E8E4DD'
     document.body.style.color           = '#111111'
 
-    // ── Pre-configure Tailwind CDN before the script loads ────────────────
-    ;(window as any).tailwind = {
-      config: {
-        theme: {
-          extend: {
-            colors: {
-              paper:    '#E8E4DD',
-              signal:   '#7ed957',
-              offwhite: '#F5F3EE',
-              graphite: '#111111',
-            },
-            fontFamily: {
-              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-              mono: ['"Space Mono"', 'monospace'],
-            },
-          },
-        },
-      },
-    }
-
     let termInterval: ReturnType<typeof setInterval> | undefined
     let lenisInstance: { raf: (t: number) => void; destroy?: () => void } | undefined
     const injectedScripts: HTMLScriptElement[] = []
@@ -93,14 +73,16 @@ export default function HomePage() {
     }
 
     async function init() {
-      // Fonts
-      const pc1 = document.createElement('link'); pc1.rel = 'preconnect'; pc1.href = 'https://fonts.googleapis.com'
-      const pc2 = document.createElement('link'); pc2.rel = 'preconnect'; pc2.href = 'https://fonts.gstatic.com'; pc2.crossOrigin = ''
-      const fl  = document.createElement('link'); fl.rel  = 'stylesheet';
-      fl.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&family=Space+Mono&display=swap'
-      document.head.append(pc1, pc2, fl)
+      // Space Mono for font-mono usage on the landing page
+      if (!document.querySelector('link[data-space-mono]')) {
+        const fl = document.createElement('link')
+        fl.rel = 'stylesheet'
+        fl.setAttribute('data-space-mono', '1')
+        fl.href = 'https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap'
+        document.head.appendChild(fl)
+      }
 
-      await loadScript('https://cdn.tailwindcss.com')
+      // No CDN Tailwind — colors are compiled via globals.css @theme
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js')
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js')
       await loadScript('https://unpkg.com/@studio-freight/lenis@1.0.34/dist/lenis.min.js')
@@ -121,8 +103,10 @@ export default function HomePage() {
       // ── Custom cursor ──────────────────────────────────────────────────
       const cursor = document.getElementById('custom-cursor')
       if (cursor) {
-        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2
+        let mouseX = -100, mouseY = -100  // start off-screen until first move
         let cursorX = mouseX, cursorY = mouseY
+        // xPercent/yPercent centres the dot on the hotspot regardless of its size
+        gsap.set(cursor, { xPercent: -50, yPercent: -50, x: mouseX, y: mouseY })
         window.addEventListener('mousemove', (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY })
         gsap.ticker.add(() => {
           cursorX += (mouseX - cursorX) * 0.15
@@ -130,8 +114,8 @@ export default function HomePage() {
           gsap.set(cursor, { x: cursorX, y: cursorY })
         })
         document.querySelectorAll('.hover-trigger, a, button').forEach((el: Element) => {
-          el.addEventListener('mouseenter', () => cursor.classList.add('w-12', 'h-12', 'bg-paper'))
-          el.addEventListener('mouseleave', () => cursor.classList.remove('w-12', 'h-12', 'bg-paper'))
+          el.addEventListener('mouseenter', () => { cursor.classList.add('w-12', 'h-12'); cursor.classList.remove('w-5', 'h-5') })
+          el.addEventListener('mouseleave', () => { cursor.classList.remove('w-12', 'h-12'); cursor.classList.add('w-5', 'h-5') })
         })
       }
 
@@ -331,7 +315,8 @@ export default function HomePage() {
       </div>
 
       {/* Custom Cursor */}
-      <div id="custom-cursor" className="fixed top-0 left-0 w-5 h-5 bg-signal rounded-full pointer-events-none z-[100] -translate-x-1/2 -translate-y-1/2 mix-blend-difference transition-[width,height] duration-300 ease-out will-change-transform" />
+      {/* bg-white + mix-blend-difference = dark on light bg, light on dark bg */}
+      <div id="custom-cursor" className="fixed top-0 left-0 w-5 h-5 bg-white rounded-full pointer-events-none z-[200] mix-blend-difference transition-[width,height] duration-200 ease-out will-change-transform" style={{ backgroundColor: 'white' }} />
 
       {/* ==================== NAVBAR ==================== */}
       <nav className="fixed top-[4vh] left-1/2 -translate-x-1/2 z-40 bg-offwhite/80 backdrop-blur-xl border border-graphite/10 rounded-[2rem] px-[1.5vw] py-[1vh] flex items-center justify-between gap-[4vw] hover-trigger" id="navbar">
