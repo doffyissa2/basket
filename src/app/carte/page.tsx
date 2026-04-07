@@ -1,76 +1,84 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Map } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import BottomNav from '@/components/BottomNav'
 
+const MapWithNoSSR = dynamic(() => import('@/components/MapClient'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center" style={{ background: '#111' }}>
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+        style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
+    </div>
+  ),
+})
+
+interface Coords { lat: number; lon: number }
+
+function getCachedCoords(): Coords | null {
+  try {
+    const raw = localStorage.getItem('basket_postcode_cached')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed.coords && Date.now() < parsed.expires) return parsed.coords
+  } catch { /* ignore */ }
+  return null
+}
+
 export default function CartePage() {
   const [authed, setAuthed] = useState(false)
+  const [userCoords, setUserCoords] = useState<Coords | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { window.location.href = '/login'; return }
+      setAccessToken(session.access_token)
       setAuthed(true)
     })
+    setUserCoords(getCachedCoords())
   }, [])
 
   if (!authed) {
     return (
-      <div className="min-h-[100dvh] bg-paper flex items-center justify-center">
-        <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
+      <div className="min-h-[100dvh] flex items-center justify-center" style={{ background: '#111' }}>
+        <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-[100dvh] bg-paper text-graphite pb-28">
+    <div className="flex flex-col text-white pb-20 md:pb-0 overflow-hidden"
+      style={{ height: '100dvh', background: '#111' }}>
+
       {/* Header */}
-      <div
-        className="flex items-center gap-3 px-5 pt-14 pb-4"
-        style={{ borderBottom: '1px solid rgba(17,17,17,0.08)' }}
-      >
-        <motion.a
-          href="/dashboard"
-          whileTap={{ scale: 0.9 }}
-          className="w-9 h-9 rounded-full flex items-center justify-center glass"
-        >
-          <ArrowLeft className="w-4 h-4 text-graphite/50" />
+      <div className="flex items-center gap-3 px-5 flex-shrink-0"
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
+          paddingBottom: 12,
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: '#111',
+        }}>
+        <motion.a href="/dashboard" whileTap={{ scale: 0.9 }}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <ArrowLeft className="w-4 h-4 text-white/60" />
         </motion.a>
         <div className="flex items-center gap-2 flex-1">
           <Map className="w-4 h-4" style={{ color: '#7ed957' }} />
-          <h1 className="font-bold text-base text-graphite">Carte des prix</h1>
+          <h1 className="font-bold text-base text-white">Carte des prix</h1>
         </div>
+        <p className="text-[11px] text-white/30">Données OSM + Scraping</p>
       </div>
 
-      {/* Coming soon */}
-      <div className="flex flex-col items-center justify-center px-8 pt-24 text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-          style={{ background: 'rgba(126,217,87,0.1)' }}
-        >
-          <Map className="w-9 h-9" style={{ color: '#7ed957' }} />
-        </motion.div>
-        <motion.h2
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-xl font-bold text-graphite mb-2"
-        >
-          Bientôt disponible
-        </motion.h2>
-        <motion.p
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="text-sm text-graphite/50 leading-relaxed max-w-xs"
-        >
-          La carte des prix arrive prochainement. Vous pourrez visualiser les enseignes les moins chères autour de vous.
-        </motion.p>
+      {/* Map fills remaining space */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <MapWithNoSSR userCoords={userCoords} accessToken={accessToken} />
       </div>
 
       <BottomNav active="carte" />

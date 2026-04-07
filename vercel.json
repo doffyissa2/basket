@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-store-locations",
+      "schedule": "0 2 * * 1"
+    },
+    {
+      "path": "/api/cron/sync-market-prices",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-community-prices",
+      "schedule": "0 */4 * * *"
+    }
+  ]
+}

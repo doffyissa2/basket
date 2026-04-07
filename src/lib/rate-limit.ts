@@ -47,6 +47,10 @@ const limiters = {
   logUnknownStore: makeLimiter(20, 60),
   // 10 receipt format learning calls/min per IP
   learnReceiptFormat: makeLimiter(10, 60),
+  // Cron jobs — 5/min (should be 1 call per run, protects against abuse)
+  syncStoreLocations: makeLimiter(5, 60),
+  syncMarketPrices: makeLimiter(5, 60),
+  syncCommunityPrices: makeLimiter(5, 60),
 } as const
 
 export type LimiterKey = keyof typeof limiters
