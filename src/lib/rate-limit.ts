@@ -31,6 +31,16 @@ const limiters = {
   parseReceipt: makeLimiter(10, 60),
   // 30 comparisons/min per IP — DB heavy but cheaper
   comparePrices: makeLimiter(30, 60),
+  // 20 geocode/min per IP — proxies Nominatim
+  reverseGeocode: makeLimiter(20, 60),
+  // 30 trend queries/min per IP
+  priceTrend: makeLimiter(30, 60),
+  // 20 basket-index queries/min per IP
+  basketIndex: makeLimiter(20, 60),
+  // 20 map pin queries/min per IP
+  priceMap: makeLimiter(20, 60),
+  // 10 best-store computations/min per IP — per-item DB queries
+  shoppingListBestStore: makeLimiter(10, 60),
 } as const
 
 export type LimiterKey = keyof typeof limiters

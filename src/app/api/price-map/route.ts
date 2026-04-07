@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 interface PriceItem {
   store_chain: string | null
@@ -23,7 +25,13 @@ export interface StorePin {
   price_tier: 'cheap' | 'mid' | 'expensive'
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rlResponse = await checkRateLimit(request, 'priceMap')
+  if (rlResponse) return rlResponse
+
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

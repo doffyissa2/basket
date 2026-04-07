@@ -30,17 +30,19 @@ export default function ListePage() {
   const [computing, setComputing] = useState(false)
   const [result, setResult] = useState<BestStoreResult | null>(null)
   const [postcode, setPostcode] = useState<string | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
-      setUser(user)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.href = '/login'; return }
+      setUser(session.user)
+      setAccessToken(session.access_token)
 
       const [{ data: listData }, { data: profile }] = await Promise.all([
-        supabase.from('shopping_list_items').select('id, item_name, checked, best_store, best_price').eq('user_id', user.id).order('created_at', { ascending: true }),
-        supabase.from('profiles').select('postcode').eq('id', user.id).single(),
+        supabase.from('shopping_list_items').select('id, item_name, checked, best_store, best_price').eq('user_id', session.user.id).order('created_at', { ascending: true }),
+        supabase.from('profiles').select('postcode').eq('id', session.user.id).single(),
       ])
 
       if (listData) setItems(listData)
@@ -117,7 +119,10 @@ export default function ListePage() {
 
     const res = await fetch('/api/shopping-list/best-store', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ items: unchecked.map((i) => i.item_name), postcode }),
     })
 

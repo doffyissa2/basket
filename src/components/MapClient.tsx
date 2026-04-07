@@ -25,20 +25,24 @@ function FlyToUser({ coords }: { coords: { lat: number; lon: number } | null }) 
 
 interface MapClientProps {
   userCoords?: { lat: number; lon: number } | null
+  accessToken?: string | null
 }
 
-export default function MapClient({ userCoords }: MapClientProps) {
+export default function MapClient({ userCoords, accessToken }: MapClientProps) {
   const [pins, setPins] = useState<StorePin[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('Tous')
 
   useEffect(() => {
-    fetch('/api/price-map')
+    if (!accessToken) return
+    fetch('/api/price-map', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
       .then((r) => r.json())
       .then((d) => setPins(d.pins ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [accessToken])
 
   const chains = useMemo(() => {
     const set = new Set(pins.map((p) => p.store_chain))

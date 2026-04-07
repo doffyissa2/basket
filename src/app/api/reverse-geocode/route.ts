@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function GET(request: NextRequest) {
+  const rlResponse = await checkRateLimit(request, 'reverseGeocode')
+  if (rlResponse) return rlResponse
+
   const { searchParams } = new URL(request.url)
   const lat = searchParams.get('lat')
   const lon = searchParams.get('lon')

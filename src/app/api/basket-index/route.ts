@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 // ── Supabase service-role client (bypasses RLS) ────────────────────────────
 function getServiceClient() {
@@ -21,6 +23,12 @@ function getServiceClient() {
  *   weeks – number of recent weeks to return, default 12, max 52
  */
 export async function GET(request: NextRequest) {
+  const rlResponse = await checkRateLimit(request, 'basketIndex')
+  if (rlResponse) return rlResponse
+
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
+
   try {
     const { searchParams } = request.nextUrl
     const store = searchParams.get('store') ?? null

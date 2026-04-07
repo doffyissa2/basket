@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { fuzzyMatch } from '@/lib/fuzzy-match'
+import { requireAuth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  const rlResponse = await checkRateLimit(request, 'shoppingListBestStore')
+  if (rlResponse) return rlResponse
+
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
+
   try {
     const { items, postcode } = await request.json()
 

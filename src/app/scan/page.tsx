@@ -187,42 +187,68 @@ export default function ScanPage() {
       setParsedReceipt(parsed)
 
       const storeChain = normalizeStoreChain(parsed.store_name)
+      const receiptDate = new Date().toISOString().split('T')[0]
 
-      const { data: receiptRow, error: receiptError } = await supabase
+      // ── Duplicate detection: same user, store, total, date → skip re-insert ─
+      const { data: existing } = await supabase
         .from('receipts')
-        .insert({
-          user_id: user.id,
-          store_name: storeChain,
-          store_chain: storeChain,
-          total_amount: parsed.total,
-          receipt_date: new Date().toISOString().split('T')[0],
-          image_url: publicUrl,
-          postcode: postcode || null,
-          latitude: userCoords?.lat ?? null,
-          longitude: userCoords?.lon ?? null,
-        })
-        .select().single()
-      if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
-      setReceiptId(receiptRow.id)
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('store_name', storeChain)
+        .eq('total_amount', parsed.total)
+        .eq('receipt_date', receiptDate)
+        .limit(1)
 
-      await supabase.from('price_items').insert(
-        parsed.items.map((item) => ({
-          receipt_id: receiptRow.id,
-          user_id: user.id,
-          item_name: item.name,
-          item_name_normalised: item.name.toLowerCase().trim(),
-          quantity: item.quantity,
-          unit_price: item.price,
-          total_price: item.price * item.quantity,
-          store_name: storeChain,
-          store_chain: storeChain,
-          postcode: postcode || null,
-          latitude: userCoords?.lat ?? null,
-          longitude: userCoords?.lon ?? null,
-          is_promo: item.is_promo ?? false,
-          is_private_label: item.is_private_label ?? false,
-        }))
-      )
+      let savedReceiptId: string
+
+      if (existing && existing.length > 0) {
+        // Duplicate: reuse existing receipt id, skip DB writes
+        savedReceiptId = existing[0].id
+        setReceiptId(savedReceiptId)
+      } else {
+        // New receipt: insert receipt row
+        const { data: receiptRow, error: receiptError } = await supabase
+          .from('receipts')
+          .insert({
+            user_id: user.id,
+            store_name: storeChain,
+            store_chain: storeChain,
+            total_amount: parsed.total,
+            receipt_date: receiptDate,
+            image_url: publicUrl,
+            postcode: postcode || null,
+            latitude: userCoords?.lat ?? null,
+            longitude: userCoords?.lon ?? null,
+          })
+          .select().single()
+        if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
+        savedReceiptId = receiptRow.id
+        setReceiptId(savedReceiptId)
+
+        // ── Atomic: rollback receipt if price_items insert fails ───────────
+        const { error: itemsError } = await supabase.from('price_items').insert(
+          parsed.items.map((item) => ({
+            receipt_id: receiptRow.id,
+            user_id: user.id,
+            item_name: item.name,
+            item_name_normalised: item.name.toLowerCase().trim(),
+            quantity: item.quantity,
+            unit_price: item.price,
+            total_price: item.price * item.quantity,
+            store_name: storeChain,
+            store_chain: storeChain,
+            postcode: postcode || null,
+            latitude: userCoords?.lat ?? null,
+            longitude: userCoords?.lon ?? null,
+            is_promo: item.is_promo ?? false,
+            is_private_label: item.is_private_label ?? false,
+          }))
+        )
+        if (itemsError) {
+          await supabase.from('receipts').delete().eq('id', receiptRow.id)
+          throw new Error('Erreur sauvegarde articles')
+        }
+      }
 
       setStep('results')
 
@@ -242,8 +268,8 @@ export default function ScanPage() {
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-        if (receiptRow.id && savings > 0) {
-          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', receiptRow.id)
+        if (savedReceiptId && savings > 0) {
+          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
       }
     } catch (err) {

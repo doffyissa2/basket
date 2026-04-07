@@ -31,10 +31,12 @@ function getCachedCoords(): Coords | null {
 export default function CartePage() {
   const [authed, setAuthed] = useState(false)
   const [userCoords, setUserCoords] = useState<Coords | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { window.location.href = '/login'; return }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { window.location.href = '/login'; return }
+      setAccessToken(session.access_token)
       setAuthed(true)
     })
     setUserCoords(getCachedCoords())
@@ -71,7 +73,7 @@ export default function CartePage() {
 
       {/* Map fills remaining space */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <MapWithNoSSR userCoords={userCoords} />
+        <MapWithNoSSR userCoords={userCoords} accessToken={accessToken} />
       </div>
 
       <BottomNav active="carte" />
