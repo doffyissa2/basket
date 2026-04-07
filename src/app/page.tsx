@@ -335,7 +335,7 @@ export default function HomePage() {
 
       {/* ==================== NAVBAR ==================== */}
       <nav className="fixed top-[4vh] left-1/2 -translate-x-1/2 z-40 bg-offwhite/80 backdrop-blur-xl border border-graphite/10 rounded-[2rem] px-[1.5vw] py-[1vh] flex items-center justify-between gap-[4vw] hover-trigger" id="navbar">
-        <div className="font-sans font-bold tracking-tight text-base">🧺 Basket</div>
+        <div className="font-sans font-bold tracking-tight text-base flex items-center gap-2"><img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />Basket</div>
         <div className="hidden md:flex items-center gap-[2vw] font-mono text-xs text-graphite/60">
           <a href="#features" className="hover:text-signal transition-colors">Basket AI</a>
           <a href="#philosophy" className="hover:text-signal transition-colors">Vision</a>
@@ -383,7 +383,7 @@ export default function HomePage() {
                 <span className="font-bold text-sm">12,52 €</span>
               </div>
               <div className="mt-[1.5vh] bg-signal/10 rounded-xl p-[0.8vw] text-center">
-                <p className="font-sans text-xs font-bold text-signal">🧺 Basket : économisez 3,40 € chez Lidl</p>
+                <p className="font-sans text-xs font-bold text-signal flex items-center gap-1"><img src="/basket_logo.png" alt="" className="h-4 w-4" />Basket : économisez 3,40 € chez Lidl</p>
               </div>
             </div>
           </div>
@@ -775,7 +775,7 @@ export default function HomePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[10vw] relative z-10">
           <div>
-            <h2 className="font-sans text-[6vw] font-extrabold tracking-tighter uppercase leading-none text-paper">🧺 Basket</h2>
+            <h2 className="font-sans text-[6vw] font-extrabold tracking-tighter uppercase leading-none text-paper flex items-center gap-[1vw]"><img src="/basket_logo.png" alt="Basket" className="h-[6vw] w-[6vw]" />Basket</h2>
             <p className="font-mono text-xs text-paper/40 mt-[3vh] max-w-xs">Le chemin le plus court vers les économies. Scannez, comparez, économisez — chaque semaine.</p>
           </div>
           <div className="flex flex-col md:flex-row gap-[8vw] mt-[4vh] md:mt-0">

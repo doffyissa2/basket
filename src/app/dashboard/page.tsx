@@ -52,9 +52,7 @@ function DesktopSidebar({ unreadCount, totalSavings }: { unreadCount: number; us
       style={{ background: '#0D0D0D', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
       {/* Logo */}
       <div className="px-5 py-6 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#E07A5F' }}>
-          <span className="text-white font-bold text-sm">B</span>
-        </div>
+        <img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />
         <span className="font-bold text-white">Basket</span>
       </div>
 

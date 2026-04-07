@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { ShoppingBasket, Loader2, ArrowLeft, Mail, Lock, MapPin } from 'lucide-react'
+import { Loader2, ArrowLeft, Mail, Lock, MapPin } from 'lucide-react'
 
 export default function LoginPage() {
   const [isSignup, setIsSignup] = useState(false)
@@ -54,7 +54,7 @@ export default function LoginPage() {
       {/* Desktop left panel */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #111111 0%, #0A0A0A 100%)' }}>
         <div className="flex items-center gap-2">
-          <ShoppingBasket className="w-6 h-6 text-[#E07A5F]" strokeWidth={2.5} />
+          <img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />
           <span className="text-lg font-bold">Basket</span>
         </div>
         <div>
@@ -93,7 +93,7 @@ export default function LoginPage() {
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
             >
-              <ShoppingBasket className="w-9 h-9 text-[#E07A5F]" strokeWidth={2.5} />
+              <img src="/basket_logo.png" alt="Basket" className="h-9 w-9" />
               <span className="text-2xl font-bold tracking-tight">Basket</span>
             </motion.div>
 
