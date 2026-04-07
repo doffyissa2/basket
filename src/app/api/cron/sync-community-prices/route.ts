@@ -154,103 +154,85 @@ async function extractFromText(rawText: string): Promise<ExtractedReceipt | null
   }
 }
 
-// ── Reddit scraper ───────────────────────────────────────────────────────────
-
-const SUBREDDITS = ['france', 'BudgetFrancais', 'consommation', 'vegan_france']
-const SEARCH_TERMS = ['ticket caisse', 'courses supermarché', 'prix supermarché', 'faire ses courses']
-
-interface RedditPost {
-  title: string
-  selftext: string
-  created_utc: number
-  permalink: string
-}
-
-async function fetchRedditPosts(subreddit: string, query: string, limit = 15): Promise<RedditPost[]> {
-  const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=new&limit=${limit}&restrict_sr=1`
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!res.ok) return []
-    const data = await res.json() as { data?: { children?: Array<{ data: RedditPost }> } }
-    return (data.data?.children ?? []).map(c => c.data)
-  } catch {
-    return []
-  }
-}
-
-// ── Dealabs scraper ──────────────────────────────────────────────────────────
+// ── Dealabs scraper (regex — no AI needed) ───────────────────────────────────
 
 interface DealabsDeal {
   title: string
-  description: string
-  publishedAt: string
+  description?: string
+  published_at?: string
+  publishedAt?: string
+  merchant?: { name?: string }
+  store_name?: string
 }
 
-async function fetchDealabsDeals(limit = 25): Promise<DealabsDeal[]> {
+async function fetchDealabsDeals(limit = 50): Promise<DealabsDeal[]> {
   const url = `https://www.dealabs.com/groupe/courses-supermarche?format=json&order=new&limit=${limit}`
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(10_000),
-    })
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return []
-    const data = await res.json() as { data?: DealabsDeal[] }
-    return data.data ?? []
-  } catch {
-    return []
+    const data = await res.json() as { data?: DealabsDeal[]; threads?: DealabsDeal[] }
+    return data.data ?? data.threads ?? []
+  } catch { return [] }
+}
+
+// Extract "product name X,XX€" or "X,XX€ product name" patterns from deal text
+function extractPricesFromText(text: string): Array<{ name: string; price: number }> {
+  const results: Array<{ name: string; price: number }> = []
+  const clean = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+
+  // Pattern: "Nom du produit 1,99€" or "Nom du produit à 1,99 €"
+  const afterName = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\-']{3,40})\s+(?:à\s+)?(\d{1,3}[,\.]\d{2})\s*€/g
+  let m: RegExpExecArray | null
+  while ((m = afterName.exec(clean)) !== null) {
+    const price = parseFloat(m[2].replace(',', '.'))
+    if (price > 0.10 && price < 150) results.push({ name: m[1].trim(), price })
   }
+
+  // Pattern: "1,99€ Nom du produit"
+  const beforeName = /(\d{1,3}[,\.]\d{2})\s*€\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\-']{3,40})/g
+  while ((m = beforeName.exec(clean)) !== null) {
+    const price = parseFloat(m[1].replace(',', '.'))
+    if (price > 0.10 && price < 150) results.push({ name: m[2].trim(), price })
+  }
+
+  return results.slice(0, 10) // cap per deal
 }
 
-// ── Open Food Facts — public French product prices ───────────────────────────
-// No auth, no IP restrictions, 3M+ products, free forever.
+// ── Open Food Facts Prices API ───────────────────────────────────────────────
+// Community-submitted real prices from French stores. No auth, no IP block.
 
-interface OFFProduct {
-  product_name_fr?: string
-  product_name?: string
-  categories_tags?: string[]
-  stores?: string
-  price?: number
-  prices?: Array<{ price: number; currency: string; date: string; location_osm_id?: string }>
-}
-
-async function fetchOFFPrices(category: string, page = 1): Promise<Array<{ name: string; price: number; store: string | null; date: string | null }>> {
-  const url = `https://prices.openfoodfacts.org/api/v1/prices?category_tag=${encodeURIComponent(category)}&currency=EUR&page=${page}&page_size=50`
+async function fetchOFFPrices(page = 1): Promise<Array<{ name: string; price: number; store: string | null; date: string | null }>> {
+  // Fetch recent EUR prices — no category filter (that filter returns 0 results)
+  const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&page=${page}&size=100`
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(12_000),
     })
     if (!res.ok) return []
-    const data = await res.json() as {
-      items?: Array<{
-        price: number
-        currency: string
-        date: string | null
-        product?: { product_name?: string; product_name_fr?: string; stores_tags?: string[] }
-        location?: { osm_name?: string }
-      }>
-    }
-    return (data.items ?? [])
-      .filter(i => i.currency === 'EUR' && i.price > 0.10 && i.price < 200 && i.product?.product_name_fr)
+    const raw = await res.json() as Record<string, unknown>
+
+    // Handle both {items:[]} and {results:[]} response shapes
+    const list = (Array.isArray(raw.items) ? raw.items : Array.isArray(raw.results) ? raw.results : []) as Array<{
+      price?: unknown
+      currency?: string
+      date?: string | null
+      product_name?: string
+      product?: { product_name_fr?: string; product_name?: string }
+      location?: { osm_name?: string; name?: string }
+    }>
+
+    return list
+      .filter(i => i.currency === 'EUR' && typeof i.price === 'number' && (i.price as number) > 0.10 && (i.price as number) < 200)
       .map(i => ({
-        name: i.product!.product_name_fr ?? i.product!.product_name ?? '',
-        price: i.price,
-        store: i.location?.osm_name ?? null,
+        name: i.product?.product_name_fr ?? i.product?.product_name ?? i.product_name ?? '',
+        price: i.price as number,
+        store: i.location?.osm_name ?? i.location?.name ?? null,
         date: i.date ?? null,
       }))
-  } catch {
-    return []
-  }
+      .filter(i => i.name.length > 2)
+  } catch { return [] }
 }
-
-const OFF_CATEGORIES = [
-  'en:fresh-foods', 'en:dairy-products', 'en:meats', 'en:fruits',
-  'en:vegetables', 'en:breads', 'en:beverages', 'en:frozen-foods',
-  'en:snacks', 'en:cereals-and-potatoes',
-]
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -267,24 +249,22 @@ export async function GET(request: NextRequest) {
   const mode = new URL(request.url).searchParams.get('mode')
 
   if (mode === 'test') {
-    // Test each source individually to see which ones work from Vercel's IP
-    const redditRes = await fetch('https://www.reddit.com/r/france/search.json?q=courses&sort=new&limit=3&restrict_sr=1', {
-      headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(8_000),
-    }).then(r => ({ status: r.status, ok: r.ok })).catch(e => ({ status: 0, ok: false, error: String(e) }))
-
     const dealabsRes = await fetch('https://www.dealabs.com/groupe/courses-supermarche?format=json&order=new&limit=3', {
-      headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(8_000),
-    }).then(r => ({ status: r.status, ok: r.ok })).catch(e => ({ status: 0, ok: false, error: String(e) }))
+      headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8_000),
+    }).then(async r => {
+      const j = await r.json() as Record<string, unknown>
+      return { status: r.status, ok: r.ok, keys: Object.keys(j), sample_count: Array.isArray(j.data) ? j.data.length : Array.isArray(j.threads) ? j.threads.length : 0 }
+    }).catch(e => ({ status: 0, ok: false, error: String(e) }))
 
-    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?category_tag=en:dairy-products&currency=EUR&page_size=3', {
-      headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(8_000),
-    }).then(async r => ({ status: r.status, ok: r.ok, sample: r.ok ? (await r.json() as { items?: unknown[] }).items?.length : 0 }))
-      .catch(e => ({ status: 0, ok: false, error: String(e) }))
+    const offRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&page=1&size=5', {
+      headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8_000),
+    }).then(async r => {
+      const j = await r.json() as Record<string, unknown>
+      const list = Array.isArray(j.items) ? j.items : Array.isArray(j.results) ? j.results : []
+      return { status: r.status, ok: r.ok, keys: Object.keys(j), sample_count: list.length, first: list[0] }
+    }).catch(e => ({ status: 0, ok: false, error: String(e) }))
 
-    return NextResponse.json({ reddit: redditRes, dealabs: dealabsRes, open_food_facts_prices: offRes })
+    return NextResponse.json({ dealabs: dealabsRes, open_food_facts_prices: offRes })
   }
 
   return POST(request)
@@ -315,10 +295,10 @@ export async function POST(request: NextRequest) {
   let postsProcessed = 0
 
   // ── Open Food Facts Prices API (works from any IP, no auth) ─────────────
-  for (const category of OFF_CATEGORIES) {
-    const items = await fetchOFFPrices(category)
+  // ── Open Food Facts Prices (pages 1–5 = up to 500 real FR prices) ─────────
+  const offPages = await Promise.all([1, 2, 3, 4, 5].map(p => fetchOFFPrices(p)))
+  for (const items of offPages) {
     for (const item of items) {
-      if (!item.name) continue
       rows.push({
         store_chain: normalizeChain(item.store),
         postcode_dept: null,
@@ -332,72 +312,34 @@ export async function POST(request: NextRequest) {
       postsProcessed++
     }
   }
+  console.log(`[sync-community-prices] OFF prices: ${rows.length} items`)
 
-  console.log(`[sync-community-prices] OFF: ${rows.length} items`)
-
-  // ── Reddit ──────────────────────────────────────────────────────────────
-  for (const subreddit of SUBREDDITS) {
-    for (const term of SEARCH_TERMS.slice(0, 2)) { // 2 terms per subreddit to limit volume
-      const posts = await fetchRedditPosts(subreddit, term, 10)
-      for (const post of posts) {
-        const text = [post.title, post.selftext].join('\n').trim()
-        if (text.length < 40) continue
-
-        const extracted = await extractFromText(text)
-        if (!extracted || extracted.items.length === 0) continue
-
-        postsProcessed++
-        const chain = normalizeChain(extracted.storeName)
-        const dept = depersonalizePostcode(extracted.postcode)
-        const date = new Date(post.created_utc * 1000).toISOString().split('T')[0]
-
-        for (const item of extracted.items) {
-          rows.push({
-            store_chain: chain,
-            postcode_dept: dept,
-            item_name: item.name,
-            item_name_normalised: normaliseProductName(item.name),
-            unit_price: item.price,
-            source: `reddit_${subreddit}`,
-            source_date: date,
-            processed_at: new Date().toISOString(),
-          })
-        }
-
-        // Polite delay between Haiku calls
-        await new Promise(r => setTimeout(r, 800))
-      }
-    }
-  }
-
-  // ── Dealabs ─────────────────────────────────────────────────────────────
-  const deals = await fetchDealabsDeals(20)
+  // ── Dealabs (regex extraction — no AI key required) ──────────────────────
+  const deals = await fetchDealabsDeals(50)
   for (const deal of deals) {
-    const text = [deal.title, deal.description].join('\n').trim()
-    if (text.length < 40) continue
-
-    const extracted = await extractFromText(text)
-    if (!extracted || extracted.items.length === 0) continue
+    const text = scrubPII([deal.title, deal.description ?? ''].join(' '))
+    const items = extractPricesFromText(text)
+    if (items.length === 0) continue
 
     postsProcessed++
-    const chain = normalizeChain(extracted.storeName)
-    const dept = depersonalizePostcode(extracted.postcode)
+    const storeName = deal.merchant?.name ?? deal.store_name ?? null
+    const chain = normalizeChain(storeName)
+    const date = (deal.published_at ?? deal.publishedAt ?? '').split('T')[0] || null
 
-    for (const item of extracted.items) {
+    for (const item of items) {
       rows.push({
         store_chain: chain,
-        postcode_dept: dept,
+        postcode_dept: null,
         item_name: item.name,
         item_name_normalised: normaliseProductName(item.name),
         unit_price: item.price,
         source: 'dealabs',
-        source_date: deal.publishedAt?.split('T')[0] ?? null,
+        source_date: date,
         processed_at: new Date().toISOString(),
       })
     }
-
-    await new Promise(r => setTimeout(r, 800))
   }
+  console.log(`[sync-community-prices] Dealabs: ${deals.length} deals processed`)
 
   console.log(`[sync-community-prices] ${postsProcessed} posts → ${rows.length} items`)
 
