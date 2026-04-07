@@ -1,848 +1,805 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
-import { supabase } from '@/lib/supabase'
-import {
-  ShoppingBasket, ArrowRight, Check, Star, Shield, Zap, Bell, BarChart2,
-  ShoppingCart, Receipt, Menu, X, TrendingDown, MapPin, Share2, Lock, Loader2
-} from 'lucide-react'
+import { useEffect } from 'react'
 
-/* ─── helpers ─────────────────────────────────────────────── */
-
-function useCountUp(target: number, duration = 2000, trigger = false) {
-  const [val, setVal] = useState(0)
-  useEffect(() => {
-    if (!trigger || target === 0) return
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1)
-      const e = 1 - Math.pow(1 - p, 3)
-      setVal(Math.round(target * e))
-      if (p < 1) requestAnimationFrame(tick)
+declare module 'react' {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      'iconify-icon': React.HTMLAttributes<HTMLElement> & { icon?: string }
     }
-    requestAnimationFrame(tick)
-  }, [target, duration, trigger])
-  return val
+  }
 }
 
-/* ─── phone mockup ────────────────────────────────────────── */
-
-function PhoneMockup({ screen }: { screen: React.ReactNode }) {
-  return (
-    <div
-      className="relative mx-auto"
-      style={{ width: 260, height: 520 }}
-    >
-      {/* Frame */}
-      <div
-        className="absolute inset-0 rounded-[44px] border-[7px] border-white/10"
-        style={{ background: '#111' }}
-      />
-      {/* Notch */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-4 rounded-full bg-black z-10" />
-      {/* Screen */}
-      <div className="absolute inset-[7px] rounded-[38px] overflow-hidden">
-        {screen}
-      </div>
-      {/* Shine */}
-      <div
-        className="absolute inset-0 rounded-[44px] pointer-events-none"
-        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.07) 0%, transparent 50%)' }}
-      />
-    </div>
-  )
-}
-
-/* ─── data ────────────────────────────────────────────────── */
-
-const NAV_LINKS = [
-  { label: 'Fonctionnalités', href: '#features' },
-  { label: 'Comment ça marche', href: '#how' },
-  { label: 'Avis', href: '#reviews' },
-  { label: 'À propos', href: '#about' },
-]
-
-const FEATURES = [
-  { icon: Receipt, label: 'Scan IA', desc: 'Notre IA lit votre ticket en moins de 5 secondes, article par article.', color: '#E07A5F' },
-  { icon: TrendingDown, label: 'Comparaison', desc: "Comparez instantanément avec 15 enseignes autour de chez vous.", color: '#7C3AED' },
-  { icon: Bell, label: 'Alertes prix', desc: "Soyez notifié dès qu'un produit est moins cher qu'avant.", color: '#0EA5E9' },
-  { icon: ShoppingCart, label: 'Liste de courses', desc: 'Préparez votre liste et Basket vous dit où faire les meilleures économies.', color: '#10B981' },
-  { icon: BarChart2, label: 'Bilan hebdo', desc: 'Visualisez vos économies semaine par semaine et partagez vos résultats.', color: '#F59E0B' },
-  { icon: Share2, label: 'Partage social', desc: "Invitez vos proches et économisez encore plus grâce à l'intelligence collective.", color: '#EC4899' },
-]
-
-const STEPS = [
-  { n: '01', title: 'Photographiez votre ticket', desc: "Ouvrez Basket, appuyez sur Scanner et prenez votre ticket en photo. Fini les saisies manuelles — notre IA s'occupe de tout." },
-  { n: '02', title: 'Comparez les prix', desc: "En quelques secondes, Basket analyse chaque article et le compare aux prix pratiqués dans les enseignes autour de vous, en temps réel." },
-  { n: '03', title: "Économisez chaque semaine", desc: "Découvrez combien vous pourriez économiser en changeant d'enseigne pour certains articles. En moyenne, nos utilisateurs économisent 18€ par semaine." },
-]
-
-const TESTIMONIALS = [
-  { name: 'Marie L.', city: 'Paris 15e', text: "18€ d'économies en changeant juste mon enseigne pour les produits laitiers. Bluffant.", stars: 5 },
-  { name: 'Thomas B.', city: 'Lyon', text: "Simple, rapide, indispensable. Je scanne tous mes tickets depuis 2 mois et j'ai économisé 140€.", stars: 5 },
-  { name: 'Sophie M.', city: 'Bordeaux', text: "Mon Leclerc est 20% plus cher que le Lidl à côté pour mes produits habituels. Shocking.", stars: 5 },
-  { name: 'Julien R.', city: 'Nantes', text: "L'interface est superbe, l'IA est précise et les alertes prix sont un vrai plus. 10/10.", stars: 5 },
-  { name: 'Amandine T.', city: 'Toulouse', text: "Enfin une app qui compare vraiment les prix localement et pas juste en ligne.", stars: 4 },
-  { name: 'Kévin D.', city: 'Lille', text: "J'utilise la liste de courses avant chaque visite au supermarché. Indispensable.", stars: 5 },
-]
-
-const TRUSTS = [
-  { icon: Shield, title: 'Vos données vous appartiennent', desc: "Nous ne vendons aucune donnée personnelle. Vos tickets restent privés et chiffrés." },
-  { icon: Lock, title: 'Sécurisé par Supabase', desc: 'Authentification et stockage de niveau professionnel, comme les grandes banques.' },
-  { icon: Zap, title: 'IA locale & rapide', desc: "L'analyse se fait en quelques secondes sans stocker vos photos plus de 24h." },
-]
-
-/* ─── main component ───────────────────────────────────────── */
-
-export default function LandingPage() {
-  const [email, setEmail] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [navSolid, setNavSolid] = useState(false)
-  const [statsVisible, setStatsVisible] = useState(false)
-  const statsRef = useRef<HTMLDivElement>(null)
-  const { scrollY } = useScroll()
-
+export default function HomePage() {
   useEffect(() => {
-    const unsub = scrollY.on('change', (v) => setNavSolid(v > 80))
-    return unsub
-  }, [scrollY])
+    // ── Inject page-scoped CSS ─────────────────────────────────────────────
+    const style = document.createElement('style')
+    style.textContent = `
+      body, a, button { cursor: none !important; }
+      @media (hover: none) and (pointer: coarse) {
+        body, a, button { cursor: auto !important; }
+        #custom-cursor { display: none !important; }
+      }
+      .char-span { display: inline-block; }
+      .marquee-container { display: flex; width: 200vw; }
+      .stack-shadow { box-shadow: 0 -20px 40px -20px rgba(17,17,17,0.1); }
+      @keyframes receiptFloat {
+        0%, 100% { transform: translateY(0px) rotateY(0deg) rotateX(5deg); }
+        50%       { transform: translateY(-20px) rotateY(8deg) rotateX(0deg); }
+      }
+      @keyframes scanLine {
+        0%   { top: 10%; }
+        50%  { top: 85%; }
+        100% { top: 10%; }
+      }
+      @keyframes pricePopIn {
+        0%, 100% { opacity: 0.3; transform: scale(0.95); }
+        50%       { opacity: 1;   transform: scale(1); }
+      }
+      .receipt-float     { animation: receiptFloat 6s ease-in-out infinite; }
+      .scan-line         { animation: scanLine 3s ease-in-out infinite; }
+      .price-pop         { animation: pricePopIn 4s ease-in-out infinite; }
+      .price-pop-delay   { animation: pricePopIn 4s ease-in-out infinite 1.5s; }
+      .price-pop-delay2  { animation: pricePopIn 4s ease-in-out infinite 3s; }
+    `
+    document.head.appendChild(style)
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsVisible(true) }, { threshold: 0.3 })
-    if (statsRef.current) observer.observe(statsRef.current)
-    return () => observer.disconnect()
+    // ── Override dark-mode body colours set by globals.css ────────────────
+    const htmlEl = document.documentElement
+    const hadDark = htmlEl.classList.contains('dark')
+    htmlEl.classList.remove('dark')
+    const prevHtmlBg    = htmlEl.style.backgroundColor
+    const prevBodyBg    = document.body.style.backgroundColor
+    const prevBodyColor = document.body.style.color
+    htmlEl.style.backgroundColor    = '#E8E4DD'
+    document.body.style.backgroundColor = '#E8E4DD'
+    document.body.style.color           = '#111111'
+
+    // ── Pre-configure Tailwind CDN before the script loads ────────────────
+    ;(window as any).tailwind = {
+      config: {
+        theme: {
+          extend: {
+            colors: {
+              paper:    '#E8E4DD',
+              signal:   '#7ed957',
+              offwhite: '#F5F3EE',
+              graphite: '#111111',
+            },
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+              mono: ['"Space Mono"', 'monospace'],
+            },
+          },
+        },
+      },
+    }
+
+    let termInterval: ReturnType<typeof setInterval> | undefined
+    let lenisInstance: { raf: (t: number) => void; destroy?: () => void } | undefined
+    const injectedScripts: HTMLScriptElement[] = []
+
+    function loadScript(src: string): Promise<void> {
+      return new Promise((resolve) => {
+        if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+        const s = document.createElement('script')
+        s.src = src
+        s.onload  = () => resolve()
+        s.onerror = () => resolve()
+        document.head.appendChild(s)
+        injectedScripts.push(s)
+      })
+    }
+
+    async function init() {
+      // Fonts
+      const pc1 = document.createElement('link'); pc1.rel = 'preconnect'; pc1.href = 'https://fonts.googleapis.com'
+      const pc2 = document.createElement('link'); pc2.rel = 'preconnect'; pc2.href = 'https://fonts.gstatic.com'; pc2.crossOrigin = ''
+      const fl  = document.createElement('link'); fl.rel  = 'stylesheet';
+      fl.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&family=Space+Mono&display=swap'
+      document.head.append(pc1, pc2, fl)
+
+      await loadScript('https://cdn.tailwindcss.com')
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js')
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js')
+      await loadScript('https://unpkg.com/@studio-freight/lenis@1.0.34/dist/lenis.min.js')
+      await loadScript('https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js')
+
+      const gsap          = (window as any).gsap
+      const ScrollTrigger = (window as any).ScrollTrigger
+      const Lenis         = (window as any).Lenis
+      if (!gsap || !ScrollTrigger || !Lenis) return
+
+      // Lenis smooth scroll
+      lenisInstance = new Lenis({ lerp: 0.08, smoothWheel: true })
+      function raf(time: number) { lenisInstance!.raf(time); requestAnimationFrame(raf) }
+      requestAnimationFrame(raf)
+
+      gsap.registerPlugin(ScrollTrigger)
+
+      // ── Custom cursor ──────────────────────────────────────────────────
+      const cursor = document.getElementById('custom-cursor')
+      if (cursor) {
+        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2
+        let cursorX = mouseX, cursorY = mouseY
+        window.addEventListener('mousemove', (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY })
+        gsap.ticker.add(() => {
+          cursorX += (mouseX - cursorX) * 0.15
+          cursorY += (mouseY - cursorY) * 0.15
+          gsap.set(cursor, { x: cursorX, y: cursorY })
+        })
+        document.querySelectorAll('.hover-trigger, a, button').forEach((el: Element) => {
+          el.addEventListener('mouseenter', () => cursor.classList.add('w-12', 'h-12', 'bg-paper'))
+          el.addEventListener('mouseleave', () => cursor.classList.remove('w-12', 'h-12', 'bg-paper'))
+        })
+      }
+
+      // ── Text splitter ──────────────────────────────────────────────────
+      function splitText(selector: string) {
+        document.querySelectorAll(selector).forEach((el: Element) => {
+          const html  = (el as HTMLElement).innerHTML
+          const words = html.split(' ')
+          ;(el as HTMLElement).innerHTML = ''
+          words.forEach((word: string) => {
+            if (word.includes('<span')) { (el as HTMLElement).innerHTML += ' ' + word + ' '; return }
+            const wd = document.createElement('div')
+            wd.className = 'inline-block overflow-hidden mr-[1.5vw] last:mr-0 align-top'
+            word.split('').forEach((char: string) => {
+              const sp = document.createElement('span')
+              sp.className = 'char-span inline-block translate-y-[110%] opacity-0'
+              sp.innerHTML = char === ' ' ? '&nbsp;' : char
+              wd.appendChild(sp)
+            })
+            ;(el as HTMLElement).appendChild(wd)
+          })
+        })
+      }
+
+      // Hero text animation
+      splitText('.split-target')
+      gsap.to('.split-target .char-span', { y: '0%', opacity: 1, duration: 1.2, stagger: 0.02, ease: 'power3.out', delay: 0.3 })
+
+      // Navbar hide/show on scroll
+      let lastScroll = 0
+      window.addEventListener('scroll', () => {
+        const current = window.scrollY
+        if (current > lastScroll && current > 100) gsap.to('#navbar', { y: '-150%', duration: 0.4, ease: 'power2.in' })
+        else gsap.to('#navbar', { y: '0%', duration: 0.4, ease: 'power2.out' })
+        lastScroll = current
+      })
+
+      // Feature cards entrance
+      gsap.fromTo('.feature-card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, stagger: 0.1, ease: 'power3.out', scrollTrigger: { trigger: '#features', start: 'top 70%' } })
+
+      // AI terminal feed
+      const feedLines = [
+        '[SCAN] Ticket détecté — Carrefour Market',
+        '[OCR] Extraction des articles...',
+        '[AI] Lait demi-écrémé 1L → 1,15 €',
+        '[CMP] Lidl : 0,89 € (−0,26 €)',
+        '[AI] Beurre Président 250g → 2,49 €',
+        '[CMP] Aldi : 1,85 € (−0,64 €)',
+        "[OK] Analyse terminée : 3,40 € d'économies",
+        '[AI] Rapport envoyé sur WhatsApp',
+      ]
+      const feedContainer = document.getElementById('terminal-feed')
+      let feedStep = 0
+      if (feedContainer) {
+        termInterval = setInterval(() => {
+          if (feedStep >= feedLines.length) feedStep = 0
+          const div = document.createElement('div')
+          div.innerText = feedLines[feedStep]
+          feedContainer.prepend(div)
+          feedStep++
+        }, 1500)
+      }
+
+      // Product counter
+      const counterObj = { val: 0 }
+      ScrollTrigger.create({
+        trigger: '#uptime-counter', start: 'top 85%',
+        onEnter: () => {
+          gsap.to(counterObj, {
+            val: 33673, duration: 2.5, ease: 'power4.out',
+            onUpdate: () => {
+              const el = document.getElementById('uptime-counter')
+              if (el) el.innerText = Math.round(counterObj.val).toLocaleString('fr-FR')
+            },
+          })
+        },
+      })
+
+      // Vision section
+      ScrollTrigger.create({
+        trigger: '#philosophy', start: 'top 60%',
+        onEnter: () => {
+          gsap.fromTo('.contrast-1', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 1 })
+          gsap.fromTo('.contrast-2', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 1.2, delay: 0.3 })
+        },
+      })
+
+      // Horizontal scroll — Comment ça marche
+      const prContainer = document.querySelector('.pr-container') as HTMLElement | null
+      if (prContainer) {
+        gsap.to(prContainer, {
+          x: () => -(prContainer.scrollWidth - window.innerWidth) + 'px',
+          ease: 'none',
+          scrollTrigger: { trigger: '#protocol', pin: true, scrub: 1, end: () => '+=' + prContainer.scrollWidth },
+        })
+      }
+
+      // Topology cards
+      gsap.fromTo('.topology-card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, stagger: 0.1, ease: 'power3.out', scrollTrigger: { trigger: '#topology', start: 'top 70%' } })
+
+      // Parameter rows
+      gsap.fromTo('.parameter-row', { x: -50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, stagger: 0.15, ease: 'power2.out', scrollTrigger: { trigger: '#parameters', start: 'top 65%' } })
+
+      // Stacking cards
+      const stackCards = gsap.utils.toArray('.stack-card') as HTMLElement[]
+      stackCards.forEach((card: HTMLElement, i: number) => {
+        if (i === stackCards.length - 1) return
+        gsap.to(card, {
+          scale: 0.94 - i * 0.02, filter: 'brightness(0.4)', transformOrigin: 'top center', ease: 'none',
+          scrollTrigger: { trigger: stackCards[i + 1], start: 'top 85%', end: 'top ' + (20 + i * 5) + 'vh', scrub: true },
+        })
+      })
+
+      // Ecosystem grid
+      gsap.fromTo('.eco-item', { y: 50, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.8, stagger: 0.05, ease: 'back.out(1.5)', scrollTrigger: { trigger: '#ecosystem', start: 'top 80%' } })
+
+      // Marquee — duplicate content then animate
+      const marqueeContent = document.getElementById('marquee-content')
+      if (marqueeContent) {
+        marqueeContent.innerHTML = marqueeContent.innerHTML + marqueeContent.innerHTML
+        gsap.to(marqueeContent, { xPercent: -50, ease: 'none', duration: 12, repeat: -1 })
+      }
+
+      // Analytics matrix
+      gsap.fromTo('.matrix-item', { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2, stagger: 0.2, ease: 'power3.out', scrollTrigger: { trigger: '#matrix-section', start: 'top 75%' } })
+
+      const pathLine = document.getElementById('animated-line') as SVGPathElement | null
+      if (pathLine) {
+        const length = pathLine.getTotalLength()
+        gsap.set(pathLine, { strokeDasharray: length, strokeDashoffset: length })
+        ScrollTrigger.create({
+          trigger: '#matrix-section', start: 'top 50%',
+          onEnter: () => gsap.to(pathLine, { strokeDashoffset: 0, duration: 2.5, ease: 'power3.inOut' }),
+        })
+      }
+
+      const entropyObj = { val: 0 }
+      ScrollTrigger.create({
+        trigger: '#matrix-section', start: 'top 50%',
+        onEnter: () => {
+          gsap.to('#entropy-circle', { strokeDashoffset: 283 - 283 * 0.72, duration: 2.5, ease: 'power4.out' })
+          gsap.to(entropyObj, {
+            val: 47, duration: 2.5, ease: 'power4.out',
+            onUpdate: () => {
+              const el = document.getElementById('entropy-value')
+              if (el) el.innerText = String(Math.round(entropyObj.val))
+            },
+          })
+        },
+      })
+
+      // CTA entrance
+      ScrollTrigger.create({
+        trigger: '#cta', start: 'top 75%',
+        onEnter: () => gsap.fromTo('#cta h2', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 1, ease: 'power3.out' }),
+      })
+
+      // Magnetic buttons
+      document.querySelectorAll('.magnetic-btn').forEach((btn: Element) => {
+        btn.addEventListener('mousemove', (e: Event) => {
+          const me   = e as MouseEvent
+          const rect = (btn as HTMLElement).getBoundingClientRect()
+          gsap.to(btn, { x: (me.clientX - rect.left - rect.width / 2) * 0.4, y: (me.clientY - rect.top - rect.height / 2) * 0.4, duration: 0.6, ease: 'power3.out' })
+        })
+        btn.addEventListener('mouseleave', () => gsap.to(btn, { x: 0, y: 0, duration: 0.6, ease: 'elastic.out(1, 0.5)' }))
+      })
+    }
+
+    init()
+
+    return () => {
+      if (termInterval) clearInterval(termInterval)
+      try { lenisInstance?.destroy?.() } catch { /* ignore */ }
+      style.remove()
+      htmlEl.style.backgroundColor    = prevHtmlBg
+      document.body.style.backgroundColor = prevBodyBg
+      document.body.style.color           = prevBodyColor
+      if (hadDark) htmlEl.classList.add('dark')
+    }
   }, [])
 
-  const handleWaitlist = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!email) return
-    setLoading(true); setError('')
-    const { error: dbErr } = await supabase.from('waitlist').insert({ email: email.toLowerCase().trim() })
-    if (dbErr) setError(dbErr.code === '23505' ? 'Déjà inscrit(e) !' : 'Erreur. Réessayez.')
-    else setSubmitted(true)
-    setLoading(false)
-  }
-
-  const s1 = useCountUp(33000, 2000, statsVisible)
-  const s2 = useCountUp(18, 2000, statsVisible)
-  const s3 = useCountUp(15, 2000, statsVisible)
-  const s4 = useCountUp(2400, 2000, statsVisible)
-
+  // ── JSX ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden">
+    <div
+      className="bg-paper text-graphite font-sans antialiased overflow-x-hidden scrollbar-none"
+      style={{ backgroundColor: '#E8E4DD', color: '#111111', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+    >
 
-      {/* ── GRADIENT MESH BACKGROUND ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <motion.div
-          className="absolute rounded-full opacity-[0.15]"
-          style={{ width: 800, height: 800, background: 'radial-gradient(circle, #E07A5F 0%, transparent 65%)', top: -300, left: -200 }}
-          animate={{ x: [0, 60, 0], y: [0, 40, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute rounded-full opacity-[0.10]"
-          style={{ width: 600, height: 600, background: 'radial-gradient(circle, #7C3AED 0%, transparent 65%)', top: 200, right: -150 }}
-          animate={{ x: [0, -50, 0], y: [0, 60, 0] }}
-          transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute rounded-full opacity-[0.08]"
-          style={{ width: 500, height: 500, background: 'radial-gradient(circle, #0EA5E9 0%, transparent 65%)', bottom: -100, left: '40%' }}
-          animate={{ x: [0, 40, 0], y: [0, -40, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        />
+      {/* Noise Overlay */}
+      <div className="pointer-events-none fixed inset-0 z-50 opacity-[0.04] mix-blend-overlay">
+        <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+          <filter id="noiseFilter">
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch" />
+          </filter>
+          <rect width="100%" height="100%" filter="url(#noiseFilter)" />
+        </svg>
       </div>
 
-      {/* ── NAV ── */}
-      <motion.header
-        className="fixed top-0 left-0 right-0 z-50"
-        style={{
-          backdropFilter: navSolid ? 'blur(24px)' : 'none',
-          WebkitBackdropFilter: navSolid ? 'blur(24px)' : 'none',
-          backgroundColor: navSolid ? 'rgba(5,5,5,0.9)' : 'transparent',
-          borderBottom: navSolid ? '1px solid rgba(255,255,255,0.06)' : 'none',
-          transition: 'all 0.4s ease',
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
-          {/* Logo */}
-          <a href="/" className="flex items-center gap-2 flex-shrink-0">
-            <ShoppingBasket className="w-6 h-6 text-[#E07A5F]" strokeWidth={2.5} />
-            <span className="text-base font-bold tracking-tight">Basket</span>
-          </a>
+      {/* Custom Cursor */}
+      <div id="custom-cursor" className="fixed top-0 left-0 w-5 h-5 bg-signal rounded-full pointer-events-none z-[100] -translate-x-1/2 -translate-y-1/2 mix-blend-difference transition-[width,height] duration-300 ease-out will-change-transform" />
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-8">
-            {NAV_LINKS.map((l) => (
-              <a key={l.label} href={l.href} className="text-sm text-[#9CA3AF] hover:text-white transition-colors">
-                {l.label}
-              </a>
-            ))}
-          </nav>
-
-          {/* Desktop CTAs */}
-          <div className="hidden md:flex items-center gap-3">
-            <a href="/login">
-              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                className="px-4 py-2 rounded-full text-sm font-medium text-[#9CA3AF] hover:text-white transition-colors">
-                Se connecter
-              </motion.button>
-            </a>
-            <a href="/login">
-              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                className="px-5 py-2 rounded-full text-sm font-semibold text-white"
-                style={{ background: '#E07A5F', boxShadow: '0 4px 20px rgba(224,122,95,0.35)' }}>
-                Commencer
-              </motion.button>
-            </a>
-          </div>
-
-          {/* Mobile menu button */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.06)' }}
-          >
-            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-          </motion.button>
+      {/* ==================== NAVBAR ==================== */}
+      <nav className="fixed top-[4vh] left-1/2 -translate-x-1/2 z-40 bg-offwhite/80 backdrop-blur-xl border border-graphite/10 rounded-[2rem] px-[1.5vw] py-[1vh] flex items-center justify-between gap-[4vw] hover-trigger" id="navbar">
+        <div className="font-sans font-bold tracking-tight text-base">🧺 Basket</div>
+        <div className="hidden md:flex items-center gap-[2vw] font-mono text-xs text-graphite/60">
+          <a href="#features" className="hover:text-signal transition-colors">Basket AI</a>
+          <a href="#philosophy" className="hover:text-signal transition-colors">Vision</a>
+          <a href="#protocol" className="hover:text-signal transition-colors">Comment ça marche</a>
+          <a href="#topology" className="hover:text-signal transition-colors">Carte</a>
         </div>
-      </motion.header>
+        <a href="/login">
+          <button className="relative overflow-hidden rounded-[1.5rem] bg-signal text-graphite px-[1.5vw] py-[1vh] font-sans text-xs font-semibold uppercase tracking-tight group hover:scale-[1.03] transition-transform duration-500 magnetic-btn">
+            <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
+            <span className="relative z-10 group-hover:text-signal transition-colors duration-500">Se connecter</span>
+          </button>
+        </a>
+      </nav>
 
-      {/* Mobile menu */}
-      <AnimatePresence>
-        {menuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-x-0 top-16 z-40 md:hidden"
-            style={{ background: 'rgba(10,10,10,0.98)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <nav className="flex flex-col px-6 py-6 gap-4">
-              {NAV_LINKS.map((l) => (
-                <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)}
-                  className="text-base text-[#9CA3AF] hover:text-white transition-colors py-1">
-                  {l.label}
-                </a>
-              ))}
-              <div className="h-px bg-white/06 my-2" />
-              <a href="/login" onClick={() => setMenuOpen(false)}>
-                <motion.button whileTap={{ scale: 0.97 }}
-                  className="w-full h-12 rounded-2xl text-sm font-semibold text-white"
-                  style={{ background: '#E07A5F' }}>
-                  Commencer gratuitement
-                </motion.button>
-              </a>
-            </nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ==================== HERO ==================== */}
+      <header className="h-[100dvh] flex flex-col justify-end pb-[10vh] px-[5vw] relative overflow-hidden" id="hero">
+        <div className="z-10 w-full max-w-[80vw]">
+          <h1 className="font-sans text-[8vw] leading-[0.9] tracking-tighter text-graphite font-extrabold split-target">
+            Le chemin le plus court
+          </h1>
+          <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold split-target mt-[1vh]">
+            vers les <span className="text-signal">économies.</span>
+          </h1>
+        </div>
 
-      {/* ── HERO ── */}
-      <section className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 pt-24 pb-16 text-center">
-        {/* Eyebrow pill */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold mb-8 border"
-          style={{ background: 'rgba(224,122,95,0.1)', borderColor: 'rgba(224,122,95,0.3)', color: '#E07A5F' }}
-        >
-          <TrendingDown className="w-3 h-3" />
-          L&apos;app qui fait baisser vos courses
-        </motion.div>
-
-        {/* Headline */}
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.6 }}
-          className="font-extrabold leading-[1.04] tracking-tight mb-6"
-          style={{ fontSize: 'clamp(3.2rem, 9vw, 7.5rem)' }}
-        >
-          <span className="block text-white">Vos courses.</span>
-          <span className="block">
-            Au{' '}
-            <span style={{
-              background: 'linear-gradient(135deg, #E07A5F, #FF9B7B, #7C3AED)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}>
-              meilleur
-            </span>
-            {' '}prix.
-          </span>
-        </motion.h1>
-
-        {/* Subtitle */}
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="text-base sm:text-lg text-[#6B7280] max-w-xl mx-auto mb-10 leading-relaxed"
-        >
-          Photographiez votre ticket. Basket compare chaque article dans 15 enseignes autour de chez vous et vous montre où économiser — chaque semaine.
-        </motion.p>
-
-        {/* CTA buttons */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="flex flex-col sm:flex-row items-center gap-3 mb-6"
-        >
-          <AnimatePresence mode="wait">
-            {submitted ? (
-              <motion.div key="ok" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-medium"
-                style={{ background: 'rgba(0,208,156,0.12)', color: '#00D09C', border: '1px solid rgba(0,208,156,0.25)' }}>
-                <Check className="w-4 h-4" /> Vous serez parmi les premiers informés !
-              </motion.div>
-            ) : (
-              <motion.form key="form" onSubmit={handleWaitlist} className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
-                <input
-                  type="email" placeholder="votre@email.com" value={email}
-                  onChange={(e) => setEmail(e.target.value)} required
-                  className="h-12 rounded-2xl px-5 text-sm text-white placeholder:text-[#4B5563] focus:outline-none flex-1"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.2s' }}
-                  onFocus={(e) => e.target.style.borderColor = '#E07A5F'}
-                  onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
-                />
-                <motion.button type="submit" disabled={loading} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  className="h-12 px-6 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 flex-shrink-0"
-                  style={{ background: '#E07A5F', boxShadow: '0 6px 24px rgba(224,122,95,0.35)' }}>
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Commencer gratuitement <ArrowRight className="w-4 h-4" /></>}
-                </motion.button>
-              </motion.form>
-            )}
-          </AnimatePresence>
-          <a href="/login">
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-              className="h-12 px-6 rounded-2xl text-sm font-medium text-[#9CA3AF] flex items-center gap-2 border border-white/10 hover:border-white/20 transition-colors">
-              J&apos;ai déjà un compte
-            </motion.button>
-          </a>
-        </motion.div>
-        {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
-
-        {/* Social proof */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="flex items-center gap-3 text-sm text-[#6B7280] mb-16"
-        >
-          <div className="flex gap-0.5">
-            {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-[#E07A5F] text-[#E07A5F]" />)}
-          </div>
-          <span>4.9 · Gratuit · iOS & Android</span>
-        </motion.div>
-
-        {/* Phone mockup */}
-        <motion.div
-          initial={{ opacity: 0, y: 40, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ delay: 0.35, duration: 0.7, type: 'spring', stiffness: 100 }}
-          style={{ filter: 'drop-shadow(0 40px 80px rgba(224,122,95,0.2))' }}
-        >
-          <PhoneMockup screen={
-            <div className="w-full h-full" style={{ background: 'linear-gradient(180deg, #0F0F0F 0%, #1A1A1A 100%)' }}>
-              {/* Mini dashboard */}
-              <div className="p-4 pt-8">
-                <p className="text-[8px] text-[#4B5563] uppercase tracking-widest mb-1">Économies totales</p>
-                <p className="text-3xl font-extrabold" style={{ color: '#00D09C' }}>€124.50</p>
-                <p className="text-[9px] text-[#6B7280] mt-0.5">sur 12 tickets scannés</p>
-                <div className="mt-4 rounded-xl overflow-hidden" style={{ background: 'rgba(0,208,156,0.08)', border: '1px solid rgba(0,208,156,0.2)', padding: '10px 12px' }}>
-                  <p className="text-[8px] text-[#00D09C] font-semibold uppercase tracking-wider mb-1">Meilleure économie</p>
-                  <p className="text-[11px] font-bold text-white">Lidl · €8.20 de moins</p>
-                  <p className="text-[9px] text-[#6B7280]">sur 3 articles ce mois-ci</p>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {['CRISTALINE 1.5L', 'NUTELLA 400G', 'COCA COLA 1.5L'].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '6px 10px' }}>
-                      <p className="text-[9px] text-[#9CA3AF] truncate flex-1">{item}</p>
-                      <p className="text-[9px] font-semibold flex-shrink-0 ml-2" style={{ color: '#00D09C' }}>-€{(1.2 + i * 0.5).toFixed(2)}</p>
-                    </div>
-                  ))}
-                </div>
+        {/* Animated Receipt */}
+        <div className="absolute top-[15vh] right-[5vw] w-[40vw] h-[65vh] hidden md:flex items-center justify-center z-0">
+          <div className="receipt-float relative" style={{ perspective: '1000px' }}>
+            <div className="w-[22vw] bg-white rounded-[1.5rem] shadow-2xl p-[2vw] relative overflow-hidden border border-graphite/5" style={{ transformStyle: 'preserve-3d' }}>
+              <div className="scan-line absolute left-0 w-full h-[2px] bg-signal/60 shadow-[0_0_20px_rgba(126,217,87,0.5)] z-20" />
+              <div className="text-center mb-[2vh] border-b border-dashed border-graphite/20 pb-[1.5vh]">
+                <p className="font-mono text-xs text-graphite/40 uppercase tracking-wider">Carrefour Market</p>
+                <p className="font-mono text-[0.6vw] text-graphite/30 mt-1">07/04/2026 — 14:32 — Caisse #04</p>
+              </div>
+              <div className="space-y-[1vh] font-mono text-xs">
+                <div className="flex justify-between price-pop"><span className="text-graphite/70">Lait demi-écrémé 1L</span><span className="text-graphite font-medium">1,15 €</span></div>
+                <div className="flex justify-between price-pop-delay"><span className="text-graphite/70">Beurre Président 250g</span><span className="text-graphite font-medium">2,49 €</span></div>
+                <div className="flex justify-between price-pop-delay2"><span className="text-graphite/70">Pain de mie 500g</span><span className="text-graphite font-medium">1,65 €</span></div>
+                <div className="flex justify-between price-pop"><span className="text-graphite/70">Pâtes Barilla 500g</span><span className="text-graphite font-medium">1,29 €</span></div>
+                <div className="flex justify-between price-pop-delay"><span className="text-graphite/70">Oeufs x12</span><span className="text-graphite font-medium">3,45 €</span></div>
+                <div className="flex justify-between price-pop-delay2"><span className="text-graphite/70">Eau Cristaline 6x1.5L</span><span className="text-graphite font-medium">2,49 €</span></div>
+              </div>
+              <div className="mt-[2vh] pt-[1.5vh] border-t border-dashed border-graphite/20 flex justify-between font-sans">
+                <span className="font-bold text-sm">TOTAL</span>
+                <span className="font-bold text-sm">12,52 €</span>
+              </div>
+              <div className="mt-[1.5vh] bg-signal/10 rounded-xl p-[0.8vw] text-center">
+                <p className="font-sans text-xs font-bold text-signal">🧺 Basket : économisez 3,40 € chez Lidl</p>
               </div>
             </div>
-          } />
-        </motion.div>
-
-        {/* Scroll hint */}
-        <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-          animate={{ y: [0, 6, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <div className="w-5 h-8 rounded-full border border-white/20 flex items-start justify-center pt-1.5">
-            <div className="w-1 h-1.5 rounded-full bg-white/40" />
           </div>
-        </motion.div>
-      </section>
+        </div>
 
-      {/* ── RETAILER BAR ── */}
-      <section className="py-8 border-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <div className="max-w-5xl mx-auto px-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
-          <p className="text-[11px] uppercase tracking-widest text-[#4B5563] w-full text-center mb-2">Comparez dans les grandes enseignes</p>
-          {['Carrefour', 'Lidl', 'Auchan', 'Leclerc', 'Intermarché', 'Monoprix', 'Casino', 'Super U'].map((s) => (
-            <span key={s} className="text-sm font-semibold text-[#374151] select-none">{s}</span>
-          ))}
+        <div className="absolute bottom-[5vh] right-[5vw] flex items-center gap-[1vw] font-mono text-xs text-graphite/40 uppercase tracking-tight">
+          <span>Défiler</span>
+          <iconify-icon icon="solar:arrow-down-linear" className="text-lg animate-bounce" />
+        </div>
+      </header>
+
+      {/* ==================== FEATURES ==================== */}
+      <section className="py-[15vh] px-[5vw] grid grid-cols-1 md:grid-cols-3 gap-[2vw] relative z-10" id="features">
+        {/* Card 1 — Basket AI */}
+        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
+          <div className="flex justify-between items-start">
+            <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">01 // Basket AI</span>
+            <iconify-icon icon="solar:brain-linear" className="text-2xl text-signal" />
+          </div>
+          <div className="font-mono text-xs text-graphite/80 space-y-1 h-[15vh] overflow-hidden opacity-70" id="terminal-feed" />
+          <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[4vh]">
+            Lecture intelligente<br />de vos tickets
+          </h3>
+        </div>
+
+        {/* Card 2 — Base de données */}
+        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
+          <div className="flex justify-between items-start">
+            <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">02 // Base de données</span>
+            <iconify-icon icon="solar:database-linear" className="text-2xl text-signal" />
+          </div>
+          <div className="flex-1 flex items-end mb-[2vh] relative">
+            <span className="font-sans text-[5vw] leading-none tracking-tighter font-extrabold text-graphite" id="uptime-counter">0</span>
+            <span className="font-mono text-lg text-signal mb-[1vh] ml-2">produits</span>
+          </div>
+          <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite">
+            +40 000 prix<br />comparés en temps réel
+          </h3>
+        </div>
+
+        {/* Card 3 — Sécurité */}
+        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between relative overflow-hidden group border border-graphite/10 hover-trigger feature-card">
+          <div className="absolute top-0 left-0 w-full h-[2px] bg-signal shadow-[0_0_15px_rgba(126,217,87,0.8)] -translate-y-[10px] group-hover:translate-y-[50vh] transition-transform duration-[2s] ease-[cubic-bezier(0.87,0,0.13,1)] z-20" />
+          <div className="flex justify-between items-start relative z-10">
+            <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">03 // Sécurité</span>
+            <iconify-icon icon="solar:shield-keyhole-minimalistic-linear" className="text-2xl text-signal" />
+          </div>
+          <div className="absolute inset-0 bg-offwhite/60 backdrop-blur-[8px] z-10 group-hover:backdrop-blur-none transition-all duration-[2s]" />
+          <div className="relative z-0 mt-auto">
+            <div className="font-mono text-xs text-signal mb-[2vh] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 delay-500">[DONNÉES_PROTÉGÉES]</div>
+            <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite">
+              Vos données<br />restent privées
+            </h3>
+          </div>
         </div>
       </section>
 
-      {/* ── FEATURES GRID ── */}
-      <section id="features" className="max-w-7xl mx-auto px-6 py-28">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-16"
-        >
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#E07A5F] mb-4">Fonctionnalités</p>
-          <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">Tout en un.</h2>
-          <p className="text-[#6B7280] max-w-lg mx-auto text-base leading-relaxed">
-            De la photo du ticket à l&apos;économie réalisée — une seule app, six fonctionnalités essentielles.
+      {/* ==================== VISION ==================== */}
+      <section className="py-[20vh] px-[5vw] bg-graphite rounded-[3rem] mx-[2vw] my-[5vh] text-paper relative overflow-hidden" id="philosophy">
+        <div className="relative z-10 max-w-[70vw] mx-auto text-center flex flex-col items-center">
+          <p className="font-mono text-xs text-paper/40 mb-[8vh] uppercase tracking-tight border border-paper/10 px-[1.5vw] py-[0.5vh] rounded-full">Notre Vision</p>
+          <p className="font-sans text-[2vw] text-paper/50 font-light mb-[4vh] tracking-tight contrast-1">
+            Chaque semaine, des millions de Français paient plus cher que nécessaire.
           </p>
-        </motion.div>
+          <h2 className="font-sans text-[6vw] leading-[0.9] font-extrabold text-signal contrast-2 split-target-2">
+            Découvrez si votre voisin a payé son pain moins cher que vous.
+          </h2>
+        </div>
+      </section>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FEATURES.map((f, i) => (
-            <motion.div
-              key={f.label}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.07, duration: 0.4 }}
-              whileHover={{ y: -4, scale: 1.01 }}
-              className="relative rounded-2xl p-6 cursor-default group"
-              style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                transition: 'border-color 0.3s, box-shadow 0.3s',
-              }}
-            >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                style={{ background: `${f.color}15`, border: `1px solid ${f.color}30` }}
-              >
-                <f.icon className="w-5 h-5" style={{ color: f.color }} />
+      {/* ==================== COMMENT ÇA MARCHE (horizontal scroll) ==================== */}
+      <section className="h-screen w-full overflow-hidden bg-paper relative flex items-center pr-wrapper mt-[10vh]" id="protocol">
+        <div className="w-[300vw] flex h-full pr-container">
+          <div className="w-screen h-full flex flex-col justify-center px-[10vw] relative">
+            <span className="font-mono text-[15vw] text-graphite/[0.03] leading-none absolute top-[20vh] left-[5vw]">01</span>
+            <h3 className="font-sans text-[5vw] text-graphite font-extrabold tracking-tighter mt-[4vh] relative z-10">Scannez</h3>
+            <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-sm relative z-10">
+              Prenez en photo votre ticket de caisse après vos courses. Notre IA lit chaque article et chaque prix en quelques secondes.
+            </p>
+          </div>
+          <div className="w-screen h-full flex flex-col justify-center px-[10vw] relative">
+            <span className="font-mono text-[15vw] text-graphite/[0.03] leading-none absolute top-[20vh] left-[5vw]">02</span>
+            <h3 className="font-sans text-[5vw] text-graphite font-extrabold tracking-tighter mt-[4vh] relative z-10">Comparez</h3>
+            <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-sm relative z-10">
+              Basket compare instantanément vos prix avec ceux de 15 enseignes françaises. Vous voyez immédiatement où vous auriez payé moins.
+            </p>
+          </div>
+          <div className="w-screen h-full flex flex-col justify-center px-[10vw] relative">
+            <span className="font-mono text-[15vw] text-graphite/[0.03] leading-none absolute top-[20vh] left-[5vw]">03</span>
+            <h3 className="font-sans text-[5vw] text-signal font-extrabold tracking-tighter mt-[4vh] relative z-10">Économisez</h3>
+            <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-sm relative z-10">
+              La prochaine fois, faites vos courses au bon endroit. Basket vous montre le magasin le moins cher près de chez vous, article par article.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== CARTE (Topology) ==================== */}
+      <section className="py-[15vh] px-[5vw] relative z-10" id="topology">
+        <div className="mb-[8vh] flex flex-col md:flex-row md:items-end justify-between gap-[4vh]">
+          <div>
+            <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Carte des prix</span>
+            <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+              Trouvez le <span className="text-signal">moins cher</span> près de chez vous.
+            </h2>
+          </div>
+          <p className="font-mono text-xs text-graphite/60 max-w-sm">
+            15 enseignes comparées. Des milliers de magasins. Basket vous indique exactement où aller pour payer moins — article par article.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-[2vw]">
+          {/* Large Map Card */}
+          <div className="md:col-span-2 md:row-span-2 bg-offwhite rounded-[3rem] p-[3vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card overflow-hidden relative min-h-[50vh]">
+            <div className="flex justify-between items-start relative z-10">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Magasins à proximité</span>
+              <iconify-icon icon="solar:map-point-wave-linear" className="text-2xl text-signal" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none mt-[4vh]">
+              <div className="w-[120%] h-[120%] md:w-[80%] md:h-[120%] border-[1px] border-graphite/20 rounded-full absolute animate-[spin_60s_linear_infinite]" />
+              <div className="w-[80%] h-[80%] md:w-[60%] md:h-[90%] border-[1px] border-graphite/20 rounded-full absolute animate-[spin_40s_linear_infinite_reverse] border-dashed" />
+              <div className="absolute w-3 h-3 bg-signal rounded-full top-[25%] left-[35%] shadow-[0_0_12px_rgba(126,217,87,0.8)]">
+                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Lidl</span>
               </div>
-              <h3 className="font-bold text-base mb-2 text-white">{f.label}</h3>
-              <p className="text-[#6B7280] text-sm leading-relaxed">{f.desc}</p>
-            </motion.div>
+              <div className="absolute w-2.5 h-2.5 bg-orange-400 rounded-full top-[55%] left-[65%] shadow-[0_0_10px_rgba(251,146,60,0.6)]">
+                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Carrefour</span>
+              </div>
+              <div className="absolute w-2.5 h-2.5 bg-blue-400 rounded-full top-[45%] left-[25%] shadow-[0_0_10px_rgba(96,165,250,0.6)]">
+                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Leclerc</span>
+              </div>
+              <div className="absolute w-2 h-2 bg-red-400 rounded-full top-[70%] left-[45%] shadow-[0_0_10px_rgba(248,113,113,0.6)]">
+                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Auchan</span>
+              </div>
+            </div>
+            <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[30vh] relative z-10">
+              Carte interactive<br />de votre quartier
+            </h3>
+          </div>
+
+          {/* Price Comparison Card */}
+          <div className="bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card aspect-square md:aspect-auto">
+            <div className="flex justify-between items-start">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Comparaison</span>
+              <iconify-icon icon="solar:sort-by-time-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors" />
+            </div>
+            <div className="flex-1 flex flex-col justify-center gap-2 py-[2vh]">
+              <div className="flex justify-between items-center font-mono text-xs"><span className="text-graphite/60">Lait 1L</span><span className="text-signal font-bold">0,85 €</span></div>
+              <div className="w-full h-[2px] bg-graphite/10 relative rounded-full">
+                <div className="absolute top-0 left-0 h-full w-[40%] bg-signal rounded-full" />
+              </div>
+              <div className="flex justify-between items-center font-mono text-xs"><span className="text-graphite/40">Aldi</span><span className="text-graphite/40">Monoprix — 1,35 €</span></div>
+            </div>
+            <h3 className="font-sans text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
+              Prix le<br />plus bas
+            </h3>
+          </div>
+
+          {/* Savings Alert Card */}
+          <div className="bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card aspect-square md:aspect-auto">
+            <div className="flex justify-between items-start">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Alerte</span>
+              <iconify-icon icon="solar:bell-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors" />
+            </div>
+            <div className="flex items-center justify-center flex-1 py-[4vh]">
+              <div className="text-center">
+                <p className="font-sans text-[3vw] font-extrabold text-signal">-30%</p>
+                <p className="font-mono text-xs text-graphite/50 mt-1">Beurre chez Lidl</p>
+              </div>
+            </div>
+            <h3 className="font-sans text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
+              Alertes<br />prix bas
+            </h3>
+          </div>
+
+          {/* Wide Summary Card */}
+          <div className="md:col-span-2 bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card min-h-[25vh]">
+            <div className="flex justify-between items-start mb-[4vh]">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Économies du mois</span>
+              <iconify-icon icon="solar:wallet-money-linear" className="text-2xl text-signal" />
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mb-[1vh]">Rapport hebdomadaire</h3>
+                <p className="font-mono text-xs text-graphite/50">Recevez chaque dimanche un résumé de vos économies possibles.</p>
+              </div>
+              <div className="flex items-end gap-[0.5vw] h-[6vh]">
+                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[30%] rounded-t-sm group-hover:h-[60%] transition-all duration-300" />
+                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[50%] rounded-t-sm group-hover:h-[40%] transition-all duration-300 delay-75" />
+                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[80%] rounded-t-sm group-hover:h-[90%] transition-all duration-300 delay-150" />
+                <div className="w-[0.8vw] min-w-[0.4rem] bg-signal h-[40%] rounded-t-sm group-hover:h-[100%] transition-all duration-300 delay-200 shadow-[0_0_10px_rgba(126,217,87,0.6)]" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== FONCTIONNEMENT (Accordion) ==================== */}
+      <section className="py-[15vh] px-[5vw] relative z-10 bg-graphite rounded-[3rem] mx-[2vw] my-[5vh] text-paper overflow-hidden" id="parameters">
+        <div className="relative z-10 max-w-[80vw] mx-auto">
+          <div className="mb-[10vh]">
+            <span className="font-mono text-xs text-paper/40 uppercase tracking-tight border border-paper/10 px-[1.5vw] py-[0.5vh] rounded-full">Comment Basket fonctionne</span>
+          </div>
+          <div className="flex flex-col border-t border-paper/10">
+            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Reconnaissance IA</h3>
+              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+                <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Notre intelligence artificielle lit votre ticket en quelques secondes et identifie chaque produit automatiquement.</p>
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+              </div>
+            </div>
+            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Comparaison instantanée</h3>
+              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+                <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Chaque produit est comparé en temps réel avec les prix de 15 enseignes françaises dans votre zone.</p>
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+              </div>
+            </div>
+            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Recommandations personnalisées</h3>
+              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+                <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Basket apprend vos habitudes et vous suggère le meilleur magasin pour votre liste de courses chaque semaine.</p>
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== STACK ARCHITECTURE ==================== */}
+      <section className="relative z-10 px-[5vw] py-[15vh] min-h-[200vh]" id="stacking-cards-section">
+        <div className="mb-[8vh] relative z-20">
+          <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Sous le capot</span>
+          <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+            Comment <span className="text-signal">Basket</span> fonctionne.
+          </h2>
+        </div>
+        <div className="relative w-full" id="cards-wrapper">
+          {/* Card 1 */}
+          <div className="sticky top-[15vh] w-full h-[70vh] bg-offwhite rounded-[3rem] border border-graphite/10 p-[4vw] flex flex-col justify-between stack-card stack-shadow overflow-hidden group">
+            <div className="flex justify-between items-start relative z-10">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Étape 01</span>
+              <iconify-icon icon="solar:camera-linear" className="text-3xl text-signal" />
+            </div>
+            <div className="relative z-10">
+              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-graphite leading-none">Capture</h3>
+              <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-md">Photographiez votre ticket de caisse. Notre OCR intelligent extrait chaque article, prix et quantité en quelques secondes — même les tickets froissés.</p>
+            </div>
+          </div>
+          {/* Card 2 */}
+          <div className="sticky top-[20vh] w-full h-[70vh] bg-[#2A2A2A] rounded-[3rem] border border-graphite/20 p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
+            <div className="flex justify-between items-start relative z-10">
+              <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Étape 02</span>
+              <iconify-icon icon="solar:chart-2-linear" className="text-3xl text-signal" />
+            </div>
+            <div className="relative z-10">
+              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-paper leading-none">Analyse</h3>
+              <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Basket compare vos prix avec notre base de plus de 33 000 références dans 15 enseignes. L&apos;algorithme de matching intelligent identifie les meilleurs prix même quand les noms diffèrent.</p>
+            </div>
+          </div>
+          {/* Card 3 */}
+          <div className="sticky top-[25vh] w-full h-[70vh] bg-graphite rounded-[3rem] border border-graphite/40 p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
+            <div className="flex justify-between items-start relative z-10">
+              <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Étape 03</span>
+              <iconify-icon icon="solar:wallet-money-linear" className="text-3xl text-signal" />
+            </div>
+            <div className="relative z-10">
+              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-signal leading-none">Économies</h3>
+              <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Vous recevez votre rapport personnalisé : combien vous auriez économisé, dans quel magasin, article par article. Partagez-le sur WhatsApp et faites économiser votre entourage.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== MARQUEE ==================== */}
+      <section className="py-[10vh] overflow-hidden relative z-10 bg-signal text-graphite flex items-center hover-trigger group" id="marquee-section">
+        <div className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-[1.5s] ease-[cubic-bezier(0.87,0,0.13,1)] z-0" />
+        <div className="marquee-container relative z-10 pointer-events-none" id="marquee-content">
+          <div className="flex items-center gap-[4vw] px-[2vw] whitespace-nowrap">
+            <h2 className="font-sans text-[10vw] leading-none font-extrabold tracking-tighter group-hover:text-signal transition-colors duration-700">SCANNEZ</h2>
+            <span className="font-sans text-[6vw] font-medium opacity-30 group-hover:text-signal group-hover:opacity-100 transition-colors duration-700">//</span>
+            <h2 className="font-sans text-[10vw] leading-none font-extrabold tracking-tighter group-hover:text-signal transition-colors duration-700">COMPAREZ</h2>
+            <span className="font-sans text-[6vw] font-medium opacity-30 group-hover:text-signal group-hover:opacity-100 transition-colors duration-700">//</span>
+            <h2 className="font-sans text-[10vw] leading-none font-extrabold tracking-tighter group-hover:text-signal transition-colors duration-700">ÉCONOMISEZ</h2>
+            <span className="font-sans text-[6vw] font-medium opacity-30 group-hover:text-signal group-hover:opacity-100 transition-colors duration-700">//</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== ANALYTICS ==================== */}
+      <section className="py-[15vh] px-[5vw] relative z-10" id="matrix-section">
+        <div className="mb-[8vh]">
+          <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Suivi personnel</span>
+          <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+            Vos <span className="text-signal">analyses.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-[2vw]">
+          {/* Chart card */}
+          <div className="md:col-span-2 bg-offwhite rounded-[3rem] p-[3vw] h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item overflow-hidden relative group hover-trigger">
+            <div className="flex justify-between items-start relative z-10">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Économies hebdomadaires</span>
+              <iconify-icon icon="solar:chart-square-linear" className="text-2xl text-signal" />
+            </div>
+            <div className="absolute inset-0 flex items-end justify-center pointer-events-none p-[2vw] mt-[5vh]">
+              <svg viewBox="0 0 100 100" className="w-full h-[80%] overflow-visible" preserveAspectRatio="none">
+                <line x1="0" y1="20" x2="100" y2="20" stroke="#111111" strokeOpacity="0.05" strokeWidth="0.5" />
+                <line x1="0" y1="50" x2="100" y2="50" stroke="#111111" strokeOpacity="0.05" strokeWidth="0.5" />
+                <line x1="0" y1="80" x2="100" y2="80" stroke="#111111" strokeOpacity="0.05" strokeWidth="0.5" />
+                <path d="M0,90 C15,85 25,70 40,60 C55,50 65,30 80,20 C90,14 95,10 100,5" fill="none" stroke="#111111" strokeWidth="0.5" strokeDasharray="2 4" className="opacity-20" />
+                <path d="M0,90 C15,85 25,70 40,60 C55,50 65,30 80,20 C90,14 95,10 100,5" fill="none" stroke="#7ed957" strokeWidth="1.5" id="animated-line" />
+              </svg>
+            </div>
+            <div className="relative z-10 mt-auto flex justify-between items-end">
+              <h3 className="font-sans text-[3vw] tracking-tighter font-bold text-graphite leading-none">Rapport<br />de la semaine</h3>
+              <div className="text-right">
+                <span className="block font-mono text-xs text-graphite/40">Envoyé chaque dimanche</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Circle card */}
+          <div className="bg-offwhite rounded-[3rem] p-[3vw] h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item group hover-trigger">
+            <div className="flex justify-between items-start">
+              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Ce mois-ci</span>
+              <iconify-icon icon="solar:pie-chart-2-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors duration-500" />
+            </div>
+            <div className="flex items-center justify-center flex-1 relative my-[4vh]">
+              <svg className="w-[15vw] h-[15vw] min-w-[150px] min-h-[150px] -rotate-90 group-hover:scale-110 transition-transform duration-700 ease-out" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#111111" strokeWidth="1" strokeOpacity="0.1" />
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#7ed957" strokeWidth="2" strokeDasharray="283" strokeDashoffset="283" id="entropy-circle" strokeLinecap="round" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center flex-col">
+                <span className="font-sans text-[4vw] tracking-tighter font-extrabold text-graphite leading-none" id="entropy-value">0</span>
+                <span className="font-mono text-xs text-signal tracking-tight mt-[1vh]">€ économisés</span>
+              </div>
+            </div>
+            <div>
+              <h3 className="font-sans text-[2vw] tracking-tighter font-bold text-graphite leading-none">Bilan<br />mensuel</h3>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== ENSEIGNES ==================== */}
+      <section className="py-[15vh] px-[5vw] relative z-10 bg-offwhite rounded-[3rem] mx-[2vw] my-[5vh] border border-graphite/10" id="ecosystem">
+        <div className="mb-[8vh] text-center max-w-[50vw] mx-auto">
+          <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Enseignes compatibles</span>
+          <h2 className="font-sans text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+            Tous vos <span className="text-signal">magasins.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-graphite/10 border border-graphite/10 rounded-[2rem] overflow-hidden">
+          {['E.Leclerc', 'Carrefour', 'Intermarché', 'Système U', 'Auchan', 'Lidl', 'Monoprix', 'Aldi'].map((name) => (
+            <div key={name} className="bg-offwhite p-[4vw] flex items-center justify-center group hover-trigger eco-item">
+              <span className="font-sans font-bold text-lg text-graphite/40 group-hover:text-signal group-hover:scale-110 transition-all duration-500">{name}</span>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* ── FEATURE DEEP DIVES ── */}
-      {/* Deep-dive 1: scan */}
-      <section id="how" className="py-20 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#E07A5F] mb-4">Étape 1</p>
-              <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
-                Scannez votre<br />ticket en<br /><span className="gradient-text">5 secondes.</span>
-              </h2>
-              <p className="text-[#6B7280] text-base leading-relaxed mb-8">
-                Notre IA reconnaît automatiquement chaque article sur votre ticket — même les abréviations illisibles des caisses de supermarché. Pas de saisie manuelle. Jamais.
-              </p>
-              <ul className="space-y-3">
-                {["Reconnaissance IA ultra-précise", "Fonctionne avec tous les supermarchés français", "Résultats en moins de 10 secondes"].map((t) => (
-                  <li key={t} className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(0,208,156,0.15)' }}>
-                      <Check className="w-3 h-3" style={{ color: '#00D09C' }} />
-                    </div>
-                    <span className="text-sm text-[#9CA3AF]">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="flex justify-center lg:justify-end"
-            >
-              <PhoneMockup screen={
-                <div className="w-full h-full flex flex-col items-center justify-center gap-3" style={{ background: '#0A0A0A' }}>
-                  <motion.div
-                    className="w-36 h-36 rounded-2xl flex items-center justify-center"
-                    style={{ background: '#E07A5F', boxShadow: '0 0 0 0 rgba(224,122,95,0.4)' }}
-                    animate={{ boxShadow: ['0 0 0 0 rgba(224,122,95,0.4)', '0 0 0 20px rgba(224,122,95,0)', '0 0 0 0 rgba(224,122,95,0)'] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <Receipt className="w-16 h-16 text-white" />
-                  </motion.div>
-                  <p className="text-[11px] text-white font-semibold">Analyser ce ticket</p>
-                  <div className="flex gap-1">
-                    {[...Array(3)].map((_, i) => (
-                      <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-[#E07A5F]"
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }} />
-                    ))}
-                  </div>
-                </div>
-              } />
-            </motion.div>
-          </div>
-        </div>
+      {/* ==================== CTA ==================== */}
+      <section className="py-[20vh] px-[5vw] relative z-10 flex flex-col items-center justify-center text-center overflow-hidden" id="cta">
+        <h2 className="font-sans text-[7vw] leading-[0.9] text-graphite font-extrabold mb-[4vh] split-target-cta">
+          Prêt à payer <span className="text-signal">moins</span> ?
+        </h2>
+        <p className="font-mono text-sm text-graphite/50 mb-[6vh] max-w-md">Rejoignez des milliers de Français qui économisent chaque semaine grâce à Basket.</p>
+        <a href="/login">
+          <button className="relative overflow-hidden rounded-[2rem] bg-signal text-graphite px-[3vw] py-[2vh] min-w-[200px] font-sans text-sm font-bold uppercase tracking-tight group hover:scale-[1.05] transition-transform duration-500 magnetic-btn flex items-center justify-center gap-[1vw]">
+            <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
+            <span className="relative z-10 group-hover:text-signal transition-colors duration-500 flex items-center gap-[1vw]">
+              Commencer gratuitement
+              <iconify-icon icon="solar:arrow-right-linear" className="text-lg" />
+            </span>
+          </button>
+        </a>
       </section>
 
-      {/* Deep-dive 2: compare */}
-      <section className="py-20 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="flex justify-center lg:justify-start order-2 lg:order-1"
-            >
-              <PhoneMockup screen={
-                <div className="w-full h-full" style={{ background: '#0A0A0A', padding: '32px 12px 12px' }}>
-                  <p className="text-[9px] text-[#4B5563] uppercase tracking-wider mb-3">Comparaison des prix</p>
-                  {[
-                    { name: 'COCA COLA 1.5L', you: 2.15, best: 1.49, store: 'Lidl' },
-                    { name: 'NUTELLA 400G', you: 4.99, best: 3.79, store: 'Auchan' },
-                    { name: 'LAIT DEMI ECR.', you: 1.05, best: 0.79, store: 'Lidl' },
-                  ].map((item, i) => (
-                    <motion.div key={i}
-                      initial={{ opacity: 0, x: -10 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.1 + 0.3 }}
-                      className="mb-2 rounded-xl px-3 py-2.5"
-                      style={{ background: 'rgba(0,208,156,0.08)', border: '1px solid rgba(0,208,156,0.2)' }}>
-                      <p className="text-[9px] text-white font-semibold">{item.name}</p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-[8px] text-[#4B5563] line-through">€{item.you.toFixed(2)}</span>
-                        <span className="text-[8px] font-bold" style={{ color: '#00D09C' }}>€{item.best.toFixed(2)} chez {item.store}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                  <div className="mt-4 rounded-xl px-3 py-2" style={{ background: 'rgba(224,122,95,0.1)', border: '1px solid rgba(224,122,95,0.2)' }}>
-                    <p className="text-[8px] text-[#E07A5F] font-semibold">💡 Meilleur magasin</p>
-                    <p className="text-[10px] text-white font-bold mt-0.5">Lidl · économisez €3.12</p>
-                  </div>
-                </div>
-              } />
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="order-1 lg:order-2"
-            >
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#7C3AED] mb-4">Étape 2</p>
-              <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
-                Découvrez ce que<br />paient vos<br /><span style={{ background: 'linear-gradient(135deg, #7C3AED, #0EA5E9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>voisins.</span>
-              </h2>
-              <p className="text-[#6B7280] text-base leading-relaxed mb-8">
-                Prix en temps réel, géolocalisés dans votre département. Basket ne compare pas des prix nationaux abstraits — il cherche ce que les gens paient vraiment près de chez vous.
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { n: '15', label: 'enseignes comparées' },
-                  { n: '33K+', label: 'prix dans la base' },
-                  { n: '€18', label: 'économies/semaine en moy.' },
-                  { n: '< 10s', label: 'pour avoir vos résultats' },
-                ].map((s) => (
-                  <div key={s.n} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                    <p className="text-2xl font-extrabold text-white">{s.n}</p>
-                    <p className="text-xs text-[#6B7280] mt-0.5">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
+      {/* ==================== FOOTER ==================== */}
+      <footer className="bg-graphite text-paper rounded-t-[4rem] mt-[5vh] pt-[15vh] pb-[5vh] px-[5vw] relative overflow-hidden">
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="footerGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E8E4DD" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#footerGrid)" />
+          </svg>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-[10vw] relative z-10">
+          <div>
+            <h2 className="font-sans text-[6vw] font-extrabold tracking-tighter uppercase leading-none text-paper">🧺 Basket</h2>
+            <p className="font-mono text-xs text-paper/40 mt-[3vh] max-w-xs">Le chemin le plus court vers les économies. Scannez, comparez, économisez — chaque semaine.</p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-[8vw] mt-[4vh] md:mt-0">
+            <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
+              <li><a href="/login" className="hover:text-signal transition-colors hover-trigger">Créer un compte</a></li>
+              <li><a href="#features" className="hover:text-signal transition-colors hover-trigger">Basket AI</a></li>
+              <li><a href="#protocol" className="hover:text-signal transition-colors hover-trigger">Comment ça marche</a></li>
+            </ul>
+            <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
+              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</a></li>
+              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</a></li>
+              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">Contact</a></li>
+            </ul>
           </div>
         </div>
-      </section>
-
-      {/* Deep-dive 3: alerts */}
-      <section className="py-20 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#10B981] mb-4">Étape 3</p>
-              <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
-                Ne ratez plus<br />jamais une<br /><span style={{ background: 'linear-gradient(135deg, #10B981, #0EA5E9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>promotion.</span>
-              </h2>
-              <p className="text-[#6B7280] text-base leading-relaxed mb-8">
-                Surveillez vos produits préférés. Dès que Basket détecte une baisse de prix de 5% ou plus, vous recevez une alerte. Comme un ami qui fait les courses et vous prévient des bonnes affaires.
-              </p>
-              <ul className="space-y-3">
-                {["Alertes dès -5% sur vos produits surveillés", "Notification push ou dans l'app", "Historique des baisses de prix"].map((t) => (
-                  <li key={t} className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(16,185,129,0.15)' }}>
-                      <Bell className="w-2.5 h-2.5" style={{ color: '#10B981' }} />
-                    </div>
-                    <span className="text-sm text-[#9CA3AF]">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="flex justify-center lg:justify-end"
-            >
-              <PhoneMockup screen={
-                <div className="w-full h-full" style={{ background: '#0A0A0A', padding: '32px 12px 12px' }}>
-                  <p className="text-[9px] text-[#4B5563] uppercase tracking-wider mb-3">Alertes prix</p>
-                  {[
-                    { item: 'Nutella 400g', drop: '-€1.20', store: 'Auchan', time: 'il y a 2h' },
-                    { item: 'Coca Cola 6x', drop: '-€0.89', store: 'Lidl', time: 'il y a 5h' },
-                    { item: 'Camembert', drop: '-€0.45', store: 'Carrefour', time: 'hier' },
-                  ].map((n, i) => (
-                    <motion.div key={i}
-                      initial={{ opacity: 0, y: 8 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1 + 0.2 }}
-                      viewport={{ once: true }}
-                      className="mb-2 flex items-center gap-3 rounded-xl px-3 py-2.5"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(16,185,129,0.15)' }}>
-                        <TrendingDown className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[9px] font-semibold text-white truncate">{n.item}</p>
-                        <p className="text-[8px] text-[#6B7280]">{n.store} · {n.time}</p>
-                      </div>
-                      <span className="text-[9px] font-bold flex-shrink-0" style={{ color: '#10B981' }}>{n.drop}</span>
-                    </motion.div>
-                  ))}
-                </div>
-              } />
-            </motion.div>
+        <div className="mt-[20vh] flex justify-between items-end border-t border-paper/10 pt-[5vh] relative z-10">
+          <div className="flex items-center gap-[1vw]">
+            <div className="w-[8px] h-[8px] rounded-full bg-signal animate-pulse" />
+            <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Fait avec soin en France 🇫🇷</span>
           </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section className="py-28 relative">
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(124,58,237,0.05) 50%, transparent 100%)' }} />
-        <div className="max-w-4xl mx-auto px-6 relative">
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="text-center mb-16">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#7C3AED] mb-4">En 3 étapes</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">Démarrez en moins<br />d&apos;une minute.</h2>
-          </motion.div>
-          <div className="space-y-6">
-            {STEPS.map((s, i) => (
-              <motion.div key={s.n}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.12 }}
-                className="flex gap-5 items-start rounded-2xl p-6"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-extrabold"
-                  style={{ background: 'rgba(224,122,95,0.15)', color: '#E07A5F', border: '1px solid rgba(224,122,95,0.25)' }}>
-                  {s.n}
-                </div>
-                <div>
-                  <h3 className="font-bold text-base mb-2 text-white">{s.title}</h3>
-                  <p className="text-[#6B7280] text-sm leading-relaxed">{s.desc}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── STATS ── */}
-      <section ref={statsRef} className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(224,122,95,0.08) 0%, rgba(124,58,237,0.08) 100%)' }} />
-        <div className="max-w-6xl mx-auto px-6 relative">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { value: s1.toLocaleString('fr-FR'), suffix: '+', label: 'prix dans la base' },
-              { value: `€${s2}`, suffix: '', label: 'économisés/semaine en moy.' },
-              { value: s3, suffix: '', label: 'enseignes comparées' },
-              { value: s4.toLocaleString('fr-FR'), suffix: '+', label: 'produits référencés' },
-            ].map((s, i) => (
-              <motion.div key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                className="text-center">
-                <p className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight">
-                  {s.value}{s.suffix}
-                </p>
-                <p className="text-sm text-[#6B7280] mt-2">{s.label}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ── */}
-      <section id="reviews" className="py-28">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-14">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#E07A5F] mb-4">Avis utilisateurs</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">Ils économisent déjà.</h2>
-            <div className="flex items-center justify-center gap-2 mt-3">
-              <div className="flex gap-0.5">{[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-[#E07A5F] text-[#E07A5F]" />)}</div>
-              <span className="text-sm text-[#6B7280]">4.9/5 · Plus de 2,000 avis</span>
-            </div>
-          </motion.div>
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 -mx-6 px-6">
-            {TESTIMONIALS.map((t, i) => (
-              <motion.div key={i}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                whileHover={{ y: -4 }}
-                className="rounded-2xl p-5 min-w-[280px] flex-shrink-0 flex flex-col justify-between"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div>
-                  <div className="flex gap-0.5 mb-3">
-                    {[...Array(t.stars)].map((_, j) => <Star key={j} className="w-3.5 h-3.5 fill-[#E07A5F] text-[#E07A5F]" />)}
-                  </div>
-                  <p className="text-sm text-white/80 leading-relaxed">&ldquo;{t.text}&rdquo;</p>
-                </div>
-                <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                    style={{ background: `hsl(${i * 60}, 60%, 45%)` }}>
-                    {t.name[0]}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-white">{t.name}</p>
-                    <p className="text-[10px] text-[#6B7280] flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{t.city}</p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── TRUST / SECURITY ── */}
-      <section className="py-24 border-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <div className="max-w-5xl mx-auto px-6">
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-14">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#6B7280] mb-4">Confiance & sécurité</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight">Vos données vous<br />appartiennent.</h2>
-          </motion.div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {TRUSTS.map((t, i) => (
-              <motion.div key={i}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="rounded-2xl p-6 text-center"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                  style={{ background: 'rgba(0,208,156,0.1)', border: '1px solid rgba(0,208,156,0.2)' }}>
-                  <t.icon className="w-6 h-6" style={{ color: '#00D09C' }} />
-                </div>
-                <h3 className="font-bold text-sm text-white mb-2">{t.title}</h3>
-                <p className="text-xs text-[#6B7280] leading-relaxed">{t.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── FINAL CTA ── */}
-      <section className="py-32">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="relative rounded-3xl overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, rgba(224,122,95,0.15) 0%, rgba(124,58,237,0.12) 100%)', border: '1px solid rgba(224,122,95,0.2)', padding: 'clamp(40px, 8vw, 80px)' }}
-          >
-            <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-30"
-              style={{ background: 'radial-gradient(circle, #E07A5F 0%, transparent 70%)', transform: 'translate(30%, -30%)' }} />
-            <div className="relative">
-              <h2 className="font-extrabold tracking-tight mb-4" style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)' }}>
-                Prêt à payer<br />moins cher ?
-              </h2>
-              <p className="text-[#6B7280] mb-10 text-base">Gratuit. Sans engagement. Sans CB.</p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <a href="/login">
-                  <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                    className="h-14 px-8 rounded-2xl text-base font-bold text-white flex items-center gap-2 mx-auto sm:mx-0"
-                    style={{ background: '#E07A5F', boxShadow: '0 8px 32px rgba(224,122,95,0.4)' }}>
-                    Commencer gratuitement <ArrowRight className="w-5 h-5" />
-                  </motion.button>
-                </a>
-                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  className="h-14 px-8 rounded-2xl text-base font-medium text-[#9CA3AF] border border-white/10 hover:border-white/20 transition-colors">
-                  Voir une démo
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer id="about" className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="max-w-7xl mx-auto px-6 py-16">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
-            {/* Brand */}
-            <div className="col-span-2 md:col-span-2">
-              <div className="flex items-center gap-2 mb-4">
-                <ShoppingBasket className="w-5 h-5 text-[#E07A5F]" strokeWidth={2.5} />
-                <span className="font-bold">Basket</span>
-              </div>
-              <p className="text-[#6B7280] text-sm leading-relaxed max-w-xs">
-                L&apos;application qui compare les prix de vos courses dans les supermarchés autour de vous — gratuitement.
-              </p>
-            </div>
-            {/* Links */}
-            {[
-              { title: 'Produit', links: ['Fonctionnalités', 'Comment ça marche', 'Tarifs', 'Nouveautés'] },
-              { title: 'Entreprise', links: ['À propos', 'Blog', 'Carrières', 'Presse'] },
-              { title: 'Légal', links: ['Confidentialité', 'CGU', 'Cookies', 'Contact'] },
-            ].map((col) => (
-              <div key={col.title}>
-                <p className="text-xs font-semibold text-white uppercase tracking-widest mb-4">{col.title}</p>
-                <ul className="space-y-2.5">
-                  {col.links.map((l) => (
-                    <li key={l}><a href="#" className="text-sm text-[#6B7280] hover:text-white transition-colors">{l}</a></li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <p className="text-xs text-[#4B5563]">© 2026 Basket. Tous droits réservés.</p>
-            <p className="text-xs text-[#4B5563]">Fait avec ❤️ en France 🇫🇷</p>
-          </div>
+          <span className="font-mono text-xs text-paper/30">© 2026 Basket</span>
         </div>
       </footer>
+
     </div>
   )
 }
