@@ -344,12 +344,17 @@ export async function POST(request: NextRequest) {
   console.log(`[sync-community-prices] ${postsProcessed} posts → ${rows.length} items`)
 
   let inserted = 0
+  const insertErrors: string[] = []
   for (let i = 0; i < rows.length; i += 100) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.from('community_prices') as any)
       .insert(rows.slice(i, i + 100))
-    if (error) console.error('[sync-community-prices] insert error:', error.message)
-    else inserted += Math.min(100, rows.length - i)
+    if (error) {
+      console.error('[sync-community-prices] insert error:', error.message)
+      if (!insertErrors.includes(error.message)) insertErrors.push(error.message)
+    } else {
+      inserted += Math.min(100, rows.length - i)
+    }
   }
 
   return NextResponse.json({
@@ -357,6 +362,7 @@ export async function POST(request: NextRequest) {
     posts_processed: postsProcessed,
     items_extracted: rows.length,
     inserted,
+    insert_errors: insertErrors,
     elapsed_s: Math.round((Date.now() - startedAt) / 1000),
   })
 }
