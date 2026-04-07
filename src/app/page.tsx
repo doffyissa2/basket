@@ -119,30 +119,35 @@ export default function HomePage() {
         })
       }
 
-      // ── Text splitter ──────────────────────────────────────────────────
+      // ── Text splitter (plain-text only — never pass elements with HTML inside) ──
       function splitText(selector: string) {
         document.querySelectorAll(selector).forEach((el: Element) => {
-          const html  = (el as HTMLElement).innerHTML
-          const words = html.split(' ')
-          ;(el as HTMLElement).innerHTML = ''
+          const htmlEl = el as HTMLElement
+          // Skip elements that contain child HTML tags — splitting by space
+          // would break partial tag tokens (e.g. `class=` becomes raw text)
+          if (/<[a-z]/i.test(htmlEl.innerHTML)) return
+          const words = (htmlEl.textContent || '').trim().split(' ')
+          htmlEl.innerHTML = ''
           words.forEach((word: string) => {
-            if (word.includes('<span')) { (el as HTMLElement).innerHTML += ' ' + word + ' '; return }
             const wd = document.createElement('div')
             wd.className = 'inline-block overflow-hidden mr-[1.5vw] last:mr-0 align-top'
             word.split('').forEach((char: string) => {
               const sp = document.createElement('span')
               sp.className = 'char-span inline-block translate-y-[110%] opacity-0'
-              sp.innerHTML = char === ' ' ? '&nbsp;' : char
+              sp.textContent = char
               wd.appendChild(sp)
             })
-            ;(el as HTMLElement).appendChild(wd)
+            htmlEl.appendChild(wd)
           })
         })
       }
 
-      // Hero text animation
+      // Hero text animations
       splitText('.split-target')
+      // Line 1 — char stagger
       gsap.to('.split-target .char-span', { y: '0%', opacity: 1, duration: 1.2, stagger: 0.02, ease: 'power3.out', delay: 0.3 })
+      // Line 2 — whole line slide-up (contains a coloured <span>)
+      gsap.fromTo('.hero-line-2', { y: '60px', opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: 'power3.out', delay: 0.7 })
 
       // Navbar hide/show on scroll
       let lastScroll = 0
@@ -319,29 +324,43 @@ export default function HomePage() {
       <div id="custom-cursor" className="fixed top-0 left-0 w-5 h-5 bg-white rounded-full pointer-events-none z-[200] mix-blend-difference transition-[width,height] duration-200 ease-out will-change-transform" style={{ backgroundColor: 'white' }} />
 
       {/* ==================== NAVBAR ==================== */}
-      <nav className="fixed top-[4vh] left-1/2 -translate-x-1/2 z-40 bg-offwhite/80 backdrop-blur-xl border border-graphite/10 rounded-[2rem] px-[1.5vw] py-[1vh] flex items-center justify-between gap-[4vw] hover-trigger" id="navbar">
-        <div className="font-sans font-bold tracking-tight text-base flex items-center gap-2"><img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />Basket</div>
-        <div className="hidden md:flex items-center gap-[2vw] font-mono text-xs text-graphite/60">
-          <a href="#features" className="hover:text-signal transition-colors">Basket AI</a>
-          <a href="#philosophy" className="hover:text-signal transition-colors">Vision</a>
-          <a href="#protocol" className="hover:text-signal transition-colors">Comment ça marche</a>
-          <a href="#topology" className="hover:text-signal transition-colors">Carte</a>
+      <nav
+        id="navbar"
+        className="fixed top-0 left-0 right-0 z-40 hover-trigger"
+        style={{ background: 'rgba(245,243,238,0.92)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(17,17,17,0.08)' }}
+      >
+        <div className="max-w-[1400px] mx-auto px-8 h-16 flex items-center justify-between gap-8">
+          {/* Logo */}
+          <a href="/" className="flex items-center gap-2.5 flex-shrink-0">
+            <img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />
+            <span className="font-sans font-bold tracking-tight text-graphite text-sm">Basket</span>
+          </a>
+
+          {/* Nav links */}
+          <div className="hidden md:flex items-center gap-8 font-mono text-xs text-graphite/50">
+            <a href="#features" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</a>
+            <a href="#philosophy" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</a>
+            <a href="#protocol" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</a>
+            <a href="#topology" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</a>
+          </div>
+
+          {/* CTA */}
+          <a href="/login" className="flex-shrink-0">
+            <button className="relative overflow-hidden rounded-xl bg-signal text-graphite px-5 py-2 font-sans text-xs font-semibold uppercase tracking-wider group transition-transform duration-300 hover:scale-[1.03] magnetic-btn">
+              <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
+              <span className="relative z-10 group-hover:text-signal transition-colors duration-500">Se connecter</span>
+            </button>
+          </a>
         </div>
-        <a href="/login">
-          <button className="relative overflow-hidden rounded-[1.5rem] bg-signal text-graphite px-[1.5vw] py-[1vh] font-sans text-xs font-semibold uppercase tracking-tight group hover:scale-[1.03] transition-transform duration-500 magnetic-btn">
-            <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
-            <span className="relative z-10 group-hover:text-signal transition-colors duration-500">Se connecter</span>
-          </button>
-        </a>
       </nav>
 
       {/* ==================== HERO ==================== */}
-      <header className="h-[100dvh] flex flex-col justify-end pb-[10vh] px-[5vw] relative overflow-hidden" id="hero">
+      <header className="h-[100dvh] flex flex-col justify-end pb-[10vh] px-[5vw] relative overflow-hidden pt-16" id="hero">
         <div className="z-10 w-full max-w-[80vw]">
           <h1 className="font-sans text-[8vw] leading-[0.9] tracking-tighter text-graphite font-extrabold split-target">
             Le chemin le plus court
           </h1>
-          <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold split-target mt-[1vh]">
+          <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold hero-line-2 mt-[1vh]">
             vers les <span className="text-signal">économies.</span>
           </h1>
         </div>
