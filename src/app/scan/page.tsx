@@ -13,6 +13,8 @@ interface ParsedItem {
   name: string
   price: number
   quantity: number
+  is_promo: boolean
+  is_private_label: boolean
 }
 
 interface ParsedReceipt {
@@ -205,14 +207,20 @@ export default function ScanPage() {
 
       await supabase.from('price_items').insert(
         parsed.items.map((item) => ({
-          receipt_id: receiptRow.id, user_id: user.id, item_name: item.name,
-          item_name_normalised: item.name.toLowerCase().trim(), quantity: item.quantity,
-          unit_price: item.price, total_price: item.price * item.quantity,
+          receipt_id: receiptRow.id,
+          user_id: user.id,
+          item_name: item.name,
+          item_name_normalised: item.name.toLowerCase().trim(),
+          quantity: item.quantity,
+          unit_price: item.price,
+          total_price: item.price * item.quantity,
           store_name: storeChain,
           store_chain: storeChain,
           postcode: postcode || null,
           latitude: userCoords?.lat ?? null,
           longitude: userCoords?.lon ?? null,
+          is_promo: item.is_promo ?? false,
+          is_private_label: item.is_private_label ?? false,
         }))
       )
 

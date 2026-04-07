@@ -46,20 +46,31 @@ Format attendu :
     {
       "name": "Nom du produit",
       "price": 2.49,
-      "quantity": 1
+      "quantity": 1,
+      "is_promo": false,
+      "is_private_label": false
     }
   ],
   "total": 45.67
 }
 
-Règles :
+Règles générales :
 - Extrais le nom du magasin depuis l'en-tête du ticket
 - Pour chaque article, donne le nom lisible, le prix unitaire et la quantité
 - Si la quantité n'est pas visible, mets 1
 - Le prix doit être un nombre décimal (ex: 2.49 pas "2,49€")
 - Le total doit correspondre au montant total du ticket
 - Si tu ne peux pas lire certaines parties, fais de ton mieux avec ce qui est lisible
-- Ignore les lignes de TVA, les remises en pourcentage, et les informations de paiement`,
+- Ignore les lignes de TVA et les informations de paiement
+
+Règles pour is_promo :
+- Mets true si l'article montre un indicateur promotionnel : PROMO, REMISE, FIDÉLITÉ, FIDELITE, -XX%, LOT DE, OFFRE, SOLDE, BON PRIX, PRIX CHOC, ECO, SURGELÉ PROMO, ou si le prix est barré et remplacé
+- Mets false sinon
+
+Règles pour is_private_label :
+- Mets true si l'article est une marque de distributeur (MDD) : Marque Repère, Reflets de France, Casino Bio, Casino, U Bio, U, Auchan, Top Budget, Eco+, Monoprix Gourmet, Carrefour Bio, Carrefour, Leclerc, Jean Bon, Les Tilleuls, Pouce, ou toute marque clairement liée au magasin
+- Mets false si c'est une marque nationale (Nutella, Coca-Cola, Président, Danone, etc.)
+- En cas de doute, mets false`,
               },
             ],
           },
@@ -78,7 +89,6 @@ Règles :
 
     // Clean and parse JSON response
     let cleaned = textContent.trim()
-    // Remove markdown code fences if present
     cleaned = cleaned.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 
     const parsed = JSON.parse(cleaned)
@@ -88,13 +98,25 @@ Règles :
       throw new Error('Invalid receipt structure')
     }
 
-    // Ensure all prices are numbers
-    parsed.items = parsed.items.map((item: { name: string; price: number | string; quantity: number | string }) => ({
+    // Normalise all item fields — coerce types, guarantee new boolean fields exist
+    parsed.items = parsed.items.map((item: {
+      name: string | unknown
+      price: number | string | unknown
+      quantity: number | string | unknown
+      is_promo?: boolean | unknown
+      is_private_label?: boolean | unknown
+    }) => ({
       name: String(item.name),
       price: Number(item.price) || 0,
       quantity: Number(item.quantity) || 1,
+      is_promo: item.is_promo === true,
+      is_private_label: item.is_private_label === true,
     }))
-    parsed.total = Number(parsed.total) || parsed.items.reduce((sum: number, item: { price: number; quantity: number }) => sum + item.price * item.quantity, 0)
+
+    parsed.total = Number(parsed.total) || parsed.items.reduce(
+      (sum: number, item: { price: number; quantity: number }) => sum + item.price * item.quantity,
+      0
+    )
 
     return NextResponse.json(parsed)
   } catch (error) {

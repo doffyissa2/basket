@@ -1,7 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fuzzyMatch } from '@/lib/fuzzy-match'
 import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
+
+// ── Supabase service-role client (bypasses RLS) ────────────────────────────
+function getServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
+interface PriceStatRow {
+  item_name_normalised: string
+  store_chain: string
+  dept: string | null
+  avg_price: number
+  median_price: number | null
+  min_price: number | null
+  max_price: number | null
+  sample_count: number
+  freshness_score: number | null
+}
+
+interface PriceTrendRow {
+  year_week: string
+  avg_price: number
+  store_chain: string
+}
+
+interface ComparisonResult {
+  name: string
+  your_price: number
+  avg_price: number
+  savings: number
+  cheaper_store: string | null
+  normalized_price: string | null
+  avg_normalized_price: string | null
+  is_local: boolean
+  sample_count: number
+  trend: PriceTrendRow[]
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,233 +50,245 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabase = getServiceClient()
+    const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
-    // Fetch all unique product names from OTHER stores once — reused for every item
-    let productsQuery = supabase
-      .from('price_items')
-      .select('item_name_normalised')
-      .limit(500)
+    // ── Match cache: item_key → matched_name (avoid duplicate RPC calls) ────
+    const matchCache = new Map<string, string | null>()
 
-    if (store_name) {
-      productsQuery = productsQuery.neq('store_name', store_name)
+    // ── Helper: match a single item name to canonical product name ───────────
+    async function resolveMatch(rawName: string): Promise<string | null> {
+      const key = rawName.toLowerCase().trim()
+
+      if (matchCache.has(key)) {
+        return matchCache.get(key)!
+      }
+
+      // Step 1: Try DB-native RPC fuzzy match (pg_trgm powered)
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('match_product', {
+        search_name: key,
+      })
+
+      if (!rpcError && rpcResult && rpcResult.length > 0 && rpcResult[0].matched_name) {
+        const matched = rpcResult[0].matched_name as string
+        matchCache.set(key, matched)
+        return matched
+      }
+
+      // Step 2: Claude API fallback — only reached if RPC returns nothing
+      const apiKey = process.env.ANTHROPIC_API_KEY
+      if (!apiKey) {
+        matchCache.set(key, null)
+        return null
+      }
+
+      // Fetch candidate names from stats table for Claude to choose from
+      const { data: candidates } = await supabase
+        .from('product_price_stats')
+        .select('item_name_normalised')
+        .limit(200)
+
+      const candidateNames = [...new Set(
+        (candidates ?? []).map((c: { item_name_normalised: string }) => c.item_name_normalised)
+      )] as string[]
+
+      if (candidateNames.length === 0) {
+        matchCache.set(key, null)
+        return null
+      }
+
+      try {
+        const matchResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 256,
+            messages: [
+              {
+                role: 'user',
+                content: `Quel nom de produit dans la liste ci-dessous correspond le mieux à "${rawName}" ?
+Le produit correspond s'il s'agit du même type (ex: "CRISTALINE 1.5L" correspond à "eau minerale 1.5l").
+
+Liste :
+${candidateNames.slice(0, 100).map((p) => `- ${p}`).join('\n')}
+
+Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne correspond.`,
+              },
+            ],
+          }),
+        })
+
+        if (matchResponse.ok) {
+          const matchData = await matchResponse.json()
+          const answer = (matchData.content?.[0]?.text ?? '').trim()
+          const resolved = answer === 'null' || answer === '' ? null : answer
+          matchCache.set(key, resolved)
+          return resolved
+        }
+      } catch (e) {
+        console.error('[compare-prices] Claude fallback error:', e)
+      }
+
+      matchCache.set(key, null)
+      return null
     }
 
-    const { data: allProducts } = await productsQuery
-    const uniqueProducts = [...new Set(allProducts?.map((p) => p.item_name_normalised) || [])] as string[]
+    // ── Helper: query product_price_stats for a matched item name ────────────
+    async function fetchStats(
+      matchedName: string,
+      targetDept: string | null,
+      excludeStore: string | null
+    ): Promise<{ local: PriceStatRow[]; national: PriceStatRow[] }> {
+      const buildQuery = (deptFilter: string | null) => {
+        let q = supabase
+          .from('product_price_stats')
+          .select('item_name_normalised, store_chain, dept, avg_price, median_price, min_price, max_price, sample_count, freshness_score')
+          .eq('item_name_normalised', matchedName)
 
-    if (uniqueProducts.length === 0) {
-      return NextResponse.json({
-        comparisons: items.map((item: { name: string; price: number }) => ({
+        if (deptFilter) {
+          q = q.eq('dept', deptFilter)
+        }
+        if (excludeStore) {
+          q = q.neq('store_chain', excludeStore)
+        }
+        return q.order('avg_price', { ascending: true }).limit(20)
+      }
+
+      const localRows: PriceStatRow[] = []
+      const nationalRows: PriceStatRow[] = []
+
+      if (targetDept) {
+        const { data } = await buildQuery(targetDept)
+        if (data) localRows.push(...(data as PriceStatRow[]))
+      }
+
+      // Always fetch national rows too (used as fallback and for breadth)
+      const { data: natData } = await buildQuery(null)
+      if (natData) nationalRows.push(...(natData as PriceStatRow[]))
+
+      return { local: localRows, national: nationalRows }
+    }
+
+    // ── Helper: fetch 8-week price trend for a matched item ──────────────────
+    async function fetchTrend(
+      matchedName: string,
+      targetDept: string | null
+    ): Promise<PriceTrendRow[]> {
+      let q = supabase
+        .from('price_weekly')
+        .select('year_week, avg_price, store_chain')
+        .eq('item_name_normalised', matchedName)
+        .order('year_week', { ascending: false })
+        .limit(8 * 10) // up to 8 weeks × ~10 store chains
+
+      if (targetDept) {
+        q = q.eq('dept', targetDept)
+      }
+
+      const { data } = await q
+      return (data ?? []) as PriceTrendRow[]
+    }
+
+    // ── Main comparison loop ─────────────────────────────────────────────────
+    const comparisons: ComparisonResult[] = []
+
+    for (const item of items as { name: string; price: number }[]) {
+      const matchedName = await resolveMatch(item.name)
+
+      if (!matchedName) {
+        // No match found anywhere — return item as-is with no comparison data
+        const weightStr = extractWeight(item.name)
+        const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
+
+        comparisons.push({
           name: item.name,
           your_price: item.price,
           avg_price: item.price,
           savings: 0,
           cheaper_store: null,
-          normalized_price: null,
+          normalized_price: normalized?.label ?? null,
           avg_normalized_price: null,
           is_local: false,
-        })),
-        total_savings: 0,
-        best_store: null,
+          sample_count: 0,
+          trend: [],
+        })
+        continue
+      }
+
+      // Fetch stats + trend in parallel
+      const [{ local: localStats, national: nationalStats }, trend] = await Promise.all([
+        fetchStats(matchedName, dept, store_name ?? null),
+        fetchTrend(matchedName, dept),
+      ])
+
+      // Use local stats if ≥2 different store chains present, else national
+      const localChains = new Set(localStats.map((r) => r.store_chain))
+      const useLocal = localChains.size >= 2
+      const stats = useLocal ? localStats : nationalStats
+      const isLocal = useLocal
+
+      const weightStr = extractWeight(matchedName)
+      const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
+
+      if (stats.length === 0) {
+        comparisons.push({
+          name: item.name,
+          your_price: item.price,
+          avg_price: item.price,
+          savings: 0,
+          cheaper_store: null,
+          normalized_price: normalized?.label ?? null,
+          avg_normalized_price: null,
+          is_local: false,
+          sample_count: 0,
+          trend,
+        })
+        continue
+      }
+
+      // Weighted average across all matching store chains
+      const totalWeight = stats.reduce((s, r) => s + (r.freshness_score ?? 0.5) * r.sample_count, 0)
+      const weightedAvg = totalWeight > 0
+        ? stats.reduce((s, r) => s + r.avg_price * (r.freshness_score ?? 0.5) * r.sample_count, 0) / totalWeight
+        : stats.reduce((s, r) => s + r.avg_price, 0) / stats.length
+
+      // Cheapest store: lowest avg_price row
+      const cheapestRow = stats.reduce((a, b) => a.avg_price < b.avg_price ? a : b)
+
+      const avgNormalized = weightStr ? computeNormalizedPrice(weightedAvg, weightStr) : null
+      const totalSampleCount = stats.reduce((s, r) => s + r.sample_count, 0)
+
+      // Sanity check: reject if avg is < 20% of scanned price (likely wrong product)
+      const isSane = item.price === 0 || weightedAvg >= item.price * 0.20
+      const effectiveAvg = isSane ? weightedAvg : item.price
+      const effectiveSavings = isSane ? item.price - weightedAvg : 0
+
+      comparisons.push({
+        name: item.name,
+        your_price: item.price,
+        avg_price: Math.round(effectiveAvg * 100) / 100,
+        savings: Math.round(effectiveSavings * 100) / 100,
+        cheaper_store: isSane ? cheapestRow.store_chain : null,
+        normalized_price: normalized?.label ?? null,
+        avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
+        is_local: isLocal,
+        sample_count: totalSampleCount,
+        trend,
       })
     }
 
-    // ── Step 1: local fuzzy matching ─────────────────────────────────────────
-    const LOW_CONFIDENCE = 0.3
-
-    const localResults = items.map((item: { name: string; price: number }) => {
-      const result = fuzzyMatch(item.name, uniqueProducts)
-      return { item, ...result }
-    })
-
-    const needsClaude = localResults.filter((r) => r.confidence < LOW_CONFIDENCE)
-    const locallyMatched = localResults.filter((r) => r.confidence >= LOW_CONFIDENCE)
-
-    console.log(
-      `[compare-prices] Local: ${locallyMatched.length}/${items.length} resolved. Needs Claude: ${needsClaude.length}.`
-    )
-    for (const r of localResults) {
-      console.log(
-        `  [${r.strategy.padEnd(13)}] conf=${r.confidence.toFixed(2)} | "${r.item.name}" → ${r.matched ?? '(no match)'}`
-      )
-    }
-
-    // ── Step 2: Claude API only for unresolved items ─────────────────────────
-    let claudeMatchMap: Record<string, string> = {}
-
-    if (needsClaude.length > 0) {
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      if (apiKey) {
-        try {
-          const matchResponse = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1000,
-              messages: [
-                {
-                  role: 'user',
-                  content: `Tu dois faire correspondre des noms de produits scannés depuis un ticket de caisse avec des noms de produits dans une base de données.
-
-Produits scannés:
-${needsClaude.map((r) => `- "${r.item.name}"`).join('\n')}
-
-Produits dans la base de données:
-${uniqueProducts.map((p) => `- "${p}"`).join('\n')}
-
-Pour chaque produit scanné, trouve le produit le plus proche dans la base de données. Un produit correspond s'il s'agit du même type de produit (ex: "CRISTALINE 1.5L" correspond à "eau minérale 1.5l x6" car ce sont tous les deux de l'eau).
-
-Réponds UNIQUEMENT en JSON valide sans backticks, avec ce format:
-{
-  "matches": {
-    "NOM_SCANNÉ_EN_MINUSCULES": "nom_base_de_données_ou_null"
-  }
-}
-
-Si aucun produit de la base ne correspond, mets null comme valeur.`,
-                },
-              ],
-            }),
-          })
-
-          if (matchResponse.ok) {
-            const matchData = await matchResponse.json()
-            const matchText = matchData.content?.[0]?.text || ''
-            const cleaned = matchText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-            const parsed = JSON.parse(cleaned)
-            claudeMatchMap = parsed.matches || {}
-            console.log(`[compare-prices] Claude resolved ${Object.keys(claudeMatchMap).length} items.`)
-          }
-        } catch (matchError) {
-          console.error('[compare-prices] Claude matching error:', matchError)
-        }
-      }
-    }
-
-    // ── Step 3: Build final match map ────────────────────────────────────────
-    const finalMatchMap: Record<string, string | null> = {}
-
-    for (const r of localResults) {
-      const key = r.item.name.toLowerCase().trim()
-      if (r.confidence >= LOW_CONFIDENCE && r.matched) {
-        finalMatchMap[key] = r.matched
-      } else {
-        const claudeKey = Object.entries(claudeMatchMap).find(
-          ([k]) => k.toLowerCase().trim() === key
-        )
-        finalMatchMap[key] = claudeKey?.[1] ?? null
-      }
-    }
-
-    // ── Step 4: Query prices with postcode-aware two-pass strategy ────────────
-    const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
-
-    const comparisons = []
-
-    for (const item of items as { name: string; price: number }[]) {
-      const itemLower = item.name.toLowerCase().trim()
-      const matchedProduct = finalMatchMap[itemLower] ?? null
-
-      // Build the base price query (shared between local and national passes)
-      const buildQuery = () => {
-        let q = supabase
-          .from('price_items')
-          .select('unit_price, store_name, postcode')
-
-        if (matchedProduct) {
-          q = q.eq('item_name_normalised', matchedProduct)
-        } else {
-          const words = itemLower.split(/\s+/).filter((w: string) => w.length > 2)
-          const keyword = words.length > 0
-            ? words.reduce((a: string, b: string) => (a.length >= b.length ? a : b))
-            : itemLower
-          q = q.ilike('item_name_normalised', `%${keyword}%`)
-        }
-
-        if (store_name) {
-          q = q.neq('store_name', store_name)
-        }
-
-        return q
-      }
-
-      // Pass 1: local (same département)
-      let priceData: { unit_price: number; store_name: string; postcode: string | null }[] | null = null
-      let isLocal = false
-
-      if (dept) {
-        const { data: localData } = await buildQuery()
-          .like('postcode', `${dept}%`)
-          .limit(50)
-        if (localData && localData.length >= 3) {
-          priceData = localData
-          isLocal = true
-        }
-      }
-
-      // Pass 2: national fallback
-      if (!priceData || priceData.length < 3) {
-        const { data: nationalData } = await buildQuery().limit(50)
-        priceData = nationalData
-        isLocal = false
-      }
-
-      // Compute normalized price per unit (€/100g or €/L)
-      const weightStr = extractWeight(matchedProduct ?? item.name)
-      const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
-
-      if (priceData && priceData.length > 0) {
-        const prices = priceData.map((p) => p.unit_price)
-        const avgPrice = prices.reduce((a: number, b: number) => a + b, 0) / prices.length
-        const minPrice = Math.min(...prices)
-        const cheapestEntry = priceData.find((p) => p.unit_price === minPrice)
-        const avgNormalized = weightStr ? computeNormalizedPrice(avgPrice, weightStr) : null
-
-        // Sanity check: if avg price is less than 20% of scanned price, likely a wrong product match
-        const isSane = item.price === 0 || avgPrice >= item.price * 0.20
-        const effectiveAvgPrice = isSane ? avgPrice : item.price
-        const effectiveSavings = isSane ? item.price - avgPrice : 0
-
-        comparisons.push({
-          name: item.name,
-          your_price: item.price,
-          avg_price: Math.round(effectiveAvgPrice * 100) / 100,
-          savings: Math.round(effectiveSavings * 100) / 100,
-          cheaper_store: isSane ? cheapestEntry?.store_name || null : null,
-          normalized_price: normalized?.label ?? null,
-          avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
-          is_local: isLocal,
-        })
-      } else {
-        comparisons.push({
-          name: item.name,
-          your_price: item.price,
-          avg_price: item.price,
-          savings: 0,
-          cheaper_store: null,
-          normalized_price: normalized?.label ?? null,
-          avg_normalized_price: null,
-          is_local: false,
-        })
-      }
-    }
-
-    // ── Step 5: Total savings ─────────────────────────────────────────────────
+    // ── Total savings ─────────────────────────────────────────────────────────
     const totalSavings = comparisons.reduce(
       (sum, item) => sum + Math.max(0, item.savings),
       0
     )
 
-    // ── Step 6: Best store recommendation ─────────────────────────────────────
+    // ── Best store recommendation ─────────────────────────────────────────────
     const storeTally: Record<string, { count: number; savings: number }> = {}
     for (const c of comparisons) {
       if (c.cheaper_store && c.savings > 0) {
@@ -255,13 +306,14 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
         }
       : null
 
-    // ── Step 7: Price watch — notify watchers if item is now cheaper ──────────
-    const matchedNormalisedNames = Object.values(finalMatchMap).filter(Boolean) as string[]
-    if (matchedNormalisedNames.length > 0) {
+    // ── Price-watch notifications ─────────────────────────────────────────────
+    const resolvedNames = [...matchCache.values()].filter(Boolean) as string[]
+
+    if (resolvedNames.length > 0) {
       const { data: watches } = await supabase
         .from('price_watches')
         .select('user_id, item_name, item_name_normalised, last_seen_price')
-        .in('item_name_normalised', matchedNormalisedNames)
+        .in('item_name_normalised', resolvedNames)
 
       if (watches && watches.length > 0) {
         const notifications: {
@@ -275,7 +327,7 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
 
         for (const watch of watches) {
           const comp = comparisons.find(
-            (c) => (finalMatchMap[c.name.toLowerCase().trim()] ?? '') === watch.item_name_normalised
+            (c) => (matchCache.get(c.name.toLowerCase().trim()) ?? '') === watch.item_name_normalised
           )
           if (comp && watch.last_seen_price && comp.avg_price < watch.last_seen_price * 0.95) {
             notifications.push({
