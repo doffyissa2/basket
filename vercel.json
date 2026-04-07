@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "src/app/api/cron/sync-store-locations/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/sync-market-prices/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/sync-community-prices/route.ts": { "maxDuration": 300 }
+  },
   "crons": [
     {
       "path": "/api/cron/sync-store-locations",

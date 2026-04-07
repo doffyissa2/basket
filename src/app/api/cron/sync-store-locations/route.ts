@@ -109,15 +109,14 @@ export async function POST(request: NextRequest) {
 
   console.log(`[sync-store-locations] querying ${chains.length} chains sequentially...`)
 
-  for (const chain of chains) {
-    try {
-      const elements = await fetchChain(chain)
-      console.log(`[sync-store-locations] ${chain}: ${elements.length} elements`)
-      allElements.push(...elements)
-      // Polite delay between Overpass requests
-      await new Promise((r) => setTimeout(r, 2000))
-    } catch (err) {
-      console.warn(`[sync-store-locations] skipping ${chain}:`, err)
+  const results = await Promise.allSettled(chains.map(fetchChain))
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]
+    if (r.status === 'fulfilled') {
+      console.log(`[sync-store-locations] ${chains[i]}: ${r.value.length} elements`)
+      allElements.push(...r.value)
+    } else {
+      console.warn(`[sync-store-locations] skipping ${chains[i]}:`, r.reason)
     }
   }
 
