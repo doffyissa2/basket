@@ -115,10 +115,10 @@ export async function GET(request: NextRequest) {
 
   if (mode === 'single') {
     const chain = searchParams.get('chain') ?? 'Lidl'
-    const brands = CHAIN_BRANDS[chain] ?? ['Lidl']
+    const brands = CHAIN_BRANDS[chain] ?? CHAIN_BRANDS['Lidl']
     const query = buildExactQuery(brands)
     const r = await overpassPost(query)
-    return NextResponse.json({ chain, query_sent: query, ...r, elements_count: r.elements.length, sample: r.elements.slice(0, 2) })
+    return NextResponse.json({ chain, elements_count: r.elements.length, sample: r.elements.slice(0, 2), remark: r.remark })
   }
 
   return POST(request)
@@ -141,12 +141,21 @@ export async function POST(request: NextRequest) {
   }> = []
   const seen = new Set<string>()
 
-  for (const [chainName, brandValues] of Object.entries(CHAIN_BRANDS)) {
-    const result = await overpassPost(buildExactQuery(brandValues))
-    debug[chainName] = { raw: result.elements.length, parsed: 0 }
-    if (result.remark) debug[chainName].remark = result.remark
+  // Parallel — each query takes ~5-15s, sequential would exceed 300s limit
+  const settled = await Promise.allSettled(
+    Object.entries(CHAIN_BRANDS).map(([chainName, brandValues]) =>
+      overpassPost(buildExactQuery(brandValues)).then(r => ({ chainName, ...r }))
+    )
+  )
 
-    for (const el of result.elements) {
+  for (const result of settled) {
+    if (result.status === 'rejected') continue
+    const { chainName, elements, remark } = result.value
+
+    debug[chainName] = { raw: elements.length, parsed: 0 }
+    if (remark) debug[chainName].remark = remark
+
+    for (const el of elements) {
       const tags = el.tags ?? {}
       const lat = el.lat ?? el.center?.lat
       const lon = el.lon ?? el.center?.lon
@@ -172,9 +181,6 @@ export async function POST(request: NextRequest) {
       })
       debug[chainName].parsed++
     }
-
-    // polite gap between requests
-    await new Promise(r => setTimeout(r, 1000))
   }
 
   console.log(`[osm] ${rows.length} stores from ${Object.keys(CHAIN_BRANDS).length} chains`)
