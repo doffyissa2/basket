@@ -7,7 +7,8 @@ import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, Messag
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import LocationGateModal from '@/components/LocationGateModal'
-import { normalizeStoreChain } from '@/lib/store-chains'
+import { normalizeStoreChain, isKnownStore } from '@/lib/store-chains'
+import { normalizeProductName } from '@/lib/normalize'
 
 interface ParsedItem {
   name: string
@@ -91,6 +92,45 @@ function ConfettiParticles() {
 
 interface Coords { lat: number; lon: number }
 
+// ── Client-side image compression ─────────────────────────────────────────────
+// Resizes to max 1280px and recompresses as JPEG 0.83 before sending to Claude.
+// Reduces token cost ~60–80% on phone photos while preserving OCR readability.
+function compressImage(
+  file: File,
+  maxPx = 1280,
+  quality = 0.83
+): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('canvas unavailable')); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error('compression failed')); return }
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            const result = reader.result as string
+            resolve({ base64: result.split(',')[1], mediaType: 'image/jpeg' })
+          }
+          reader.readAsDataURL(blob)
+        },
+        'image/jpeg',
+        quality
+      )
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')) }
+    img.src = url
+  })
+}
+
 function readLocationCache(): { postcode: string; coords?: Coords } | null {
   try {
     const raw = localStorage.getItem('basket_postcode_cached')
@@ -113,6 +153,7 @@ export default function ScanPage() {
   const [error, setError] = useState('')
   const [parseMessageIdx, setParseMessageIdx] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -125,12 +166,13 @@ export default function ScanPage() {
   })
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
-      setUser(user)
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.href = '/login'; return }
+      setUser(session.user)
+      setAccessToken(session.access_token)
     }
-    getUser()
+    init()
     const cached = readLocationCache()
     if (cached) {
       setPostcode(cached.postcode)
@@ -164,22 +206,20 @@ export default function ScanPage() {
     setError('')
 
     try {
+      // Upload original file to storage (full quality for archival)
       const fileName = `${user.id}/${Date.now()}-${imageFile.name}`
       const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, imageFile)
       if (uploadError) throw new Error('Erreur upload: ' + uploadError.message)
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1])
-        reader.readAsDataURL(imageFile)
-      })
+      // Compress image before sending to Claude (faster + cheaper, same OCR quality)
+      const { base64, mediaType } = await compressImage(imageFile)
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: base64, media_type: imageFile.type }),
+        body: JSON.stringify({ image_base64: base64, media_type: mediaType }),
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
 
@@ -187,6 +227,27 @@ export default function ScanPage() {
       setParsedReceipt(parsed)
 
       const storeChain = normalizeStoreChain(parsed.store_name)
+
+      // ── Fire-and-forget: log unknown store for CHAIN_MAP expansion ────────
+      if (!isKnownStore(parsed.store_name) && accessToken) {
+        void fetch('/api/log-unknown-store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ raw_name: parsed.store_name }),
+        })
+      }
+
+      // ── Fire-and-forget: learn receipt format for this store ──────────────
+      if (accessToken && parsed.items.length > 0) {
+        void fetch('/api/learn-receipt-format', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({
+            store_chain: storeChain,
+            sample_items: parsed.items.slice(0, 15).map((i) => i.name),
+          }),
+        })
+      }
       const receiptDate = new Date().toISOString().split('T')[0]
 
       // ── Duplicate detection: same user, store, total, date → skip re-insert ─
@@ -231,7 +292,7 @@ export default function ScanPage() {
             receipt_id: receiptRow.id,
             user_id: user.id,
             item_name: item.name,
-            item_name_normalised: item.name.toLowerCase().trim(),
+            item_name_normalised: normalizeProductName(item.name),
             quantity: item.quantity,
             unit_price: item.price,
             total_price: item.price * item.quantity,
@@ -248,6 +309,14 @@ export default function ScanPage() {
           await supabase.from('receipts').delete().eq('id', receiptRow.id)
           throw new Error('Erreur sauvegarde articles')
         }
+
+        // ── Fire-and-forget: keep pricing engine current after every scan ──
+        if (accessToken) {
+          void fetch('/api/trigger-stats-refresh', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+        }
       }
 
       setStep('results')
@@ -256,7 +325,7 @@ export default function ScanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: parsed.items.map((i) => ({ name: i.name, normalised: i.name.toLowerCase().trim(), price: i.price })),
+          items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price })),
           postcode: postcode || null, store_name: storeChain,
         }),
       })

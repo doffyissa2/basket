@@ -41,6 +41,12 @@ const limiters = {
   priceMap: makeLimiter(20, 60),
   // 10 best-store computations/min per IP — per-item DB queries
   shoppingListBestStore: makeLimiter(10, 60),
+  // 30 stats refresh triggers/min per IP (fire-and-forget post-scan)
+  triggerStatsRefresh: makeLimiter(30, 60),
+  // 20 unknown-store logs/min per IP
+  logUnknownStore: makeLimiter(20, 60),
+  // 10 receipt format learning calls/min per IP
+  learnReceiptFormat: makeLimiter(10, 60),
 } as const
 
 export type LimiterKey = keyof typeof limiters
