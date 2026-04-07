@@ -49,7 +49,7 @@ export default function DashboardPage() {
       if (!user) { window.location.href = '/login'; return }
       setUser(user)
 
-      const [{ data: receipts }, { count }] = await Promise.all([
+      const [{ data: receipts, error: receiptsError }, { count }] = await Promise.all([
         supabase
           .from('receipts')
           .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
@@ -62,11 +62,22 @@ export default function DashboardPage() {
           .eq('user_id', user.id)
           .eq('read', false),
       ])
-      if (receipts) {
+
+      if (receiptsError) {
+        // savings_amount column may not exist yet — retry without it
+        const { data: fallback } = await supabase
+          .from('receipts')
+          .select('id, store_name, total_amount, receipt_date, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10)
+        if (fallback) setRecentReceipts(fallback as RecentReceipt[])
+      } else if (receipts) {
         setRecentReceipts(receipts)
         const saved = receipts.reduce((s, r) => s + (r.savings_amount || 0), 0)
         setTotalItems(saved)
       }
+
       if (count) setUnreadCount(count)
       setLoading(false)
     }

@@ -202,14 +202,19 @@ Si aucun produit de la base ne correspond, mets null comme valeur.`,
         const cheapestEntry = priceData.find((p) => p.unit_price === minPrice)
         const avgNormalized = weightStr ? computeNormalizedPrice(avgPrice, weightStr) : null
 
+        // Sanity check: if avg price is less than 20% of scanned price, likely a wrong product match
+        const isSane = item.price === 0 || avgPrice >= item.price * 0.20
+        const effectiveAvgPrice = isSane ? avgPrice : item.price
+        const effectiveSavings = isSane ? item.price - avgPrice : 0
+
         comparisons.push({
           name: item.name,
           your_price: item.price,
-          avg_price: Math.round(avgPrice * 100) / 100,
-          savings: Math.round((item.price - avgPrice) * 100) / 100,
-          cheaper_store: cheapestEntry?.store_name || null,
+          avg_price: Math.round(effectiveAvgPrice * 100) / 100,
+          savings: Math.round(effectiveSavings * 100) / 100,
+          cheaper_store: isSane ? cheapestEntry?.store_name || null : null,
           normalized_price: normalized?.label ?? null,
-          avg_normalized_price: avgNormalized?.label ?? null,
+          avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
           is_local: isLocal,
         })
       } else {
