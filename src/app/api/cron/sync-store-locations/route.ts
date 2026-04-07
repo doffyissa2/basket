@@ -107,10 +107,33 @@ export async function GET(request: NextRequest) {
   }
 
   const mode = new URL(request.url).searchParams.get('mode')
+
   if (mode === 'test') {
-    // Fetch a single well-known OSM node (Eiffel Tower) — should always work
     const result = await overpassPost('[out:json];node(5013364678);out;')
     return NextResponse.json({ connectivity: result.status === 200 ? 'ok' : 'failed', ...result })
+  }
+
+  if (mode === 'single') {
+    // Run exactly the Lidl query and return raw response for diagnosis
+    const query = buildQuery(['lidl'])
+    for (const mirror of OVERPASS_MIRRORS) {
+      try {
+        const res = await fetch(mirror, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: AbortSignal.timeout(55_000),
+        })
+        const text = await res.text()
+        return NextResponse.json({
+          mirror, status: res.status,
+          raw_preview: text.slice(0, 800),
+          query_sent: query,
+        })
+      } catch (err) {
+        return NextResponse.json({ mirror, error: String(err), query_sent: query })
+      }
+    }
   }
 
   // Default GET = run full sync
