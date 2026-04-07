@@ -30,6 +30,13 @@ const CHAINS: Record<string, string[]> = {
   'Netto':        ['netto'],
 }
 
+// Multiple Overpass mirrors — tried in order until one succeeds
+const OVERPASS_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+]
+
 type OsmElement = {
   type: string
   id: number
@@ -40,11 +47,8 @@ type OsmElement = {
 }
 
 function buildQueryForChain(patterns: string[]): string {
-  // Use the first (most distinctive) pattern as the Overpass filter,
-  // keeping the regex simple so Overpass doesn't time out.
   const regex = patterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  // Bounding box covers metropolitan France + Corsica: S,W,N,E
-  return `[out:json][timeout:55][bbox:41.3,-5.2,51.1,9.6];
+  return `[out:json][timeout:50][bbox:41.3,-5.2,51.1,9.6];
 (
   node["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i];
   way["shop"~"supermarket|hypermarket|convenience"]["brand"~"${regex}",i];
@@ -62,28 +66,43 @@ function resolveChain(brandTag: string): string | null {
   return null
 }
 
-async function fetchChain(chain: string): Promise<{ chain: string; elements: OsmElement[] }> {
-  const patterns = CHAINS[chain]
-  const query = buildQueryForChain(patterns)
-  try {
-    const res = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': UA,
-      },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(65_000),
-    })
-    if (!res.ok) {
-      console.warn(`[sync-store-locations] Overpass ${res.status} for ${chain}`)
-      return { chain, elements: [] }
+async function overpassFetch(query: string): Promise<OsmElement[]> {
+  for (const mirror of OVERPASS_MIRRORS) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 58_000)
+    try {
+      const res = await fetch(mirror, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      })
+      clearTimeout(timer)
+      if (!res.ok) {
+        console.warn(`[sync-store-locations] mirror ${mirror} returned ${res.status}`)
+        continue
+      }
+      const data = await res.json() as { elements?: OsmElement[] }
+      const elements = data.elements ?? []
+      console.log(`[sync-store-locations] mirror ${mirror} returned ${elements.length} elements`)
+      return elements
+    } catch (err) {
+      clearTimeout(timer)
+      console.warn(`[sync-store-locations] mirror ${mirror} error:`, String(err))
     }
-    const data = await res.json() as { elements?: OsmElement[] }
-    return { chain, elements: data.elements ?? [] }
+  }
+  return []
+}
+
+async function fetchChain(chain: string): Promise<{ chain: string; elements: OsmElement[]; error?: string }> {
+  const query = buildQueryForChain(CHAINS[chain])
+  try {
+    const elements = await overpassFetch(query)
+    return { chain, elements }
   } catch (err) {
-    console.warn(`[sync-store-locations] fetch error for ${chain}:`, err)
-    return { chain, elements: [] }
+    const msg = String(err)
+    console.error(`[sync-store-locations] fetchChain(${chain}) failed:`, msg)
+    return { chain, elements: [], error: msg }
   }
 }
 
@@ -124,18 +143,16 @@ export async function POST(request: NextRequest) {
   }> = []
 
   const seen = new Set<string>()
-  const debug: Record<string, { raw: number; parsed: number }> = {}
+  const debug: Record<string, { raw: number; parsed: number; error?: string }> = {}
 
   for (const result of settled) {
     if (result.status === 'rejected') continue
-    const { chain: canonicalChain, elements } = result.value
+    const { chain: canonicalChain, elements, error } = result.value
 
-    debug[canonicalChain] = { raw: elements.length, parsed: 0 }
-    console.log(`[sync-store-locations] ${canonicalChain}: ${elements.length} raw elements`)
+    debug[canonicalChain] = { raw: elements.length, parsed: 0, ...(error ? { error } : {}) }
 
-    // Log a sample element for debugging
     if (elements.length > 0) {
-      console.log(`[sync-store-locations] sample:`, JSON.stringify(elements[0]).slice(0, 300))
+      console.log(`[sync-store-locations] sample ${canonicalChain}:`, JSON.stringify(elements[0]).slice(0, 300))
     }
 
     for (const el of elements) {
