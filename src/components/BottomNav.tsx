@@ -1,16 +1,17 @@
 'use client'
 
 import { motion, LayoutGroup } from 'framer-motion'
-import { Home, Camera, User, ShoppingCart } from 'lucide-react'
+import { Home, Camera, User, ShoppingCart, Map } from 'lucide-react'
 
 const TABS = [
   { id: 'home',    label: 'Accueil', icon: Home,         href: '/dashboard' },
+  { id: 'carte',   label: 'Carte',   icon: Map,           href: '/carte' },
   { id: 'scan',    label: 'Scanner', icon: Camera,        href: '/scan',      isFab: true },
   { id: 'liste',   label: 'Liste',   icon: ShoppingCart,  href: '/liste' },
   { id: 'profile', label: 'Profil',  icon: User,          href: '/profile' },
 ]
 
-export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste' | 'profile' }) {
+export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste' | 'profile' | 'carte' }) {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"

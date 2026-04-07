@@ -219,3 +219,17 @@ html {
     opacity: 0.7;
   }
 }
+
+/* Leaflet map dark theme */
+.leaflet-container {
+  background: #111 !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.leaflet-popup-content {
+  margin: 0 !important;
+}

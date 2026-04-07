@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
   Camera, History, BarChart2, ShoppingCart, Bell, Settings,
-  TrendingDown, LogOut, Home, ChevronRight, Zap
+  TrendingDown, LogOut, Home, ChevronRight, Zap, MapPin, Map as MapIcon
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
@@ -126,6 +126,8 @@ function DesktopSidebar({ unreadCount, totalSavings }: { unreadCount: number; us
   )
 }
 
+interface AreaInsight { cheapestChain: string; postcode: string }
+
 /* ── Main page ─────────────────────────────────────────────── */
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -133,6 +135,8 @@ export default function DashboardPage() {
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalSavings, setTotalSavings] = useState(0)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [userPostcode, setUserPostcode] = useState<string | null>(null)
+  const [areaInsight, setAreaInsight] = useState<AreaInsight | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -140,11 +144,12 @@ export default function DashboardPage() {
       if (!user) { window.location.href = '/login'; return }
       setUser(user)
 
-      const [{ data: receipts, error: receiptsError }, { count }] = await Promise.all([
+      const [{ data: receipts, error: receiptsError }, { count }, { data: profile }] = await Promise.all([
         supabase.from('receipts').select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
           .eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
           .eq('user_id', user.id).eq('read', false),
+        supabase.from('profiles').select('postcode').eq('id', user.id).single(),
       ])
 
       if (receiptsError) {
@@ -158,6 +163,39 @@ export default function DashboardPage() {
       }
 
       if (count) setUnreadCount(count)
+
+      const pc: string | null = profile?.postcode ?? null
+      setUserPostcode(pc)
+
+      // Compute area insight: cheapest store_chain in user's département
+      if (pc && pc.length >= 2) {
+        const dept = pc.slice(0, 2)
+        const { data: priceData } = await supabase
+          .from('price_items')
+          .select('store_chain, unit_price')
+          .like('postcode', `${dept}%`)
+          .not('store_chain', 'is', null)
+          .limit(500)
+
+        if (priceData && priceData.length > 0) {
+          // Group by chain, compute avg
+          const chainMap = new Map<string, number[]>()
+          for (const row of priceData) {
+            if (!row.store_chain) continue
+            if (!chainMap.has(row.store_chain)) chainMap.set(row.store_chain, [])
+            chainMap.get(row.store_chain)!.push(row.unit_price)
+          }
+          let bestChain = ''
+          let bestAvg = Infinity
+          for (const [chain, prices] of chainMap.entries()) {
+            if (prices.length < 3) continue
+            const avg = prices.reduce((s, p) => s + p, 0) / prices.length
+            if (avg < bestAvg) { bestAvg = avg; bestChain = chain }
+          }
+          if (bestChain) setAreaInsight({ cheapestChain: bestChain, postcode: pc })
+        }
+      }
+
       setLoading(false)
     }
     init()
@@ -301,6 +339,44 @@ export default function DashboardPage() {
               </motion.a>
             ))}
           </motion.div>
+
+          {/* Area intelligence card */}
+          {userPostcode && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.10 }}
+              className="glass rounded-2xl p-5"
+              style={{ borderLeft: '3px solid #E07A5F' }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-[#E07A5F]" />
+                  <p className="text-sm font-bold">Dans votre secteur ({userPostcode})</p>
+                </div>
+                <motion.a
+                  href="/carte"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-1 text-xs text-[#E07A5F] font-semibold"
+                >
+                  <MapIcon className="w-3 h-3" />
+                  Carte
+                </motion.a>
+              </div>
+              {areaInsight ? (
+                <p className="text-xs text-[#6B7280] leading-relaxed">
+                  En {userPostcode},{' '}
+                  <span className="text-white font-semibold">{areaInsight.cheapestChain}</span>{' '}
+                  est l'enseigne la moins chère pour votre panier habituel.
+                </p>
+              ) : (
+                <p className="text-xs text-[#4B5563] leading-relaxed">
+                  Scannez plus de tickets pour voir les insights de votre secteur.
+                </p>
+              )}
+            </motion.div>
+          )}
 
           {/* Scan CTA — only shown if NO receipts yet (onboarding) OR on desktop where there's no FAB */}
           <AnimatePresence>

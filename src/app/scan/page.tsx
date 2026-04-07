@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
+import LocationGateModal from '@/components/LocationGateModal'
+import { normalizeStoreChain } from '@/lib/store-chains'
 
 interface ParsedItem {
   name: string
@@ -85,6 +87,18 @@ function ConfettiParticles() {
   )
 }
 
+interface Coords { lat: number; lon: number }
+
+function readLocationCache(): { postcode: string; coords?: Coords } | null {
+  try {
+    const raw = localStorage.getItem('basket_postcode_cached')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed.postcode && Date.now() < parsed.expires) return parsed
+  } catch { /* ignore */ }
+  return null
+}
+
 export default function ScanPage() {
   const [user, setUser] = useState<User | null>(null)
   const [step, setStep] = useState<'upload' | 'parsing' | 'results' | 'comparison'>('upload')
@@ -100,6 +114,15 @@ export default function ScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
+  // Location gate
+  const [postcode, setPostcode] = useState<string | null>(null)
+  const [userCoords, setUserCoords] = useState<Coords | null>(null)
+  const [locationReady, setLocationReady] = useState(() => {
+    // Synchronous check to avoid flashing modal on returning users
+    if (typeof window === 'undefined') return false
+    return readLocationCache() !== null
+  })
+
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -107,6 +130,12 @@ export default function ScanPage() {
       setUser(user)
     }
     getUser()
+    // Restore cached location values
+    const cached = readLocationCache()
+    if (cached) {
+      setPostcode(cached.postcode)
+      if (cached.coords) setUserCoords(cached.coords)
+    }
   }, [])
 
   // Cycle parse messages
@@ -157,11 +186,21 @@ export default function ScanPage() {
       const parsed: ParsedReceipt = await parseResponse.json()
       setParsedReceipt(parsed)
 
-      const { data: profile } = await supabase.from('profiles').select('postcode').eq('id', user.id).single()
+      const storeChain = normalizeStoreChain(parsed.store_name)
 
       const { data: receiptRow, error: receiptError } = await supabase
         .from('receipts')
-        .insert({ user_id: user.id, store_name: parsed.store_name, total_amount: parsed.total, receipt_date: new Date().toISOString().split('T')[0], image_url: publicUrl, postcode: profile?.postcode || null })
+        .insert({
+          user_id: user.id,
+          store_name: storeChain,
+          store_chain: storeChain,
+          total_amount: parsed.total,
+          receipt_date: new Date().toISOString().split('T')[0],
+          image_url: publicUrl,
+          postcode: postcode || null,
+          latitude: userCoords?.lat ?? null,
+          longitude: userCoords?.lon ?? null,
+        })
         .select().single()
       if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
       setReceiptId(receiptRow.id)
@@ -171,7 +210,11 @@ export default function ScanPage() {
           receipt_id: receiptRow.id, user_id: user.id, item_name: item.name,
           item_name_normalised: item.name.toLowerCase().trim(), quantity: item.quantity,
           unit_price: item.price, total_price: item.price * item.quantity,
-          store_name: parsed.store_name, postcode: profile?.postcode || null,
+          store_name: storeChain,
+          store_chain: storeChain,
+          postcode: postcode || null,
+          latitude: userCoords?.lat ?? null,
+          longitude: userCoords?.lon ?? null,
         }))
       )
 
@@ -182,7 +225,7 @@ export default function ScanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: parsed.items.map((i) => ({ name: i.name, normalised: i.name.toLowerCase().trim(), price: i.price })),
-          postcode: profile?.postcode || null, store_name: parsed.store_name,
+          postcode: postcode || null, store_name: storeChain,
         }),
       })
 
@@ -238,6 +281,25 @@ export default function ScanPage() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white pb-28 md:pb-0">
+      {/* Location gate — shown until user grants location or enters postcode */}
+      {!locationReady && user && (
+        <LocationGateModal
+          userId={user.id}
+          onComplete={(pc, coords) => {
+            setPostcode(pc)
+            if (coords) setUserCoords(coords)
+            setLocationReady(true)
+            try {
+              localStorage.setItem('basket_postcode_cached', JSON.stringify({
+                postcode: pc,
+                coords: coords ?? null,
+                expires: Date.now() + 86_400_000,
+              }))
+            } catch { /* ignore */ }
+          }}
+        />
+      )}
+
       {/* Nav */}
       <div className="flex items-center justify-between px-5 pt-14 pb-6">
         <a href="/dashboard" className="flex items-center gap-2 text-[#6B7280] hover:text-white transition-colors text-sm">
