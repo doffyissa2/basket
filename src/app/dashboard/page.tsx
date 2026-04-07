@@ -458,13 +458,16 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-2">
                 {recentReceipts.slice(0, 5).map((receipt, i) => (
-                  <motion.div
+                  <motion.a
                     key={receipt.id}
+                    href="/bilan"
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.22 + i * 0.05 }}
                     whileHover={{ x: 3 }}
-                    className="glass rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer"
+                    whileTap={{ scale: 0.98 }}
+                    className="glass rounded-2xl px-4 py-3.5 flex items-center gap-3 block"
+                    style={{ textDecoration: 'none' }}
                   >
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: 'rgba(126,217,87,0.12)' }}>
@@ -478,16 +481,29 @@ export default function DashboardPage() {
                           : new Date(receipt.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                       </p>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      {receipt.total_amount && (
-                        <p className="text-sm font-bold text-graphite">{receipt.total_amount.toFixed(2)} €</p>
-                      )}
-                      {receipt.savings_amount && receipt.savings_amount > 0 ? (
-                        <p className="text-[11px] font-semibold" style={{ color: '#00D09C' }}>-{receipt.savings_amount.toFixed(2)} €</p>
-                      ) : null}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right">
+                        {receipt.total_amount && (
+                          <p className="text-sm font-bold text-graphite">{receipt.total_amount.toFixed(2)} €</p>
+                        )}
+                        {receipt.savings_amount && receipt.savings_amount > 0 ? (
+                          <p className="text-[11px] font-semibold" style={{ color: '#00D09C' }}>-{receipt.savings_amount.toFixed(2)} €</p>
+                        ) : null}
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-graphite/25" />
                     </div>
-                  </motion.div>
+                  </motion.a>
                 ))}
+                <motion.a
+                  href="/bilan"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="block text-center py-2.5 text-xs font-semibold rounded-xl"
+                  style={{ color: '#7ed957' }}
+                >
+                  Voir le bilan complet →
+                </motion.a>
               </div>
             )}
           </motion.div>

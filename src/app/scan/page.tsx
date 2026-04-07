@@ -233,7 +233,11 @@ export default function ScanPage() {
         void fetch('/api/log-unknown-store', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ raw_name: parsed.store_name }),
+          body: JSON.stringify({
+            raw_name: parsed.store_name,
+            lat: userCoords?.lat ?? null,
+            lon: userCoords?.lon ?? null,
+          }),
         })
       }
 

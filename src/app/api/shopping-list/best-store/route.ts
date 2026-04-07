@@ -4,6 +4,8 @@ import { fuzzyMatch } from '@/lib/fuzzy-match'
 import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
+interface PriceRow { unit_price: number; store_name: string }
+
 export async function POST(request: NextRequest) {
   const rlResponse = await checkRateLimit(request, 'shoppingListBestStore')
   if (rlResponse) return rlResponse
@@ -34,11 +36,13 @@ export async function POST(request: NextRequest) {
     ] as string[]
 
     if (uniqueProducts.length === 0) {
-      return NextResponse.json({ best_store: null, estimated_savings: 0, items_count: 0, per_item: [] })
+      return NextResponse.json({ best_store: null, estimated_savings: 0, items_count: 0, per_item: [], store_comparison: [] })
     }
 
     const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
-    const storeTally: Record<string, { wins: number; totalSavings: number }> = {}
+
+    // Per-store price tally: store → { total: sum of best prices, items: count }
+    const storePrices: Record<string, { total: number; items: number; wins: number }> = {}
     const perItem: { name: string; best_store: string | null; best_price: number | null }[] = []
 
     for (const itemName of items as string[]) {
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      let priceData: { unit_price: number; store_name: string }[] | null = null
+      let priceData: PriceRow[] | null = null
 
       // Try local first
       if (dept) {
@@ -75,48 +79,61 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Find cheapest store for this item
+      // Compute avg price per store for this item
       const byStore: Record<string, number[]> = {}
       for (const p of priceData) {
         if (!byStore[p.store_name]) byStore[p.store_name] = []
         byStore[p.store_name].push(p.unit_price)
       }
 
-      let bestStore: string | null = null
-      let bestAvg = Infinity
-      const avgPriceOverall =
-        priceData.reduce((s, p) => s + p.unit_price, 0) / priceData.length
+      const storeAvgs: { store: string; avg: number }[] = Object.entries(byStore).map(
+        ([store, prices]) => ({ store, avg: prices.reduce((a, b) => a + b, 0) / prices.length })
+      )
+      storeAvgs.sort((a, b) => a.avg - b.avg)
 
-      for (const [store, prices] of Object.entries(byStore)) {
-        const avg = prices.reduce((a, b) => a + b, 0) / prices.length
-        if (avg < bestAvg) {
-          bestAvg = avg
-          bestStore = store
-        }
-      }
+      const best = storeAvgs[0]
+      if (!best) { perItem.push({ name: itemName, best_store: null, best_price: null }); continue }
 
-      if (bestStore) {
-        const saving = avgPriceOverall - bestAvg
-        if (!storeTally[bestStore]) storeTally[bestStore] = { wins: 0, totalSavings: 0 }
-        storeTally[bestStore].wins += 1
-        storeTally[bestStore].totalSavings += Math.max(0, saving)
+      // Accumulate per-store totals (best-case: what would this item cost at each store?)
+      for (const { store, avg } of storeAvgs) {
+        if (!storePrices[store]) storePrices[store] = { total: 0, items: 0, wins: 0 }
+        storePrices[store].total += avg
+        storePrices[store].items += 1
       }
+      storePrices[best.store].wins += 1
 
       perItem.push({
         name: itemName,
-        best_store: bestStore,
-        best_price: bestAvg < Infinity ? Math.round(bestAvg * 100) / 100 : null,
+        best_store: best.store,
+        best_price: Math.round(best.avg * 100) / 100,
       })
     }
 
     // Best overall store = most wins
-    const bestEntry = Object.entries(storeTally).sort((a, b) => b[1].wins - a[1].wins)[0]
+    const bestEntry = Object.entries(storePrices).sort((a, b) => b[1].wins - a[1].wins)[0]
+
+    // Store comparison: top 5 stores sorted by total cost (ascending)
+    const storeComparison = Object.entries(storePrices)
+      .map(([store, { total, items }]) => ({
+        store,
+        total: Math.round(total * 100) / 100,
+        items_found: items,
+      }))
+      .sort((a, b) => a.total - b.total)
+      .slice(0, 5)
+
+    const cheapestTotal = storeComparison[0]?.total ?? 0
+    const bestStoreTotal = bestEntry ? storePrices[bestEntry[0]]?.total ?? 0 : 0
+    const estimatedSavings = bestEntry
+      ? Math.max(0, Math.round((bestStoreTotal - cheapestTotal) * 100) / 100)
+      : 0
 
     return NextResponse.json({
       best_store: bestEntry?.[0] ?? null,
-      estimated_savings: bestEntry ? Math.round(bestEntry[1].totalSavings * 100) / 100 : 0,
+      estimated_savings: estimatedSavings,
       items_count: bestEntry?.[1].wins ?? 0,
       per_item: perItem,
+      store_comparison: storeComparison,
     })
   } catch (error) {
     console.error('Shopping list best-store error:', error)
