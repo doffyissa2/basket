@@ -225,6 +225,7 @@ async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
       currency?: string
       date?: string | null
       product_code?: string | null
+      product_name?: string | null
       product?: {
         product_name_fr?: string | null
         product_name?: string | null
@@ -244,10 +245,10 @@ async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
         (i.price as number) > 0.10 &&
         (i.price as number) < 500 &&
         i.location?.osm_address_country_code === 'FR' &&
-        !!(i.product?.product_name_fr ?? i.product?.product_name)
+        !!(i.product_name ?? i.product?.product_name_fr ?? i.product?.product_name)
       )
       .map(i => ({
-        name: (i.product!.product_name_fr ?? i.product!.product_name ?? '').trim(),
+        name: (i.product_name ?? i.product?.product_name_fr ?? i.product?.product_name ?? '').trim(),
         price: i.price as number,
         ean: i.product?.code ?? i.product_code ?? null,
         store: i.location?.osm_name ?? null,
@@ -279,8 +280,8 @@ export async function GET(request: NextRequest) {
       const j = await r.json() as Record<string, unknown>
       const list = (Array.isArray(j.items) ? j.items : []) as Array<Record<string, unknown>>
       const fr = list.filter(i => (i.location as Record<string, unknown> | null)?.osm_address_country_code === 'FR')
-      const withNames = fr.filter(i => (i.product as Record<string, unknown> | null)?.product_name_fr || (i.product as Record<string, unknown> | null)?.product_name)
-      return { status: r.status, ok: r.ok, total_items: list.length, fr_items: fr.length, fr_with_names: withNames.length, sample: withNames[0] }
+      const withNames = fr.filter(i => i.product_name || (i.product as Record<string, unknown> | null)?.product_name_fr || (i.product as Record<string, unknown> | null)?.product_name)
+      return { status: r.status, ok: r.ok, total_items: list.length, fr_items: fr.length, fr_with_names: withNames.length, sample_name: (withNames[0] as Record<string, unknown> | undefined)?.product_name }
     }).catch(e => ({ status: 0, ok: false, error: String(e) }))
 
     return NextResponse.json({ open_food_facts_prices: offRes })
