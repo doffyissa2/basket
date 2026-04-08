@@ -224,13 +224,21 @@ export default function HomePage() {
       // Parameter rows
       gsap.fromTo('.parameter-row', { x: -50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, stagger: 0.15, ease: 'power2.out', scrollTrigger: { trigger: '#parameters', start: 'top 65%' } })
 
-      // Stacking cards
+      // Stacking cards — scale + subtle opacity only (no brightness filter which blacks out dark cards)
       const stackCards = gsap.utils.toArray('.stack-card') as HTMLElement[]
       stackCards.forEach((card: HTMLElement, i: number) => {
         if (i === stackCards.length - 1) return
         gsap.to(card, {
-          scale: 0.94 - i * 0.02, filter: 'brightness(0.4)', transformOrigin: 'top center', ease: 'none',
-          scrollTrigger: { trigger: stackCards[i + 1], start: 'top 85%', end: 'top ' + (20 + i * 5) + 'vh', scrub: true },
+          scale: 0.96 - i * 0.015,
+          opacity: 0.65,
+          transformOrigin: 'top center',
+          ease: 'none',
+          scrollTrigger: {
+            trigger: stackCards[i + 1],
+            start: 'top 80%',
+            end: 'top 35%',
+            scrub: 1,
+          },
         })
       })
 
@@ -673,7 +681,7 @@ export default function HomePage() {
       </section>
 
       {/* ==================== STACK ARCHITECTURE ==================== */}
-      <section className="relative z-10 px-[5vw] py-[15vh] min-h-[200vh]" id="stacking-cards-section">
+      <section className="relative z-10 px-[5vw] py-[15vh] min-h-[300vh]" id="stacking-cards-section">
         <div className="mb-[8vh] relative z-20">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Sous le capot</span>
           <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
