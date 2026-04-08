@@ -15,8 +15,8 @@ import {
   getFrameStyle, RARITY_COLOR,
   type AvatarFrame, type BadgeRarity, type LevelProgress,
 } from '@/lib/gamification'
-
 import { EASE, useCountUp } from '@/lib/hooks'
+import type { GamificationState, LeaderboardRow } from '@/types/api'
 
 // ── Rarity style maps ─────────────────────────────────────────────────────────
 const RARITY_BG: Record<BadgeRarity, string> = {
@@ -38,31 +38,6 @@ const RARITY_LABEL: Record<BadgeRarity, string> = {
   legendary: 'Légendaire',
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-interface GamificationState {
-  xp:             number
-  level:          number
-  title:          string
-  frame:          AvatarFrame
-  progress:       LevelProgress
-  scan_streak:    number
-  longest_streak: number
-  total_savings:  number
-  total_scans:    number
-  next_level:     { level: number; title: string; xp_required: number; unlock: string } | null
-  badges:         { id: string; unlocked_at: string }[]
-  weekly_challenges: { id: string; text: string; xp: number; completed: boolean }[]
-  dept_rank:      number | null
-}
-
-interface LeaderboardRow {
-  id:            string
-  display_name:  string
-  level:         number
-  title:         string
-  total_savings: number
-  is_me:         boolean
-}
 
 interface ProfileStats { receipts: number; items: number; favoriteStore: string | null; totalSaved: number }
 

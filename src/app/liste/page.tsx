@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Check, ShoppingCart, ArrowLeft, Loader2, Store, Receipt, Minus, ChevronRight } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
+import type { StoreComparison, BestStoreResult } from '@/types/api'
 
 interface ListItem {
   id: string
@@ -16,19 +17,6 @@ interface ListItem {
   qty: number // local quantity, not persisted
 }
 
-interface StoreComparison {
-  store: string
-  total: number
-  items_found: number
-}
-
-interface BestStoreResult {
-  best_store: string | null
-  estimated_savings: number
-  items_count: number
-  per_item: { name: string; best_store: string | null; best_price: number | null }[]
-  store_comparison: StoreComparison[]
-}
 
 export default function ListePage() {
   const [user, setUser] = useState<User | null>(null)

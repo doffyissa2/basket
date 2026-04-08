@@ -12,8 +12,8 @@ import { normalizeStoreChain, isKnownStore } from '@/lib/store-chains'
 import { normalizeProductName } from '@/lib/normalize'
 import type { XPAwardResult } from '@/lib/gamification'
 import { getFrameStyle, LEGENDARY_GRADIENT } from '@/lib/gamification'
-
 import { EASE, useCountUp } from '@/lib/hooks'
+import type { ParsedReceipt, ComparisonItem, BestStore } from '@/types/api'
 
 // ── XP float "+N XP" ─────────────────────────────────────────────────────────
 function XPFloat({ amount, onDone }: { amount: number; onDone: () => void }) {
@@ -143,36 +143,6 @@ function LevelUpModal({ result, onClose }: { result: XPAwardResult; onClose: () 
   )
 }
 
-interface ParsedItem {
-  name: string
-  price: number
-  quantity: number
-  is_promo: boolean
-  is_private_label: boolean
-}
-
-interface ParsedReceipt {
-  store_name: string
-  items: ParsedItem[]
-  total: number
-}
-
-interface ComparisonItem {
-  name: string
-  your_price: number
-  avg_price: number
-  savings: number
-  cheaper_store: string | null
-  normalized_price: string | null
-  avg_normalized_price: string | null
-  is_local: boolean
-}
-
-interface BestStore {
-  name: string
-  items_cheaper: number
-  total_savings: number
-}
 
 const PARSE_MESSAGES = [
   'Lecture du ticket...',

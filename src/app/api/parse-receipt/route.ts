@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
+import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
 function normaliseProductName(name: string): string {
   return name
@@ -116,20 +117,6 @@ async function validateItemPrices(
   }
 }
 
-interface ParsedItem {
-  name: string
-  price: number
-  quantity: number
-  is_promo: boolean
-  is_private_label: boolean
-  confidence?: number
-}
-
-interface ParsedReceipt {
-  store_name: string
-  items: ParsedItem[]
-  total: number
-}
 
 // ── Quality check ─────────────────────────────────────────────────────────────
 function isParseQualityBad(parsed: ParsedReceipt): boolean {
