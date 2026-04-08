@@ -161,6 +161,21 @@ export default function HomePage() {
       // Feature cards entrance
       gsap.fromTo('.feature-card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, stagger: 0.1, ease: 'power3.out', scrollTrigger: { trigger: '#features', start: 'top 70%' } })
 
+      // Security card mobile: reveal scan line on scroll
+      const securityCard = document.querySelector('.security-card') as HTMLElement | null
+      if (securityCard && window.matchMedia('(max-width: 767px)').matches) {
+        ScrollTrigger.create({
+          trigger: securityCard,
+          start: 'top 80%',
+          onEnter: () => {
+            const scanLine = securityCard.querySelector('.scan-line') as HTMLElement | null
+            if (scanLine) {
+              gsap.to(scanLine, { top: '100%', duration: 2, ease: 'power2.inOut', repeat: -1, repeatDelay: 1 })
+            }
+          },
+        })
+      }
+
       // AI terminal feed
       const feedLines = [
         '[SCAN] Ticket détecté — Carrefour Market',
@@ -363,52 +378,67 @@ export default function HomePage() {
       </nav>
 
       {/* ==================== HERO ==================== */}
-      <header className="h-[100dvh] flex flex-col justify-end pb-[10vh] px-[5vw] relative overflow-hidden pt-16" id="hero">
-        <div className="relative z-10 w-full max-w-[80vw] md:max-w-[80vw]">
-          <h1 className="font-sans text-[8vw] leading-[0.9] tracking-tighter text-graphite font-extrabold split-target">
-            Le chemin le plus court
-          </h1>
-          <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold hero-line-2 mt-[1vh]">
-            vers les <span className="text-signal">économies.</span>
-          </h1>
+      <header className="h-[100dvh] relative overflow-hidden pt-16" id="hero">
 
-          {/* Mobile hero CTA */}
-          <div className="md:hidden mt-6 flex items-center gap-3">
-            <a href="/login">
-              <button className="rounded-2xl bg-signal text-graphite px-6 py-3 font-sans text-sm font-bold uppercase tracking-wide">
-                Commencer
-              </button>
-            </a>
-            <span className="font-mono text-xs text-graphite/40">Gratuit · Sans CB</span>
+        {/* === MOBILE HERO === */}
+        <div className="md:hidden h-full flex flex-col px-5 pt-4 pb-8">
+          {/* Title at top */}
+          <div className="relative z-10">
+            <h1 className="font-sans text-[11vw] leading-[0.88] tracking-tighter text-graphite font-extrabold split-target">
+              Le chemin le plus court
+            </h1>
+            <h1 className="font-sans text-[12vw] leading-[0.88] tracking-tighter font-extrabold hero-line-2 mt-1">
+              vers les <span className="text-signal">économies.</span>
+            </h1>
           </div>
-        </div>
-
-        {/* Mobile Receipt - floats in hero on mobile */}
-        <div className="md:hidden absolute top-[12vh] left-0 right-0 flex justify-center items-center z-0 pointer-events-none">
-          <div className="receipt-float" style={{ transform: 'rotate(2deg)', perspective: '800px' }}>
-            <div className="w-48 bg-white rounded-3xl shadow-2xl p-4 relative overflow-hidden border border-graphite/5">
-              <div className="scan-line absolute left-0 w-full h-[2px] bg-signal/60 z-20" style={{ boxShadow: '0 0 16px rgba(126,217,87,0.5)' }} />
-              <div className="text-center mb-2.5 border-b border-dashed border-graphite/20 pb-2.5">
-                <p className="font-mono text-[9px] text-graphite/40 uppercase tracking-wider">Carrefour Market</p>
-                <p className="font-mono text-[8px] text-graphite/25 mt-0.5">08/04/2026 — 14:32</p>
-              </div>
-              <div className="space-y-1.5 font-mono text-[9px]">
-                <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Lait demi-écrémé 1L</span><span className="text-graphite font-medium flex-shrink-0">1,15 €</span></div>
-                <div className="flex justify-between price-pop-delay"><span className="text-graphite/70 truncate pr-2">Beurre Président 250g</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
-                <div className="flex justify-between price-pop-delay2"><span className="text-graphite/70 truncate pr-2">Pâtes Barilla 500g</span><span className="text-graphite font-medium flex-shrink-0">1,29 €</span></div>
-                <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Eau Cristaline 6×1.5L</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
-              </div>
-              <div className="mt-2.5 pt-2 border-t border-dashed border-graphite/20 flex justify-between font-sans text-[10px]">
-                <span className="font-bold">TOTAL</span><span className="font-bold">7,42 €</span>
-              </div>
-              <div className="mt-2 bg-signal/10 rounded-xl p-1.5 text-center">
-                <p className="font-sans text-[9px] font-bold text-signal flex items-center justify-center gap-1"><img src="/basket_logo.png" alt="" className="h-3 w-3" />Basket : économisez 3,40 € chez Lidl</p>
+          {/* Receipt centered in middle */}
+          <div className="flex-1 flex items-center justify-center z-0 pointer-events-none">
+            <div className="receipt-float" style={{ transform: 'rotate(2deg)', perspective: '800px' }}>
+              <div className="w-52 bg-white rounded-3xl shadow-2xl p-4 relative overflow-hidden border border-graphite/5">
+                <div className="scan-line absolute left-0 w-full h-[2px] bg-signal/60 z-20" style={{ boxShadow: '0 0 16px rgba(126,217,87,0.5)' }} />
+                <div className="text-center mb-2.5 border-b border-dashed border-graphite/20 pb-2.5">
+                  <p className="font-mono text-[9px] text-graphite/40 uppercase tracking-wider">Carrefour Market</p>
+                  <p className="font-mono text-[8px] text-graphite/25 mt-0.5">08/04/2026 — 14:32</p>
+                </div>
+                <div className="space-y-1.5 font-mono text-[9px]">
+                  <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Lait demi-écrémé 1L</span><span className="text-graphite font-medium flex-shrink-0">1,15 €</span></div>
+                  <div className="flex justify-between price-pop-delay"><span className="text-graphite/70 truncate pr-2">Beurre Président 250g</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
+                  <div className="flex justify-between price-pop-delay2"><span className="text-graphite/70 truncate pr-2">Pâtes Barilla 500g</span><span className="text-graphite font-medium flex-shrink-0">1,29 €</span></div>
+                  <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Eau Cristaline 6×1.5L</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-graphite/20 flex justify-between font-sans text-[10px]">
+                  <span className="font-bold">TOTAL</span><span className="font-bold">7,42 €</span>
+                </div>
+                <div className="mt-2 bg-signal/10 rounded-xl p-1.5 text-center">
+                  <p className="font-sans text-[9px] font-bold text-signal flex items-center justify-center gap-1"><img src="/basket_logo.png" alt="" className="h-3 w-3" />Basket : économisez 3,40 € chez Lidl</p>
+                </div>
               </div>
             </div>
           </div>
+          {/* CTA at bottom centered */}
+          <div className="flex flex-col items-center gap-2 relative z-10">
+            <a href="/login" className="w-full max-w-xs">
+              <button className="w-full rounded-2xl bg-signal text-graphite py-4 font-sans text-sm font-bold uppercase tracking-wide">
+                Commencer
+              </button>
+            </a>
+            <span className="font-mono text-xs text-graphite/40 text-center">Gratuit · Sans CB</span>
+          </div>
         </div>
 
-        {/* Animated Receipt */}
+        {/* === DESKTOP HERO === */}
+        <div className="hidden md:flex h-full flex-col justify-end pb-[10vh] px-[5vw]">
+          <div className="relative z-10 w-full max-w-[80vw]">
+            <h1 className="font-sans text-[8vw] leading-[0.9] tracking-tighter text-graphite font-extrabold split-target">
+              Le chemin le plus court
+            </h1>
+            <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold hero-line-2 mt-[1vh]">
+              vers les <span className="text-signal">économies.</span>
+            </h1>
+          </div>
+        </div>
+
+        {/* Desktop Receipt */}
         <div className="absolute top-[15vh] right-[5vw] w-[40vw] h-[65vh] hidden md:flex items-center justify-center z-0">
           <div className="receipt-float relative" style={{ perspective: '1000px' }}>
             <div className="w-[22vw] bg-white rounded-[1.5rem] shadow-2xl p-[2vw] relative overflow-hidden border border-graphite/5" style={{ transformStyle: 'preserve-3d' }}>
@@ -436,35 +466,35 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="absolute bottom-[5vh] right-[5vw] flex items-center gap-[1vw] font-mono text-xs text-graphite/40 uppercase tracking-tight">
+        <div className="absolute bottom-[5vh] right-[5vw] hidden md:flex items-center gap-[1vw] font-mono text-xs text-graphite/40 uppercase tracking-tight">
           <span>Défiler</span>
           <iconify-icon icon="solar:arrow-down-linear" className="text-lg animate-bounce" />
         </div>
       </header>
 
       {/* ==================== FEATURES ==================== */}
-      <section className="py-[15vh] px-[5vw] grid grid-cols-1 md:grid-cols-3 gap-[2vw] relative z-10" id="features">
+      <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-[2vw] relative z-10" id="features">
         {/* Card 1 — Basket AI */}
-        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
+        <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] h-auto min-h-[280px] md:h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
           <div className="flex justify-between items-start">
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">01 // Basket AI</span>
             <iconify-icon icon="solar:brain-linear" className="text-2xl text-signal" />
           </div>
-          <div className="font-mono text-xs text-graphite/80 space-y-1 h-[15vh] overflow-hidden opacity-70" id="terminal-feed" />
-          <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[4vh]">
+          <div className="font-mono text-xs text-graphite/80 space-y-1 h-24 md:h-[15vh] overflow-hidden opacity-70" id="terminal-feed" />
+          <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-4 md:mt-[4vh]">
             Lecture intelligente<br />de vos tickets
           </h3>
         </div>
 
         {/* Card 2 — Base de données */}
-        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
+        <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] h-auto min-h-[280px] md:h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
           <div className="flex justify-between items-start">
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">02 // Base de données</span>
             <iconify-icon icon="solar:database-linear" className="text-2xl text-signal" />
           </div>
-          <div className="flex-1 flex items-end mb-[2vh] relative">
-            <span className="font-sans text-[5vw] leading-none tracking-tighter font-extrabold text-graphite" id="uptime-counter">0</span>
-            <span className="font-mono text-lg text-signal mb-[1vh] ml-2">produits</span>
+          <div className="flex-1 flex items-end mb-4 md:mb-[2vh] relative">
+            <span className="font-sans text-5xl md:text-[5vw] leading-none tracking-tighter font-extrabold text-graphite" id="uptime-counter">0</span>
+            <span className="font-mono text-lg text-signal mb-1 md:mb-[1vh] ml-2">produits</span>
           </div>
           <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
             +40 000 prix<br />comparés en temps réel
@@ -472,15 +502,17 @@ export default function HomePage() {
         </div>
 
         {/* Card 3 — Sécurité */}
-        <div className="bg-offwhite rounded-[3rem] p-[2.5vw] h-[50vh] flex flex-col justify-between relative overflow-hidden group border border-graphite/10 hover-trigger feature-card">
+        <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] h-auto min-h-[280px] md:h-[50vh] flex flex-col justify-between relative overflow-hidden group border border-graphite/10 hover-trigger feature-card security-card">
           <div className="absolute top-0 left-0 w-full h-[2px] bg-signal shadow-[0_0_15px_rgba(126,217,87,0.8)] -translate-y-[10px] group-hover:translate-y-[50vh] transition-transform duration-[2s] ease-[cubic-bezier(0.87,0,0.13,1)] z-20" />
+          <div className="scan-line absolute left-0 w-full h-[2px] bg-signal/40 z-20 md:hidden" style={{ boxShadow: '0 0 12px rgba(126,217,87,0.4)' }} />
           <div className="flex justify-between items-start relative z-10">
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">03 // Sécurité</span>
             <iconify-icon icon="solar:shield-keyhole-minimalistic-linear" className="text-2xl text-signal" />
           </div>
-          <div className="absolute inset-0 bg-offwhite/60 backdrop-blur-[8px] z-10 group-hover:backdrop-blur-none transition-all duration-[2s]" />
-          <div className="relative z-0 mt-auto">
-            <div className="font-mono text-xs text-signal mb-[2vh] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 delay-500">[DONNÉES_PROTÉGÉES]</div>
+          {/* Blur overlay — desktop hover only, hidden on mobile */}
+          <div className="hidden md:block absolute inset-0 bg-offwhite/60 backdrop-blur-[8px] z-10 group-hover:backdrop-blur-none transition-all duration-[2s]" />
+          <div className="relative z-10 mt-auto">
+            <div className="font-mono text-xs text-signal mb-4 md:mb-[2vh] md:opacity-0 group-hover:opacity-100 transition-opacity duration-1000 delay-500">[DONNÉES_PROTÉGÉES]</div>
             <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
               Vos données<br />restent privées
             </h3>
@@ -489,9 +521,9 @@ export default function HomePage() {
       </section>
 
       {/* ==================== VISION ==================== */}
-      <section className="py-[20vh] px-[5vw] bg-graphite rounded-[3rem] mx-[2vw] my-[5vh] text-paper relative overflow-hidden" id="philosophy">
-        <div className="relative z-10 max-w-[70vw] mx-auto text-center flex flex-col items-center">
-          <p className="font-mono text-xs text-paper/40 mb-[8vh] uppercase tracking-tight border border-paper/10 px-[1.5vw] py-[0.5vh] rounded-full">Notre Vision</p>
+      <section className="py-16 md:py-[20vh] px-5 md:px-[5vw] bg-graphite rounded-[2rem] md:rounded-[3rem] mx-2 md:mx-[2vw] my-4 md:my-[5vh] text-paper relative overflow-hidden" id="philosophy">
+        <div className="relative z-10 max-w-[90vw] md:max-w-[70vw] mx-auto text-center flex flex-col items-center">
+          <p className="font-mono text-xs text-paper/40 mb-8 md:mb-[8vh] uppercase tracking-tight border border-paper/10 px-4 py-1.5 rounded-full">Notre Vision</p>
           <p className="font-sans text-lg md:text-[2vw] text-paper/50 font-light mb-[4vh] tracking-tight contrast-1">
             Chaque semaine, des millions de Français paient plus cher que nécessaire.
           </p>
@@ -550,11 +582,11 @@ export default function HomePage() {
       </section>
 
       {/* ==================== CARTE (Topology) ==================== */}
-      <section className="py-[15vh] px-[5vw] relative z-10" id="topology">
-        <div className="mb-[8vh] flex flex-col md:flex-row md:items-end justify-between gap-[4vh]">
+      <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10" id="topology">
+        <div className="mb-8 md:mb-[8vh] flex flex-col md:flex-row md:items-end justify-between gap-4 md:gap-[4vh]">
           <div>
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Carte des prix</span>
-            <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+            <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-2 md:mt-[2vh]">
               Trouvez le <span className="text-signal">moins cher</span> près de chez vous.
             </h2>
           </div>
@@ -563,9 +595,9 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-[2vw]">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-[2vw]">
           {/* Large Map Card */}
-          <div className="md:col-span-2 md:row-span-2 bg-offwhite rounded-[3rem] p-[3vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card overflow-hidden relative min-h-[50vh]">
+          <div className="md:col-span-2 md:row-span-2 bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[3vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card overflow-hidden relative min-h-[280px] md:min-h-[50vh]">
             <div className="flex justify-between items-start relative z-10">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Magasins à proximité</span>
               <iconify-icon icon="solar:map-point-wave-linear" className="text-2xl text-signal" />
@@ -586,18 +618,18 @@ export default function HomePage() {
                 <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Auchan</span>
               </div>
             </div>
-            <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[30vh] relative z-10">
+            <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-8 md:mt-[30vh] relative z-10">
               Carte interactive<br />de votre quartier
             </h3>
           </div>
 
           {/* Price Comparison Card */}
-          <div className="bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card aspect-square md:aspect-auto">
+          <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] min-h-[200px] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card">
             <div className="flex justify-between items-start">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Comparaison</span>
               <iconify-icon icon="solar:sort-by-time-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors" />
             </div>
-            <div className="flex-1 flex flex-col justify-center gap-2 py-[2vh]">
+            <div className="flex-1 flex flex-col justify-center gap-2 py-4 md:py-[2vh]">
               <div className="flex justify-between items-center font-mono text-xs"><span className="text-graphite/60">Lait 1L</span><span className="text-signal font-bold">0,85 €</span></div>
               <div className="w-full h-[2px] bg-graphite/10 relative rounded-full">
                 <div className="absolute top-0 left-0 h-full w-[40%] bg-signal rounded-full" />
@@ -605,43 +637,43 @@ export default function HomePage() {
               <div className="flex justify-between items-center font-mono text-xs"><span className="text-graphite/40">Aldi</span><span className="text-graphite/40">Monoprix — 1,35 €</span></div>
             </div>
             <h3 className="font-sans text-sm md:text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
-              Prix le<br />plus bas
+              Prix le plus bas
             </h3>
           </div>
 
           {/* Savings Alert Card */}
-          <div className="bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card aspect-square md:aspect-auto">
+          <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] min-h-[200px] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card">
             <div className="flex justify-between items-start">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Alerte</span>
               <iconify-icon icon="solar:bell-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors" />
             </div>
-            <div className="flex items-center justify-center flex-1 py-[4vh]">
+            <div className="flex items-center justify-center flex-1 py-4 md:py-[4vh]">
               <div className="text-center">
-                <p className="font-sans text-2xl md:text-[3vw] font-extrabold text-signal">-30%</p>
+                <p className="font-sans text-4xl md:text-[3vw] font-extrabold text-signal">-30%</p>
                 <p className="font-mono text-xs text-graphite/50 mt-1">Beurre chez Lidl</p>
               </div>
             </div>
             <h3 className="font-sans text-sm md:text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
-              Alertes<br />prix bas
+              Alertes prix bas
             </h3>
           </div>
 
           {/* Wide Summary Card */}
-          <div className="md:col-span-2 bg-offwhite rounded-[3rem] p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card min-h-[25vh]">
-            <div className="flex justify-between items-start mb-[4vh]">
+          <div className="md:col-span-2 bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card min-h-[160px] md:min-h-[25vh]">
+            <div className="flex justify-between items-start mb-4 md:mb-[4vh]">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Économies du mois</span>
               <iconify-icon icon="solar:wallet-money-linear" className="text-2xl text-signal" />
             </div>
             <div className="flex items-end justify-between">
               <div>
-                <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mb-[1vh]">Rapport hebdomadaire</h3>
+                <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mb-2 md:mb-[1vh]">Rapport hebdomadaire</h3>
                 <p className="font-mono text-xs text-graphite/50">Recevez chaque dimanche un résumé de vos économies possibles.</p>
               </div>
-              <div className="flex items-end gap-[0.5vw] h-[6vh]">
-                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[30%] rounded-t-sm group-hover:h-[60%] transition-all duration-300" />
-                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[50%] rounded-t-sm group-hover:h-[40%] transition-all duration-300 delay-75" />
-                <div className="w-[0.8vw] min-w-[0.4rem] bg-graphite/10 h-[80%] rounded-t-sm group-hover:h-[90%] transition-all duration-300 delay-150" />
-                <div className="w-[0.8vw] min-w-[0.4rem] bg-signal h-[40%] rounded-t-sm group-hover:h-[100%] transition-all duration-300 delay-200 shadow-[0_0_10px_rgba(126,217,87,0.6)]" />
+              <div className="flex items-end gap-1 md:gap-[0.5vw] h-12 md:h-[6vh]">
+                <div className="w-3 md:w-[0.8vw] bg-graphite/10 h-[30%] rounded-t-sm group-hover:h-[60%] transition-all duration-300" />
+                <div className="w-3 md:w-[0.8vw] bg-graphite/10 h-[50%] rounded-t-sm group-hover:h-[40%] transition-all duration-300 delay-75" />
+                <div className="w-3 md:w-[0.8vw] bg-graphite/10 h-[80%] rounded-t-sm group-hover:h-[90%] transition-all duration-300 delay-150" />
+                <div className="w-3 md:w-[0.8vw] bg-signal h-[40%] rounded-t-sm group-hover:h-[100%] transition-all duration-300 delay-200 shadow-[0_0_10px_rgba(126,217,87,0.6)]" />
               </div>
             </div>
           </div>
@@ -649,31 +681,31 @@ export default function HomePage() {
       </section>
 
       {/* ==================== FONCTIONNEMENT (Accordion) ==================== */}
-      <section className="py-[15vh] px-[5vw] relative z-10 bg-graphite rounded-[3rem] mx-[2vw] my-[5vh] text-paper overflow-hidden" id="parameters">
-        <div className="relative z-10 max-w-[80vw] mx-auto">
-          <div className="mb-[10vh]">
-            <span className="font-mono text-xs text-paper/40 uppercase tracking-tight border border-paper/10 px-[1.5vw] py-[0.5vh] rounded-full">Comment Basket fonctionne</span>
+      <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10 bg-graphite rounded-[2rem] md:rounded-[3rem] mx-2 md:mx-[2vw] my-4 md:my-[5vh] text-paper overflow-hidden" id="parameters">
+        <div className="relative z-10 max-w-full md:max-w-[80vw] mx-auto">
+          <div className="mb-8 md:mb-[10vh]">
+            <span className="font-mono text-xs text-paper/40 uppercase tracking-tight border border-paper/10 px-4 py-1.5 rounded-full">Comment Basket fonctionne</span>
           </div>
           <div className="flex flex-col border-t border-paper/10">
-            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+            <div className="py-6 md:py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-[4vh] group hover-trigger parameter-row">
               <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Reconnaissance IA</h3>
-              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+              <div className="md:w-[40%] flex justify-between items-center gap-4 md:gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Notre intelligence artificielle lit votre ticket en quelques secondes et identifie chaque produit automatiquement.</p>
-                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500 flex-shrink-0" />
               </div>
             </div>
-            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+            <div className="py-6 md:py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-[4vh] group hover-trigger parameter-row">
               <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Comparaison instantanée</h3>
-              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+              <div className="md:w-[40%] flex justify-between items-center gap-4 md:gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Chaque produit est comparé en temps réel avec les prix de 15 enseignes françaises dans votre zone.</p>
-                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500 flex-shrink-0" />
               </div>
             </div>
-            <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
+            <div className="py-6 md:py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-[4vh] group hover-trigger parameter-row">
               <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Recommandations personnalisées</h3>
-              <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
+              <div className="md:w-[40%] flex justify-between items-center gap-4 md:gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Basket apprend vos habitudes et vous suggère le meilleur magasin pour votre liste de courses chaque semaine.</p>
-                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
+                <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500 flex-shrink-0" />
               </div>
             </div>
           </div>
@@ -681,45 +713,45 @@ export default function HomePage() {
       </section>
 
       {/* ==================== STACK ARCHITECTURE ==================== */}
-      <section className="relative z-10 px-[5vw] py-[15vh] min-h-[300vh]" id="stacking-cards-section">
-        <div className="mb-[8vh] relative z-20">
+      <section className="relative z-10 px-5 md:px-[5vw] py-12 md:py-[15vh] md:min-h-[300vh]" id="stacking-cards-section">
+        <div className="mb-8 md:mb-[8vh] relative z-20">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Sous le capot</span>
-          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-2 md:mt-[2vh]">
             Comment <span className="text-signal">Basket</span> fonctionne.
           </h2>
         </div>
-        <div className="relative w-full" id="cards-wrapper">
+        <div className="relative w-full flex flex-col gap-4 md:gap-0" id="cards-wrapper">
           {/* Card 1 */}
-          <div className="sticky top-[15vh] w-full h-[70vh] bg-offwhite rounded-[3rem] border border-graphite/10 p-[4vw] flex flex-col justify-between stack-card stack-shadow overflow-hidden group">
+          <div className="md:sticky md:top-[15vh] w-full h-auto md:h-[70vh] bg-offwhite rounded-[2rem] md:rounded-[3rem] border border-graphite/10 p-6 md:p-[4vw] flex flex-col justify-between stack-card stack-shadow overflow-hidden group">
             <div className="flex justify-between items-start relative z-10">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Étape 01</span>
               <iconify-icon icon="solar:camera-linear" className="text-3xl text-signal" />
             </div>
-            <div className="relative z-10">
+            <div className="relative z-10 mt-8 md:mt-0">
               <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-graphite leading-none">Capture</h3>
-              <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-md">Photographiez votre ticket de caisse. Notre OCR intelligent extrait chaque article, prix et quantité en quelques secondes — même les tickets froissés.</p>
+              <p className="font-mono text-sm text-graphite/60 mt-4 md:mt-[2vh] max-w-md">Photographiez votre ticket de caisse. Notre OCR intelligent extrait chaque article, prix et quantité en quelques secondes — même les tickets froissés.</p>
             </div>
           </div>
           {/* Card 2 */}
-          <div className="sticky top-[20vh] w-full h-[70vh] bg-[#2A2A2A] rounded-[3rem] border border-graphite/20 p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
+          <div className="md:sticky md:top-[20vh] w-full h-auto md:h-[70vh] bg-[#2A2A2A] rounded-[2rem] md:rounded-[3rem] border border-graphite/20 p-6 md:p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
             <div className="flex justify-between items-start relative z-10">
               <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Étape 02</span>
               <iconify-icon icon="solar:chart-2-linear" className="text-3xl text-signal" />
             </div>
-            <div className="relative z-10">
+            <div className="relative z-10 mt-8 md:mt-0">
               <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-paper leading-none">Analyse</h3>
-              <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Basket compare vos prix avec notre base de plus de 33 000 références dans 15 enseignes. L&apos;algorithme de matching intelligent identifie les meilleurs prix même quand les noms diffèrent.</p>
+              <p className="font-mono text-sm text-paper/60 mt-4 md:mt-[2vh] max-w-md">Basket compare vos prix avec notre base de plus de 33 000 références dans 15 enseignes. L&apos;algorithme de matching intelligent identifie les meilleurs prix même quand les noms diffèrent.</p>
             </div>
           </div>
           {/* Card 3 */}
-          <div className="sticky top-[25vh] w-full h-[70vh] bg-graphite rounded-[3rem] border border-graphite/40 p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
+          <div className="md:sticky md:top-[25vh] w-full h-auto md:h-[70vh] bg-graphite rounded-[2rem] md:rounded-[3rem] border border-graphite/40 p-6 md:p-[4vw] flex flex-col justify-between stack-card text-paper stack-shadow overflow-hidden group">
             <div className="flex justify-between items-start relative z-10">
               <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Étape 03</span>
               <iconify-icon icon="solar:wallet-money-linear" className="text-3xl text-signal" />
             </div>
-            <div className="relative z-10">
+            <div className="relative z-10 mt-8 md:mt-0">
               <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-signal leading-none">Économies</h3>
-              <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Vous recevez votre rapport personnalisé : combien vous auriez économisé, dans quel magasin, article par article. Partagez-le sur WhatsApp et faites économiser votre entourage.</p>
+              <p className="font-mono text-sm text-paper/60 mt-4 md:mt-[2vh] max-w-md">Vous recevez votre rapport personnalisé : combien vous auriez économisé, dans quel magasin, article par article. Partagez-le sur WhatsApp et faites économiser votre entourage.</p>
             </div>
           </div>
         </div>
@@ -741,16 +773,16 @@ export default function HomePage() {
       </section>
 
       {/* ==================== ANALYTICS ==================== */}
-      <section className="py-[15vh] px-[5vw] relative z-10" id="matrix-section">
-        <div className="mb-[8vh]">
+      <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10" id="matrix-section">
+        <div className="mb-8 md:mb-[8vh]">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Suivi personnel</span>
-          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-2 md:mt-[2vh]">
             Vos <span className="text-signal">analyses.</span>
           </h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-[2vw]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-[2vw]">
           {/* Chart card */}
-          <div className="md:col-span-2 bg-offwhite rounded-[3rem] p-[3vw] h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item overflow-hidden relative group hover-trigger">
+          <div className="md:col-span-2 bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[3vw] h-auto min-h-[300px] md:h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item overflow-hidden relative group hover-trigger">
             <div className="flex justify-between items-start relative z-10">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Économies hebdomadaires</span>
               <iconify-icon icon="solar:chart-square-linear" className="text-2xl text-signal" />
@@ -773,7 +805,7 @@ export default function HomePage() {
           </div>
 
           {/* Circle card */}
-          <div className="bg-offwhite rounded-[3rem] p-[3vw] h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item group hover-trigger">
+          <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[3vw] h-auto min-h-[300px] md:h-[60vh] flex flex-col justify-between border border-graphite/10 matrix-item group hover-trigger">
             <div className="flex justify-between items-start">
               <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Ce mois-ci</span>
               <iconify-icon icon="solar:pie-chart-2-linear" className="text-2xl text-graphite/50 group-hover:text-signal transition-colors duration-500" />
@@ -796,16 +828,16 @@ export default function HomePage() {
       </section>
 
       {/* ==================== ENSEIGNES ==================== */}
-      <section className="py-[15vh] px-[5vw] relative z-10 bg-offwhite rounded-[3rem] mx-[2vw] my-[5vh] border border-graphite/10" id="ecosystem">
-        <div className="mb-[8vh] text-center max-w-[50vw] mx-auto">
+      <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10 bg-offwhite rounded-[2rem] md:rounded-[3rem] mx-2 md:mx-[2vw] my-4 md:my-[5vh] border border-graphite/10" id="ecosystem">
+        <div className="mb-8 md:mb-[8vh] text-center max-w-full md:max-w-[50vw] mx-auto">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Enseignes compatibles</span>
-          <h2 className="font-sans text-3xl md:text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-3xl md:text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-2 md:mt-[2vh]">
             Tous vos <span className="text-signal">magasins.</span>
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-graphite/10 border border-graphite/10 rounded-[2rem] overflow-hidden">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-graphite/10 border border-graphite/10 rounded-[1.5rem] md:rounded-[2rem] overflow-hidden">
           {['E.Leclerc', 'Carrefour', 'Intermarché', 'Système U', 'Auchan', 'Lidl', 'Monoprix', 'Aldi'].map((name) => (
-            <div key={name} className="bg-offwhite p-[4vw] flex items-center justify-center group hover-trigger eco-item">
+            <div key={name} className="bg-offwhite p-6 md:p-[4vw] flex items-center justify-center group hover-trigger eco-item">
               <span className="font-sans font-bold text-lg text-graphite/40 group-hover:text-signal group-hover:scale-110 transition-all duration-500">{name}</span>
             </div>
           ))}
@@ -861,15 +893,15 @@ export default function HomePage() {
       </section>
 
       {/* ==================== CTA ==================== */}
-      <section className="py-[20vh] px-[5vw] relative z-10 flex flex-col items-center justify-center text-center overflow-hidden" id="cta">
-        <h2 className="font-sans text-5xl md:text-[7vw] leading-[0.9] text-graphite font-extrabold mb-[4vh] split-target-cta">
+      <section className="py-16 md:py-[20vh] px-5 md:px-[5vw] relative z-10 flex flex-col items-center justify-center text-center overflow-hidden" id="cta">
+        <h2 className="font-sans text-5xl md:text-[7vw] leading-[0.9] text-graphite font-extrabold mb-6 md:mb-[4vh] split-target-cta">
           Prêt à payer <span className="text-signal">moins</span> ?
         </h2>
-        <p className="font-mono text-sm text-graphite/50 mb-[6vh] max-w-md">Rejoignez des milliers de Français qui économisent chaque semaine grâce à Basket.</p>
+        <p className="font-mono text-sm text-graphite/50 mb-8 md:mb-[6vh] max-w-md">Rejoignez des milliers de Français qui économisent chaque semaine grâce à Basket.</p>
         <a href="/login">
-          <button className="relative overflow-hidden rounded-[2rem] bg-signal text-graphite px-[3vw] py-[2vh] min-w-[200px] font-sans text-sm font-bold uppercase tracking-tight group hover:scale-[1.05] transition-transform duration-500 magnetic-btn flex items-center justify-center gap-[1vw]">
+          <button className="relative overflow-hidden rounded-[2rem] bg-signal text-graphite px-8 py-4 md:px-[3vw] md:py-[2vh] min-w-[200px] font-sans text-sm font-bold uppercase tracking-tight group hover:scale-[1.05] transition-transform duration-500 magnetic-btn flex items-center justify-center gap-3 md:gap-[1vw]">
             <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
-            <span className="relative z-10 group-hover:text-signal transition-colors duration-500 flex items-center gap-[1vw]">
+            <span className="relative z-10 group-hover:text-signal transition-colors duration-500 flex items-center gap-3 md:gap-[1vw]">
               Commencer gratuitement
               <iconify-icon icon="solar:arrow-right-linear" className="text-lg" />
             </span>
@@ -878,7 +910,7 @@ export default function HomePage() {
       </section>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="bg-graphite text-paper rounded-t-[4rem] mt-[5vh] pt-[15vh] pb-[5vh] px-[5vw] relative overflow-hidden">
+      <footer className="bg-graphite text-paper rounded-t-[2rem] md:rounded-t-[4rem] mt-4 md:mt-[5vh] pt-16 md:pt-[15vh] pb-8 md:pb-[5vh] px-5 md:px-[5vw] relative overflow-hidden">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -907,7 +939,7 @@ export default function HomePage() {
             </ul>
           </div>
         </div>
-        <div className="mt-[20vh] flex justify-between items-end border-t border-paper/10 pt-[5vh] relative z-10">
+        <div className="mt-16 md:mt-[20vh] flex justify-between items-end border-t border-paper/10 pt-8 md:pt-[5vh] relative z-10">
           <div className="flex items-center gap-[1vw]">
             <div className="w-[8px] h-[8px] rounded-full bg-signal animate-pulse" />
             <span className="font-mono text-xs text-paper/50 uppercase tracking-tight">Fait avec soin en France 🇫🇷</span>
