@@ -348,7 +348,10 @@ export async function POST(request: NextRequest) {
   for (let i = 0; i < rows.length; i += 100) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.from('community_prices') as any)
-      .insert(rows.slice(i, i + 100))
+      .upsert(rows.slice(i, i + 100), {
+        onConflict: 'item_name_normalised,unit_price,source,source_date,store_chain',
+        ignoreDuplicates: true,
+      })
     if (error) {
       console.error('[sync-community-prices] insert error:', error.message)
       if (!insertErrors.includes(error.message)) insertErrors.push(error.message)
