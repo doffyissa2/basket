@@ -98,9 +98,9 @@ export default function DashboardPage() {
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
           .eq('user_id', user.id).eq('read', false),
-        supabase.from('profiles').select('postcode, onboarded').eq('id', user.id).single(),
+        supabase.from('profiles').select('postcode, onboarded, total_savings').eq('id', user.id).single(),
         supabase.from('receipts')
-          .select('created_at, total_amount, savings_amount, receipt_date').eq('user_id', user.id),
+          .select('created_at, total_amount, receipt_date').eq('user_id', user.id),
       ])
 
       if (receiptsErr) {
@@ -116,8 +116,10 @@ export default function DashboardPage() {
       if (unread)  setUnreadCount(unread)
       if (!profile?.onboarded) setShowOnboarding(true)
 
+      // total_savings comes from the profile (maintained by the award system)
+      if (profile?.total_savings) setTotalSavings(Number(profile.total_savings))
+
       if (all) {
-        setTotalSavings(all.reduce((s, r) => s + (r.savings_amount || 0), 0))
         setTotalSpent(all.reduce((s, r) => s + (r.total_amount || 0), 0))
         setStreak(computeStreak(all))
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)

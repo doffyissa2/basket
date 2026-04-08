@@ -4,6 +4,11 @@
 -- Safe to run multiple times — all statements are idempotent.
 -- ============================================================
 
+-- ── 0. receipts table — savings_amount column ───────────────
+-- Required for per-receipt savings tracking and the receipt detail page.
+
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS savings_amount NUMERIC(10,2) DEFAULT 0;
+
 -- ── 1. Gamification columns on profiles ─────────────────────
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS xp               INTEGER        DEFAULT 0;

@@ -11,7 +11,7 @@ import { EASE } from '@/lib/hooks'
 
 interface ReceiptDetail {
   id: string; store_name: string | null; total_amount: number | null
-  savings_amount: number | null; receipt_date: string | null; created_at: string
+  savings_amount?: number | null; receipt_date: string | null; created_at: string
 }
 interface PriceItem { item_name: string; unit_price: number; quantity: number | null }
 
@@ -60,23 +60,31 @@ export default function ReceiptDetailPage() {
       if (authErr) console.error('[receipt] auth error:', authErr)
       if (!user) { window.location.href = '/login'; return }
 
-      const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }] = await Promise.all([
+      const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }, { data: savingsRow }] = await Promise.all([
         supabase.from('receipts')
-          .select('id, store_name, total_amount, savings_amount, receipt_date, created_at')
-          .eq('id', id).single(),
+          .select('id, store_name, total_amount, receipt_date, created_at')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
         supabase.from('price_items')
           .select('item_name, unit_price, quantity')
           .eq('receipt_id', id).order('unit_price', { ascending: false }).limit(100),
+        // Separate query so a missing savings_amount column doesn't break the main fetch
+        supabase.from('receipts')
+          .select('savings_amount')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
       ])
 
       if (receiptErr) console.error('[receipt] query error:', receiptErr)
       if (itemsErr)   console.error('[receipt] items error:', itemsErr)
       if (!receiptData) { setNotFound(true); setLoading(false); return }
-      setReceipt(receiptData)
+      setReceipt({ ...receiptData, savings_amount: savingsRow?.savings_amount ?? null })
       setItems(itemsData ?? [])
       setLoading(false)
       // Fire confetti if there are savings
-      if ((receiptData.savings_amount ?? 0) > 0) {
+      if (((savingsRow?.savings_amount) ?? 0) > 0) {
         setTimeout(() => setConfetti(true), 400)
         setTimeout(() => setConfetti(false), 2200)
       }
