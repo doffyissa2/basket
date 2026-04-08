@@ -51,6 +51,7 @@ const card = {
 /* ── Desktop sidebar ──────────────────────────────────────── */
 const SIDEBAR_ITEMS = [
   { id: 'home',    icon: Home,         label: 'Accueil',   href: '/dashboard' },
+  { id: 'carte',   icon: MapIcon,      label: 'Carte',     href: '/carte' },
   { id: 'scan',    icon: Camera,       label: 'Scanner',   href: '/scan',   highlight: true },
   { id: 'liste',   icon: ShoppingCart, label: 'Ma liste',  href: '/liste' },
   { id: 'bilan',   icon: BarChart2,    label: 'Mon bilan', href: '/bilan' },
@@ -307,7 +308,7 @@ export default function DashboardPage() {
               {/* Main stat */}
               <div className="px-6 pt-6 pb-5">
                 <p className="text-[11px] font-semibold text-graphite/40 uppercase tracking-widest mb-3">
-                  Économies réalisées
+                  Économies possibles
                 </p>
                 <div className="flex items-end justify-between gap-4">
                   <div>
@@ -496,22 +497,31 @@ export default function DashboardPage() {
             <div className="absolute top-0 right-0 w-56 h-56 rounded-full opacity-20"
               style={{ background: 'radial-gradient(circle, #7ed957 0%, transparent 70%)', transform: 'translate(30%,-30%)' }} />
             <div className="relative">
-              <p className="text-[11px] font-semibold text-graphite/40 uppercase tracking-widest mb-2">Économies totales</p>
+              <p className="text-[11px] font-semibold text-graphite/40 uppercase tracking-widest mb-2">Économies possibles</p>
               <p className="text-5xl font-extrabold mb-1"
                 style={{ fontVariantNumeric: 'tabular-nums', color: totalSavings > 0 ? '#00D09C' : '#111111' }}>
                 €{animatedSavings.toFixed(2)}
               </p>
-              <p className="text-sm text-graphite/40">
-                sur {recentReceipts.length} ticket{recentReceipts.length !== 1 ? 's' : ''} scanné{recentReceipts.length !== 1 ? 's' : ''}
-              </p>
+              {totalSavings > 0 ? (
+                <p className="text-sm text-graphite/40">
+                  en achetant moins cher &middot; {recentReceipts.length} ticket{recentReceipts.length !== 1 ? 's' : ''}
+                </p>
+              ) : (
+                <p className="text-sm text-graphite/40">
+                  {recentReceipts.length > 0
+                    ? `${recentReceipts.length} ticket${recentReceipts.length !== 1 ? 's' : ''} scanné${recentReceipts.length !== 1 ? 's' : ''} — scannez un nouveau ticket pour voir les comparaisons de prix`
+                    : 'Scannez votre premier ticket pour comparer les prix'}
+                </p>
+              )}
             </div>
           </div>
 
           {/* Desktop quick actions */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {[
               { icon: BarChart2,    label: 'Mon bilan', href: '/bilan', color: '#7ed957',  bg: 'rgba(126,217,87,0.1)' },
               { icon: ShoppingCart, label: 'Ma liste',  href: '/liste', color: '#00D09C', bg: 'rgba(0,208,156,0.1)' },
+              { icon: MapIcon,      label: 'Carte',     href: '/carte', color: '#E07A5F', bg: 'rgba(224,122,95,0.1)' },
               { icon: Camera,       label: 'Scanner',   href: '/scan',  color: '#fff',    bg: '#111' },
             ].map((action) => (
               <motion.a key={action.label} href={action.href} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }}
