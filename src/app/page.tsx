@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import NewsletterSection from '@/components/NewsletterSection'
 
 declare module 'react' {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -361,10 +362,10 @@ export default function HomePage() {
 
           {/* Nav links */}
           <div className="hidden md:flex items-center gap-8 font-mono text-xs text-graphite/50">
-            <a href="#features" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</a>
-            <a href="#philosophy" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</a>
-            <a href="#protocol" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</a>
-            <a href="#topology" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</a>
+            <a href="/basket-ai" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</a>
+            <a href="/vision" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</a>
+            <a href="/comment-ca-marche" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</a>
+            <a href="/carte" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</a>
           </div>
 
           {/* CTA */}
@@ -580,6 +581,9 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* ==================== NEWSLETTER ==================== */}
+      <NewsletterSection />
 
       {/* ==================== CARTE (Topology) ==================== */}
       <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10" id="topology">
@@ -929,13 +933,15 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row gap-[8vw] mt-[4vh] md:mt-0">
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
               <li><a href="/login" className="hover:text-signal transition-colors hover-trigger">Créer un compte</a></li>
-              <li><a href="#features" className="hover:text-signal transition-colors hover-trigger">Basket AI</a></li>
-              <li><a href="#protocol" className="hover:text-signal transition-colors hover-trigger">Comment ça marche</a></li>
+              <li><a href="/basket-ai" className="hover:text-signal transition-colors hover-trigger">Basket AI</a></li>
+              <li><a href="/comment-ca-marche" className="hover:text-signal transition-colors hover-trigger">Comment ça marche</a></li>
+              <li><a href="/vision" className="hover:text-signal transition-colors hover-trigger">Vision</a></li>
             </ul>
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
+              <li><a href="/carte" className="hover:text-signal transition-colors hover-trigger">Carte des prix</a></li>
+              <li><a href="/contact" className="hover:text-signal transition-colors hover-trigger">Contact</a></li>
               <li><a href="#" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</a></li>
               <li><a href="#" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</a></li>
-              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">Contact</a></li>
             </ul>
           </div>
         </div>
