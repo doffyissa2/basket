@@ -3,22 +3,44 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Loader2, ArrowLeft, Mail, Lock, MapPin } from 'lucide-react'
+import { Loader2, ArrowLeft, Mail, Lock, MapPin, CheckCircle2 } from 'lucide-react'
+
+type Mode = 'login' | 'signup' | 'forgot'
 
 export default function LoginPage() {
-  const [isSignup, setIsSignup] = useState(false)
+  const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [postcode, setPostcode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+
+  const reset = (nextMode: Mode) => {
+    setMode(nextMode)
+    setError('')
+    setResetSent(false)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    if (isSignup) {
+    if (mode === 'forgot') {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/login?mode=reset`,
+      })
+      if (resetError) {
+        setError(resetError.message)
+      } else {
+        setResetSent(true)
+      }
+      setLoading(false)
+      return
+    }
+
+    if (mode === 'signup') {
       const { data, error: signupError } = await supabase.auth.signUp({ email, password })
       if (signupError) {
         setError(signupError.message)
@@ -68,7 +90,6 @@ export default function LoginPage() {
           </p>
         </div>
         <p className="text-graphite/30 text-sm">© 2026 Basket · Fait en France 🇫🇷</p>
-        {/* Decorative orbs */}
         <motion.div
           className="absolute bottom-0 right-0 w-80 h-80 rounded-full opacity-20"
           style={{ background: 'radial-gradient(circle, #7ed957 0%, transparent 70%)' }}
@@ -79,7 +100,6 @@ export default function LoginPage() {
 
       {/* Right / mobile auth area */}
       <div className="flex-1 flex flex-col px-6 py-6 relative z-10">
-        {/* Back nav */}
         <a href="/" className="inline-flex items-center gap-2 text-graphite/50 hover:text-graphite transition-colors text-sm mb-auto lg:mb-0">
           <ArrowLeft className="w-4 h-4" />
           Retour
@@ -87,7 +107,7 @@ export default function LoginPage() {
 
         <div className="flex-1 flex items-center justify-center py-12">
           <div className="w-full max-w-sm">
-            {/* Animated logo */}
+            {/* Logo */}
             <motion.div
               className="flex items-center justify-center gap-2 mb-10"
               animate={{ y: [0, -6, 0] }}
@@ -97,25 +117,36 @@ export default function LoginPage() {
               <span className="text-2xl font-bold tracking-tight text-graphite">Basket</span>
             </motion.div>
 
-            {/* Toggle tabs */}
-            <div className="relative flex rounded-xl p-1 mb-8" style={{ background: 'rgba(17,17,17,0.06)' }}>
-              <motion.div
-                className="absolute top-1 bottom-1 rounded-lg"
-                style={{ background: '#111111', width: 'calc(50% - 4px)' }}
-                animate={{ left: isSignup ? 'calc(50%)' : '4px' }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              />
-              {['Connexion', 'Inscription'].map((label, i) => (
-                <button
-                  key={label}
-                  onClick={() => { setIsSignup(i === 1); setError('') }}
-                  className="relative z-10 flex-1 py-2 text-sm font-semibold transition-colors"
-                  style={{ color: isSignup === (i === 1) ? '#FFFFFF' : 'rgba(17,17,17,0.45)' }}
+            {/* Mode tabs — only show for login/signup */}
+            <AnimatePresence mode="wait">
+              {mode !== 'forgot' && (
+                <motion.div
+                  key="tabs"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="relative flex rounded-xl p-1 mb-8"
+                  style={{ background: 'rgba(17,17,17,0.06)' }}
                 >
-                  {label}
-                </button>
-              ))}
-            </div>
+                  <motion.div
+                    className="absolute top-1 bottom-1 rounded-lg"
+                    style={{ background: '#111111', width: 'calc(50% - 4px)' }}
+                    animate={{ left: mode === 'signup' ? 'calc(50%)' : '4px' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                  {(['login', 'signup'] as const).map((m, i) => (
+                    <button
+                      key={m}
+                      onClick={() => reset(m)}
+                      className="relative z-10 flex-1 py-2 text-sm font-semibold transition-colors"
+                      style={{ color: mode === m ? '#FFFFFF' : 'rgba(17,17,17,0.45)' }}
+                    >
+                      {i === 0 ? 'Connexion' : 'Inscription'}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Form card */}
             <motion.div
@@ -125,82 +156,144 @@ export default function LoginPage() {
               transition={{ duration: 0.4 }}
             >
               <AnimatePresence mode="wait">
-                <motion.form
-                  key={isSignup ? 'signup' : 'login'}
-                  onSubmit={handleSubmit}
-                  initial={{ opacity: 0, x: isSignup ? 20 : -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: isSignup ? -20 : 20 }}
-                  transition={{ duration: 0.25 }}
-                  className="space-y-4"
-                >
-                  <div className="text-center mb-6">
-                    <h1 className="text-xl font-bold mb-1 text-graphite">
-                      {isSignup ? 'Créer un compte' : 'Content de vous revoir'}
-                    </h1>
-                    <p className="text-graphite/50 text-sm">
-                      {isSignup ? 'Commencez à économiser dès maintenant' : 'Connectez-vous pour continuer'}
-                    </p>
-                  </div>
 
-                  <InputField icon={<Mail className="w-4 h-4" />} type="email" placeholder="votre@email.com" value={email} onChange={setEmail} required />
-                  <InputField icon={<Lock className="w-4 h-4" />} type="password" placeholder="••••••••" value={password} onChange={setPassword} required minLength={6} />
-                  {isSignup && (
-                    <InputField icon={<MapPin className="w-4 h-4" />} type="text" placeholder="75001 (code postal)" value={postcode} onChange={setPostcode} hint="Pour comparer les prix près de chez vous" />
-                  )}
-
-                  {error && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-sm px-3 py-2 rounded-lg"
-                      style={{ background: 'rgba(239,68,68,0.08)' }}
-                    >
-                      {error}
-                    </motion.p>
-                  )}
-
-                  <motion.button
-                    type="submit"
-                    disabled={loading}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center"
-                    style={{ background: '#111111' }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                {/* ── Forgot password success ── */}
+                {mode === 'forgot' && resetSent ? (
+                  <motion.div
+                    key="reset-sent"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-4 text-center py-4"
                   >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isSignup ? 'Créer mon compte' : 'Continuer'}
-                  </motion.button>
-                </motion.form>
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(126,217,87,0.12)', border: '1px solid rgba(126,217,87,0.25)' }}>
+                      <CheckCircle2 className="w-7 h-7" style={{ color: '#7ed957' }} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-graphite text-lg mb-1">Email envoyé !</p>
+                      <p className="text-sm text-graphite/50 leading-relaxed">
+                        Vérifiez votre boîte mail. Cliquez sur le lien pour réinitialiser votre mot de passe.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => reset('login')}
+                      className="text-sm font-semibold mt-2"
+                      style={{ color: '#7ed957' }}
+                    >
+                      Retour à la connexion
+                    </button>
+                  </motion.div>
+
+                ) : (
+                  /* ── Main form ── */
+                  <motion.form
+                    key={mode}
+                    onSubmit={handleSubmit}
+                    initial={{ opacity: 0, x: mode === 'signup' ? 20 : -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: mode === 'signup' ? -20 : 20 }}
+                    transition={{ duration: 0.25 }}
+                    className="space-y-4"
+                  >
+                    <div className="text-center mb-6">
+                      <h1 className="text-xl font-bold mb-1 text-graphite">
+                        {mode === 'login' && 'Content de vous revoir'}
+                        {mode === 'signup' && 'Créer un compte'}
+                        {mode === 'forgot' && 'Mot de passe oublié'}
+                      </h1>
+                      <p className="text-graphite/50 text-sm">
+                        {mode === 'login' && 'Connectez-vous pour continuer'}
+                        {mode === 'signup' && 'Commencez à économiser dès maintenant'}
+                        {mode === 'forgot' && 'Entrez votre email pour recevoir un lien de réinitialisation'}
+                      </p>
+                    </div>
+
+                    <InputField
+                      icon={<Mail className="w-4 h-4" />}
+                      type="email"
+                      placeholder="votre@email.com"
+                      value={email}
+                      onChange={setEmail}
+                      required
+                    />
+
+                    {mode !== 'forgot' && (
+                      <InputField
+                        icon={<Lock className="w-4 h-4" />}
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={setPassword}
+                        required
+                        minLength={6}
+                      />
+                    )}
+
+                    {mode === 'signup' && (
+                      <InputField
+                        icon={<MapPin className="w-4 h-4" />}
+                        type="text"
+                        placeholder="75001 (code postal)"
+                        value={postcode}
+                        onChange={setPostcode}
+                        hint="Pour comparer les prix près de chez vous"
+                      />
+                    )}
+
+                    {/* Forgot password link — only in login mode */}
+                    {mode === 'login' && (
+                      <div className="flex justify-end -mt-1">
+                        <button
+                          type="button"
+                          onClick={() => reset('forgot')}
+                          className="text-xs text-graphite/40 hover:text-graphite transition-colors"
+                        >
+                          Mot de passe oublié ?
+                        </button>
+                      </div>
+                    )}
+
+                    {error && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-500 text-sm px-3 py-2 rounded-lg"
+                        style={{ background: 'rgba(239,68,68,0.08)' }}
+                      >
+                        {error}
+                      </motion.p>
+                    )}
+
+                    <motion.button
+                      type="submit"
+                      disabled={loading}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center"
+                      style={{ background: '#111111' }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : mode === 'login' ? 'Continuer'
+                        : mode === 'signup' ? 'Créer mon compte'
+                        : 'Envoyer le lien'}
+                    </motion.button>
+
+                    {/* Back link for forgot mode */}
+                    {mode === 'forgot' && (
+                      <button
+                        type="button"
+                        onClick={() => reset('login')}
+                        className="w-full text-center text-sm text-graphite/40 hover:text-graphite transition-colors pt-1"
+                      >
+                        ← Retour à la connexion
+                      </button>
+                    )}
+                  </motion.form>
+                )}
               </AnimatePresence>
             </motion.div>
-
-            {/* Social login placeholders */}
-            <div className="mt-4 space-y-3">
-              <div className="relative flex items-center gap-3">
-                <div className="flex-1 h-px" style={{ background: 'rgba(17,17,17,0.1)' }} />
-                <span className="text-xs text-graphite/35">ou</span>
-                <div className="flex-1 h-px" style={{ background: 'rgba(17,17,17,0.1)' }} />
-              </div>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full h-11 rounded-xl text-sm font-medium flex items-center justify-center gap-3 glass"
-                style={{ color: 'rgba(17,17,17,0.6)' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.04a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
-                Continuer avec Google
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full h-11 rounded-xl text-sm font-medium flex items-center justify-center gap-3 glass"
-                style={{ color: 'rgba(17,17,17,0.6)' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="#111111"><path d="M13.5 1A4.5 4.5 0 0 0 9.5 4a4.5 4.5 0 0 0-4 4.5A4.5 4.5 0 0 0 10 13a4.5 4.5 0 0 0 4-4.5A4.5 4.5 0 0 0 13.5 1zM9 17c-1.11 0-2-.89-2-2s.89-2 2-2 2 .89 2 2-.89 2-2 2z"/></svg>
-                Continuer avec Apple
-              </motion.button>
-            </div>
           </div>
         </div>
       </div>
@@ -232,10 +325,7 @@ function InputField({
           required={required}
           minLength={minLength}
           className="w-full h-11 rounded-xl pl-10 pr-4 text-sm text-graphite placeholder:text-graphite/30 focus:outline-none focus:ring-2 transition-all"
-          style={{
-            background: 'rgba(17,17,17,0.05)',
-            border: '1px solid rgba(17,17,17,0.1)',
-          }}
+          style={{ background: 'rgba(17,17,17,0.05)', border: '1px solid rgba(17,17,17,0.1)' }}
           onFocus={(e) => (e.currentTarget.style.borderColor = '#7ed957')}
           onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.1)')}
         />

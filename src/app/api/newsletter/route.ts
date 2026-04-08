@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 function getClient() {
   return createClient(
@@ -9,6 +10,9 @@ function getClient() {
 }
 
 export async function POST(request: NextRequest) {
+  const rl = await checkRateLimit(request, 'newsletter')
+  if (rl) return rl
+
   try {
     const { email } = await request.json()
 

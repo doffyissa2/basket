@@ -51,6 +51,10 @@ const limiters = {
   syncStoreLocations: makeLimiter(5, 60),
   syncMarketPrices: makeLimiter(5, 60),
   syncCommunityPrices: makeLimiter(5, 60),
+  // Public forms — tight limits to prevent spam/flooding
+  contact: makeLimiter(5, 3600),      // 5 messages per hour per IP
+  newsletter: makeLimiter(3, 3600),   // 3 attempts per hour per IP
+  deleteAccount: makeLimiter(3, 3600), // 3 attempts per hour per user
 } as const
 
 export type LimiterKey = keyof typeof limiters

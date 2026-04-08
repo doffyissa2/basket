@@ -570,8 +570,8 @@ export default function ContactPage() {
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
               <li><Link href="/carte" className="hover:text-signal transition-colors">Carte des prix</Link></li>
               <li><Link href="/contact" className="hover:text-signal transition-colors">Contact</Link></li>
-              <li><Link href="#" className="hover:text-signal transition-colors">Politique de confidentialité</Link></li>
-              <li><Link href="#" className="hover:text-signal transition-colors">{"Conditions d'utilisation"}</Link></li>
+              <li><Link href="/privacy" className="hover:text-signal transition-colors">Politique de confidentialité</Link></li>
+              <li><Link href="/terms" className="hover:text-signal transition-colors">{"Conditions d'utilisation"}</Link></li>
             </ul>
           </div>
         </div>

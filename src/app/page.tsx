@@ -940,8 +940,8 @@ export default function HomePage() {
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
               <li><a href="/carte" className="hover:text-signal transition-colors hover-trigger">Carte des prix</a></li>
               <li><a href="/contact" className="hover:text-signal transition-colors hover-trigger">Contact</a></li>
-              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</a></li>
-              <li><a href="#" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</a></li>
+              <li><a href="/privacy" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</a></li>
+              <li><a href="/terms" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</a></li>
             </ul>
           </div>
         </div>

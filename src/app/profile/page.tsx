@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { LogOut, MapPin, Bell, Trash2, Receipt, Package, TrendingDown, Store } from 'lucide-react'
+import { LogOut, MapPin, Bell, Trash2, Receipt, Package, TrendingDown, Store, AlertTriangle, Loader2 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 
@@ -21,6 +21,9 @@ export default function ProfilePage() {
   const [postcode, setPostcode] = useState('')
   const [editingPostcode, setEditingPostcode] = useState(false)
   const [notifications, setNotifications] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const init = async () => {
@@ -57,6 +60,30 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/'
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.href = '/login'; return }
+      const res = await fetch('/api/delete-account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      if (res.ok) {
+        await supabase.auth.signOut()
+        window.location.href = '/?deleted=1'
+      } else {
+        const data = await res.json()
+        setDeleteError(data.error || 'Erreur lors de la suppression.')
+        setDeleting(false)
+      }
+    } catch {
+      setDeleteError('Erreur réseau. Réessayez.')
+      setDeleting(false)
+    }
   }
 
   const handlePostcodeSave = async () => {
@@ -215,11 +242,65 @@ export default function ProfilePage() {
           transition={{ delay: 0.35 }}
           className="text-center pb-4"
         >
-          <button className="text-xs text-graphite/30 hover:text-red-500 transition-colors flex items-center gap-1.5 mx-auto">
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-xs text-graphite/30 hover:text-red-500 transition-colors flex items-center gap-1.5 mx-auto"
+          >
             <Trash2 className="w-3 h-3" />
             Supprimer mon compte
           </button>
         </motion.div>
+
+        {/* Delete confirmation modal */}
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0"
+              style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+              onClick={(e) => { if (e.target === e.currentTarget && !deleting) setShowDeleteConfirm(false) }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 40, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 40, scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className="bg-paper rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              >
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                  <AlertTriangle className="w-6 h-6 text-red-500" />
+                </div>
+                <h2 className="text-lg font-bold text-graphite text-center mb-2">Supprimer mon compte ?</h2>
+                <p className="text-sm text-graphite/55 text-center leading-relaxed mb-6">
+                  Cette action est <strong>irréversible</strong>. Tous vos tickets, articles, listes de courses et données personnelles seront définitivement supprimés.
+                </p>
+                {deleteError && (
+                  <p className="text-xs text-red-500 text-center mb-4 px-2 py-2 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)' }}>{deleteError}</p>
+                )}
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={deleting}
+                    className="h-12 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 text-white disabled:opacity-60"
+                    style={{ background: '#EF4444' }}
+                  >
+                    {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    {deleting ? 'Suppression…' : 'Oui, supprimer définitivement'}
+                  </button>
+                  <button
+                    onClick={() => { setShowDeleteConfirm(false); setDeleteError('') }}
+                    disabled={deleting}
+                    className="h-12 rounded-2xl font-semibold text-sm text-graphite/60 glass"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       <BottomNav active="profile" />
