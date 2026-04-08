@@ -218,7 +218,10 @@ export default function ScanPage() {
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({ image_base64: base64, media_type: mediaType }),
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
@@ -327,7 +330,10 @@ export default function ScanPage() {
 
       const compareResponse = await fetch('/api/compare-prices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price })),
           postcode: postcode || null, store_name: storeChain,
@@ -341,7 +347,7 @@ export default function ScanPage() {
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-        if (savedReceiptId && savings > 0) {
+        if (savedReceiptId) {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
       }

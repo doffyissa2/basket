@@ -263,7 +263,7 @@ async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
 
 function authorizeCron(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) { console.error("[cron] CRON_SECRET not set — rejecting request"); return false }
   return req.headers.get('authorization') === `Bearer ${secret}`
 }
 

@@ -13,7 +13,7 @@ import type { ScrapedPrice } from '@/lib/scrapers/base'
 
 function authorizeCron(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) { console.error("[cron] CRON_SECRET not set — rejecting request"); return false }
   return request.headers.get('authorization') === `Bearer ${secret}`
 }
 

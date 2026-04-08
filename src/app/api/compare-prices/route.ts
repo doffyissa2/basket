@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { extractWeight, computeNormalizedPrice, tokenize } from '@/lib/normalize'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { requireAuth } from '@/lib/auth'
 
 // ── Supabase service-role client (bypasses RLS) ────────────────────────────
 function getServiceClient() {
@@ -46,6 +47,9 @@ interface ComparisonResult {
 export async function POST(request: NextRequest) {
   const rateLimitResponse = await checkRateLimit(request, 'comparePrices')
   if (rateLimitResponse) return rateLimitResponse
+
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
 
   try {
     const { items, postcode, store_name } = await request.json()

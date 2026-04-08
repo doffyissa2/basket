@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { requireAuth } from '@/lib/auth'
 
 function getServiceClient() {
   return createClient(
@@ -287,6 +288,9 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
 export async function POST(request: NextRequest) {
   const rateLimitResponse = await checkRateLimit(request, 'parseReceipt')
   if (rateLimitResponse) return rateLimitResponse
+
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
 
   try {
     const { image_base64, media_type } = await request.json()
