@@ -27,7 +27,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.iconify.design",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org",
+      "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org https://*.cartocdn.com https://*.basemaps.cartocdn.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.upstash.io https://api.anthropic.com https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://api.prices.openfoodfacts.org https://prices.openfoodfacts.org",
       "media-src 'none'",
       "object-src 'none'",

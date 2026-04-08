@@ -40,7 +40,7 @@ export default function ReceiptDetailPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/login'; return }
 
-      const [{ data: receiptData }, { data: itemsData }] = await Promise.all([
+      const [{ data: receiptData, error: receiptErr }, { data: itemsData }] = await Promise.all([
         supabase
           .from('receipts')
           .select('id, store_name, total_amount, savings_amount, receipt_date, created_at')
@@ -55,6 +55,7 @@ export default function ReceiptDetailPage() {
           .limit(100),
       ])
 
+      if (receiptErr) console.error('[receipt] query error:', receiptErr)
       if (!receiptData) { setNotFound(true); setLoading(false); return }
       setReceipt(receiptData)
       setItems(itemsData ?? [])
@@ -76,7 +77,8 @@ export default function ReceiptDetailPage() {
       <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col items-center justify-center px-8 text-center">
         <Receipt className="w-12 h-12 text-graphite/20 mb-4" />
         <p className="font-bold text-graphite mb-1">Ticket introuvable</p>
-        <p className="text-sm text-graphite/40 mb-6">Ce ticket n'existe pas ou vous n'y avez pas accès.</p>
+        <p className="text-sm text-graphite/40 mb-4">Ce ticket n'existe pas dans votre compte.</p>
+        <p className="text-xs text-graphite/30 mb-6">Si vous venez de vous reconnecter, essayez de rafraîchir la page.</p>
         <a href="/dashboard" className="text-sm font-semibold" style={{ color: '#7ed957' }}>
           ← Retour au tableau de bord
         </a>
