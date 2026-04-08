@@ -87,7 +87,7 @@ export default function HomePage() {
       // No CDN Tailwind — colors are compiled via globals.css @theme
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js')
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js')
-      await loadScript('https://unpkg.com/@studio-freight/lenis@1.0.34/dist/lenis.min.js')
+      await loadScript('https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.34/dist/lenis.min.js')
       await loadScript('https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js')
 
       const gsap          = (window as any).gsap
