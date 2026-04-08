@@ -2,13 +2,146 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import LocationGateModal from '@/components/LocationGateModal'
 import { normalizeStoreChain, isKnownStore } from '@/lib/store-chains'
 import { normalizeProductName } from '@/lib/normalize'
+import type { XPAwardResult } from '@/lib/gamification'
+import { getFrameStyle, LEGENDARY_GRADIENT } from '@/lib/gamification'
+
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
+
+// ── XP float "+N XP" ─────────────────────────────────────────────────────────
+function XPFloat({ amount, onDone }: { amount: number; onDone: () => void }) {
+  return (
+    <motion.div
+      className="fixed bottom-40 left-1/2 z-50 pointer-events-none select-none"
+      style={{ translateX: '-50%' }}
+      initial={{ opacity: 0, y: 0, scale: 0.8 }}
+      animate={{ opacity: [0, 1, 1, 0], y: [0, -60, -80, -100], scale: [0.8, 1.1, 1, 0.9] }}
+      transition={{ duration: 1.8, ease: EASE, times: [0, 0.2, 0.7, 1] }}
+      onAnimationComplete={onDone}
+    >
+      <div
+        className="flex items-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm"
+        style={{ background: '#111', color: '#7ed957', boxShadow: '0 4px 20px rgba(126,217,87,0.4)' }}
+      >
+        <Zap className="w-3.5 h-3.5" />
+        +{amount} XP
+      </div>
+    </motion.div>
+  )
+}
+
+// ── Level-up celebration modal ───────────────────────────────────────────────
+function LevelUpModal({ result, onClose }: { result: XPAwardResult; onClose: () => void }) {
+  const frame = getFrameStyle(result.new_frame)
+  const isLegendary = result.new_frame === 'legendary' || result.new_frame === 'legendary_elite'
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[100] flex items-center justify-center px-6"
+      style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(12px)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      {/* Confetti layer */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
+        {Array.from({ length: 30 }, (_, i) => ({
+          id: i,
+          x: (Math.random() - 0.5) * 320,
+          y: -(Math.random() * 240 + 80),
+          color: ['#7ed957', '#00D09C', '#FFD700', '#a3f07a', '#B9F2FF'][i % 5],
+          size: Math.random() * 7 + 4,
+          delay: Math.random() * 0.5,
+        })).map((p) => (
+          <motion.div
+            key={p.id}
+            className="absolute rounded-sm"
+            style={{ width: p.size, height: p.size, background: p.color }}
+            initial={{ opacity: 1, x: 0, y: 0, scale: 1, rotate: 0 }}
+            animate={{ opacity: 0, x: p.x, y: p.y, scale: 0, rotate: Math.random() * 360 }}
+            transition={{ duration: 1.6, delay: p.delay, ease: 'easeOut' }}
+          />
+        ))}
+      </div>
+
+      <motion.div
+        className="relative w-full max-w-sm rounded-3xl p-8 text-center"
+        style={{ background: '#111', border: '1px solid rgba(255,255,255,0.08)' }}
+        initial={{ scale: 0.85, y: 30 }}
+        animate={{ scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22, delay: 0.1 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Level badge */}
+        <motion.div
+          className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-5 relative"
+          style={{
+            background: isLegendary ? LEGENDARY_GRADIENT : '#1a1a1a',
+            boxShadow: frame.glow,
+            border: isLegendary ? 'none' : frame.border,
+          }}
+          initial={{ scale: 0, rotate: -20 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 18, delay: 0.2 }}
+        >
+          <span className="text-3xl font-extrabold text-white">{result.new_level}</span>
+        </motion.div>
+
+        <motion.p
+          className="text-xs font-bold uppercase tracking-widest mb-2"
+          style={{ color: '#7ed957' }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          Niveau supérieur
+        </motion.p>
+
+        <motion.h2
+          className="text-2xl font-extrabold text-white mb-1 tracking-tight"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.42 }}
+        >
+          {result.new_title}
+        </motion.h2>
+
+        {result.new_unlocks.length > 0 && (
+          <motion.div
+            className="mt-4 rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(126,217,87,0.1)', border: '1px solid rgba(126,217,87,0.2)' }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.52 }}
+          >
+            <p className="text-xs text-white/50 mb-0.5">Débloqué</p>
+            <p className="text-sm font-semibold" style={{ color: '#7ed957' }}>{result.new_unlocks[0]}</p>
+          </motion.div>
+        )}
+
+        <motion.button
+          onClick={onClose}
+          className="mt-6 w-full h-12 rounded-2xl font-bold text-sm text-graphite"
+          style={{ background: '#7ed957' }}
+          whileTap={{ scale: 0.97 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.65 }}
+        >
+          Continuer
+        </motion.button>
+      </motion.div>
+    </motion.div>
+  )
+}
 
 interface ParsedItem {
   name: string
@@ -154,6 +287,11 @@ export default function ScanPage() {
   const [parseMessageIdx, setParseMessageIdx] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
   const [accessToken, setAccessToken] = useState<string | null>(null)
+  // Gamification
+  const [xpFloat,       setXpFloat]       = useState<number | null>(null)
+  const [levelUpResult, setLevelUpResult] = useState<XPAwardResult | null>(null)
+  const gamificationAwarded = useRef(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -199,11 +337,45 @@ export default function ScanPage() {
     reader.readAsDataURL(file)
   }
 
+  const awardScanXP = async (savings: number, store: string) => {
+    if (!accessToken || gamificationAwarded.current) return
+    gamificationAwarded.current = true
+    try {
+      const res = await fetch('/api/gamification/award', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          reason: 'scan_receipt',
+          context: {
+            savings,
+            store,
+            postcode: postcode ?? undefined,
+            hour: new Date().getHours(),
+          },
+        }),
+      })
+      if (!res.ok) return
+      const result: XPAwardResult = await res.json()
+      setXpFloat(result.xp_gained)
+      if (result.leveled_up) setLevelUpResult(result)
+      result.new_badges.forEach((b) => {
+        toast(b.name, {
+          description: b.description,
+          icon: b.icon,
+          duration: 4000,
+        })
+      })
+    } catch (e) {
+      console.warn('[gamification] award failed (non-critical):', e)
+    }
+  }
+
   const handleScan = async () => {
     if (!imageFile || !user) return
     setStep('parsing')
     setParseMessageIdx(0)
     setError('')
+    gamificationAwarded.current = false
 
     try {
       // Upload original file to storage (full quality for archival)
@@ -268,10 +440,11 @@ export default function ScanPage() {
         .limit(1)
 
       let savedReceiptId: string
+      const isNewScan = !(existing && existing.length > 0)
 
-      if (existing && existing.length > 0) {
+      if (!isNewScan) {
         // Duplicate: reuse existing receipt id, skip DB writes
-        savedReceiptId = existing[0].id
+        savedReceiptId = existing![0].id
         setReceiptId(savedReceiptId)
       } else {
         // New receipt: insert receipt row
@@ -350,6 +523,7 @@ export default function ScanPage() {
         if (savedReceiptId) {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
+        if (isNewScan) void awardScanXP(savings, storeChain)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue')
@@ -383,10 +557,21 @@ export default function ScanPage() {
   }
 
   const handleShare = (method: 'whatsapp' | 'copy' | 'sms') => {
-    const text = `Basket m'a trouvé ${totalSavings.toFixed(2)}€ d'économies possibles cette semaine !\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basket.fr`
+    const levelTitle = levelUpResult?.new_title ?? null
+    const levelNum   = levelUpResult?.new_level ?? null
+    const levelLine  = levelTitle && levelNum ? `\nNiveau ${levelNum} — ${levelTitle}` : ''
+    const text = `🧺 Basket m'a trouvé ${totalSavings.toFixed(2)} € d'économies possibles !${levelLine}\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basketbeta.com`
     if (method === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
     if (method === 'copy') navigator.clipboard.writeText(text)
     if (method === 'sms') window.open(`sms:?body=${encodeURIComponent(text)}`, '_blank')
+    // Award share XP (fire-and-forget, capped once per session by the server's dedup)
+    if (accessToken) {
+      void fetch('/api/gamification/award', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ reason: 'share_result' }),
+      })
+    }
   }
 
   return (
@@ -817,6 +1002,20 @@ export default function ScanPage() {
 
         </AnimatePresence>
       </main>
+
+      {/* XP float animation */}
+      <AnimatePresence>
+        {xpFloat !== null && (
+          <XPFloat amount={xpFloat} onDone={() => setXpFloat(null)} />
+        )}
+      </AnimatePresence>
+
+      {/* Level-up modal */}
+      <AnimatePresence>
+        {levelUpResult && (
+          <LevelUpModal result={levelUpResult} onClose={() => setLevelUpResult(null)} />
+        )}
+      </AnimatePresence>
 
       <BottomNav active="scan" />
     </div>
