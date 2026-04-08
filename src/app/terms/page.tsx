@@ -88,7 +88,7 @@ export default function TermsPage() {
             Vous accordez à Basket une licence non exclusive, mondiale et gratuite pour utiliser, reproduire et afficher vos données de prix anonymisées dans le cadre du service.
           </p>
           <p>
-            Vous restez propriétaire de vos données personnelles. Vous pouvez les supprimer à tout moment depuis votre profil ou en contactant <a href="mailto:privacy@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>privacy@basketbeta.com</a>.
+            Vous restez propriétaire de vos données personnelles. Vous pouvez les supprimer à tout moment depuis votre profil ou en contactant <a href="mailto:teams@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>teams@basketbeta.com</a>.
           </p>
         </Section>
 
@@ -145,7 +145,7 @@ export default function TermsPage() {
 
         <Section title="12. Contact">
           <p>
-            Pour toute question relative aux présentes CGU : <a href="mailto:legal@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>legal@basketbeta.com</a>
+            Pour toute question relative aux présentes CGU : <a href="mailto:teams@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>teams@basketbeta.com</a>
           </p>
         </Section>
 

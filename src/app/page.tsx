@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import NewsletterSection from '@/components/NewsletterSection'
 
@@ -11,6 +11,84 @@ declare module 'react' {
       'iconify-icon': React.HTMLAttributes<HTMLElement> & { icon?: string }
     }
   }
+}
+
+const FAQS = [
+  {
+    q: "Comment fonctionne Basket ?",
+    a: "Basket utilise l'intelligence artificielle pour lire vos tickets de caisse et extraire automatiquement chaque article et prix. Nous comparons ces prix avec notre base de plus de 40 000 références dans 15 enseignes françaises pour vous montrer où vous auriez payé moins cher.",
+  },
+  {
+    q: "Est-ce vraiment gratuit ?",
+    a: "Oui, Basket est entièrement gratuit. Nous sommes en phase beta et notre priorité est de construire le meilleur outil de comparaison de prix pour les consommateurs français. Aucune carte bancaire n'est requise.",
+  },
+  {
+    q: "Mes données personnelles sont-elles sécurisées ?",
+    a: "Absolument. Vos tickets et données d'achats sont chiffrés et stockés en toute sécurité. Nous ne partageons jamais vos données avec des tiers et vous pouvez les supprimer à tout moment depuis votre profil. Les images de tickets sont supprimées dès la fin de l'analyse.",
+  },
+  {
+    q: "Quels magasins sont comparés ?",
+    a: "Basket compare les prix de 15 grandes enseignes françaises : E.Leclerc, Carrefour, Intermarché, Système U, Auchan, Lidl, Aldi, Monoprix et bien d'autres. Notre base est mise à jour régulièrement pour garantir des comparaisons précises.",
+  },
+  {
+    q: "La reconnaissance de ticket est-elle précise ?",
+    a: "Notre IA atteint un taux de reconnaissance supérieur à 95% sur les tickets standard. En cas d'erreur, vous pouvez facilement corriger les articles reconnus. Les tickets très froissés ou en mauvais état peuvent parfois réduire la précision.",
+  },
+  {
+    q: "Comment ajouter Basket à mon écran d'accueil ?",
+    a: "Sur iPhone : ouvrez Basket dans Safari → icône de partage → « Sur l'écran d'accueil ». Sur Android : ouvrez dans Chrome → menu (⋮) → « Ajouter à l'écran d'accueil ». Vous bénéficierez d'une expérience similaire à une application native.",
+  },
+  {
+    q: "Puis-je utiliser Basket pour n'importe quel supermarché ?",
+    a: "Basket fonctionne avec la quasi-totalité des supermarchés français. Du moment que le ticket comporte des articles et des prix lisibles, notre IA peut les extraire et les comparer. Nous améliorons continuellement la compatibilité avec de nouvelles enseignes.",
+  },
+]
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(null)
+  return (
+    <section className="py-16 md:py-[15vh] px-5 md:px-[5vw] relative z-10 max-w-4xl mx-auto">
+      <div className="mb-10 md:mb-[8vh]">
+        <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Questions fréquentes</span>
+        <h2 className="font-sans text-4xl md:text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-2">
+          Tout ce que vous<br /><span className="text-signal">voulez savoir.</span>
+        </h2>
+      </div>
+      <div className="border-t" style={{ borderColor: 'rgba(17,17,17,0.08)' }}>
+        {FAQS.map((faq, i) => (
+          <div key={i} className="border-b" style={{ borderColor: 'rgba(17,17,17,0.08)' }}>
+            <button
+              onClick={() => setOpen(open === i ? null : i)}
+              className="w-full flex items-center justify-between gap-6 py-5 md:py-6 text-left group"
+            >
+              <span className={`font-sans text-base md:text-lg font-semibold tracking-tight transition-colors duration-300 ${open === i ? 'text-signal' : 'text-graphite group-hover:text-signal'}`}>
+                {faq.q}
+              </span>
+              <span
+                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300"
+                style={{ background: open === i ? '#7ed957' : 'rgba(17,17,17,0.06)', transform: open === i ? 'rotate(45deg)' : 'rotate(0deg)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1v10M1 6h10" stroke={open === i ? '#111' : '#111'} strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </span>
+            </button>
+            <div
+              style={{
+                maxHeight: open === i ? '300px' : '0px',
+                overflow: 'hidden',
+                transition: 'max-height 0.4s cubic-bezier(0.16,1,0.3,1)',
+              }}
+            >
+              <p className="font-mono text-sm text-graphite/60 leading-relaxed pb-6 max-w-2xl">
+                {faq.a}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 export default function HomePage() {
@@ -913,6 +991,9 @@ export default function HomePage() {
           </button>
         </Link>
       </section>
+
+      {/* ==================== FAQ ==================== */}
+      <FaqSection />
 
       {/* ==================== FOOTER ==================== */}
       <footer className="bg-graphite text-paper rounded-t-[2rem] md:rounded-t-[4rem] mt-4 md:mt-[5vh] pt-16 md:pt-[15vh] pb-8 md:pb-[5vh] px-5 md:px-[5vw] relative overflow-hidden">

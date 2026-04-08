@@ -39,7 +39,7 @@ export default function PrivacyPage() {
           <div className="glass rounded-xl p-4 font-mono text-xs space-y-1">
             <p><strong>Basket SAS</strong></p>
             <p>Siège social : France</p>
-            <p>Contact DPO : <a href="mailto:privacy@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>privacy@basketbeta.com</a></p>
+            <p>Contact DPO : <a href="mailto:teams@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>teams@basketbeta.com</a></p>
           </div>
         </Section>
 
@@ -106,7 +106,7 @@ export default function PrivacyPage() {
             <li><strong>Droit de retrait du consentement :</strong> à tout moment, pour les traitements basés sur le consentement.</li>
           </ul>
           <p>
-            Pour exercer ces droits, contactez-nous à <a href="mailto:privacy@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>privacy@basketbeta.com</a>.
+            Pour exercer ces droits, contactez-nous à <a href="mailto:teams@basketbeta.com" className="underline" style={{ color: '#7ed957' }}>teams@basketbeta.com</a>.
             Vous disposez également du droit de déposer une réclamation auprès de la <a href="https://www.cnil.fr" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: '#7ed957' }}>CNIL</a>.
           </p>
         </Section>
@@ -134,7 +134,7 @@ export default function PrivacyPage() {
           <Link href="/" className="hover:text-graphite transition-colors">Accueil</Link>
           <Link href="/terms" className="hover:text-graphite transition-colors">Conditions d&apos;utilisation</Link>
           <Link href="/contact" className="hover:text-graphite transition-colors">Contact</Link>
-          <a href="mailto:privacy@basketbeta.com" className="hover:text-graphite transition-colors">privacy@basketbeta.com</a>
+          <a href="mailto:teams@basketbeta.com" className="hover:text-graphite transition-colors">teams@basketbeta.com</a>
         </div>
       </main>
     </div>
