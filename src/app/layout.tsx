@@ -39,7 +39,10 @@ export default function RootLayout({
   return (
     <html lang="fr" className="dark">
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="icon" href="/basket_logo.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/basket_logo.png" />
         <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
         <meta name="format-detection" content="telephone=no" />
       </head>
