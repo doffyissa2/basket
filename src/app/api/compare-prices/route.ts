@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
+import { extractWeight, computeNormalizedPrice, tokenize } from '@/lib/normalize'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 // ── Supabase service-role client (bypasses RLS) ────────────────────────────
@@ -57,46 +57,57 @@ export async function POST(request: NextRequest) {
     const supabase = getServiceClient()
     const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
+    // Fetch candidate names once (shared across all item matches)
+    const { data: candidates } = await supabase
+      .from('product_price_stats')
+      .select('item_name_normalised')
+      .limit(400)
+    const candidateNames = [
+      ...new Set((candidates ?? []).map((c: { item_name_normalised: string }) => c.item_name_normalised)),
+    ] as string[]
+
     // ── Match cache: item_key → matched_name (avoid duplicate RPC calls) ────
     const matchCache = new Map<string, string | null>()
 
     // ── Helper: match a single item name to canonical product name ───────────
     async function resolveMatch(rawName: string): Promise<string | null> {
       const key = rawName.toLowerCase().trim()
-
-      if (matchCache.has(key)) {
-        return matchCache.get(key)!
-      }
+      if (matchCache.has(key)) return matchCache.get(key)!
 
       // Step 1: Try DB-native RPC fuzzy match (pg_trgm powered)
       const { data: rpcResult, error: rpcError } = await supabase.rpc('match_product', {
         search_name: key,
       })
-
       if (!rpcError && rpcResult && rpcResult.length > 0 && rpcResult[0].matched_name) {
         const matched = rpcResult[0].matched_name as string
         matchCache.set(key, matched)
         return matched
       }
 
-      // Step 2: Claude API fallback — only reached if RPC returns nothing
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      if (!apiKey) {
-        matchCache.set(key, null)
-        return null
+      // Step 2: Word-overlap fallback (fast, no API call)
+      // tokenize() strips stopwords and accents, so "Cristaline 1,5L" → ["cristaline","1","5l"]
+      const queryTokens = tokenize(key)
+      if (queryTokens.length > 0 && candidateNames.length > 0) {
+        let bestKey: string | null = null
+        let bestScore = 0
+        for (const candidate of candidateNames) {
+          const candidateTokens = tokenize(candidate)
+          const overlap = queryTokens.filter((t) => candidateTokens.includes(t)).length
+          const score = overlap / Math.max(queryTokens.length, candidateTokens.length)
+          if (score > bestScore && score >= 0.38) {
+            bestScore = score
+            bestKey = candidate
+          }
+        }
+        if (bestKey) {
+          matchCache.set(key, bestKey)
+          return bestKey
+        }
       }
 
-      // Fetch candidate names from stats table for Claude to choose from
-      const { data: candidates } = await supabase
-        .from('product_price_stats')
-        .select('item_name_normalised')
-        .limit(200)
-
-      const candidateNames = [...new Set(
-        (candidates ?? []).map((c: { item_name_normalised: string }) => c.item_name_normalised)
-      )] as string[]
-
-      if (candidateNames.length === 0) {
+      // Step 3: Claude Haiku fallback — only if word-overlap fails
+      const apiKey = process.env.ANTHROPIC_API_KEY
+      if (!apiKey || candidateNames.length === 0) {
         matchCache.set(key, null)
         return null
       }
@@ -115,13 +126,11 @@ export async function POST(request: NextRequest) {
             messages: [
               {
                 role: 'user',
-                content: `Quel nom de produit dans la liste ci-dessous correspond le mieux à "${rawName}" ?
-Le produit correspond s'il s'agit du même type (ex: "CRISTALINE 1.5L" correspond à "eau minerale 1.5l").
+                content: `Quel nom de produit dans la liste correspond le mieux à "${rawName}" ?
+Réponds avec le nom EXACT de la liste, ou "null" si aucun ne correspond vraiment.
 
 Liste :
-${candidateNames.slice(0, 100).map((p) => `- ${p}`).join('\n')}
-
-Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne correspond.`,
+${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
               },
             ],
           }),
@@ -142,24 +151,20 @@ Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne corresp
       return null
     }
 
-    // ── Helper: query product_price_stats for a matched item name ────────────
+    // ── Helper: query product_price_stats (all stores — no exclusion) ────────
+    // Store exclusion is only applied later when picking "cheaper_store".
     async function fetchStats(
       matchedName: string,
-      targetDept: string | null,
-      excludeStore: string | null
+      targetDept: string | null
     ): Promise<{ local: PriceStatRow[]; national: PriceStatRow[] }> {
       const buildQuery = (deptFilter: string | null) => {
         let q = supabase
           .from('product_price_stats')
-          .select('item_name_normalised, store_chain, dept, avg_price, median_price, min_price, max_price, sample_count, freshness_score')
+          .select(
+            'item_name_normalised, store_chain, dept, avg_price, median_price, min_price, max_price, sample_count, freshness_score'
+          )
           .eq('item_name_normalised', matchedName)
-
-        if (deptFilter) {
-          q = q.eq('dept', deptFilter)
-        }
-        if (excludeStore) {
-          q = q.neq('store_chain', excludeStore)
-        }
+        if (deptFilter) q = q.eq('dept', deptFilter)
         return q.order('avg_price', { ascending: true }).limit(20)
       }
 
@@ -171,7 +176,6 @@ Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne corresp
         if (data) localRows.push(...(data as PriceStatRow[]))
       }
 
-      // Always fetch national rows too (used as fallback and for breadth)
       const { data: natData } = await buildQuery(null)
       if (natData) nationalRows.push(...(natData as PriceStatRow[]))
 
@@ -188,103 +192,112 @@ Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne corresp
         .select('year_week, avg_price, store_chain')
         .eq('item_name_normalised', matchedName)
         .order('year_week', { ascending: false })
-        .limit(8 * 10) // up to 8 weeks × ~10 store chains
-
-      if (targetDept) {
-        q = q.eq('dept', targetDept)
-      }
-
+        .limit(8 * 10)
+      if (targetDept) q = q.eq('dept', targetDept)
       const { data } = await q
       return (data ?? []) as PriceTrendRow[]
     }
 
-    // ── Main comparison loop ─────────────────────────────────────────────────
-    const comparisons: ComparisonResult[] = []
+    // ── Parallel comparison (all items at once) ──────────────────────────────
+    const comparisons = await Promise.all(
+      (items as { name: string; price: number }[]).map(async (item): Promise<ComparisonResult> => {
+        const matchedName = await resolveMatch(item.name)
 
-    for (const item of items as { name: string; price: number }[]) {
-      const matchedName = await resolveMatch(item.name)
+        if (!matchedName) {
+          const weightStr = extractWeight(item.name)
+          const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
+          return {
+            name: item.name,
+            your_price: item.price,
+            avg_price: item.price,
+            savings: 0,
+            cheaper_store: null,
+            normalized_price: normalized?.label ?? null,
+            avg_normalized_price: null,
+            is_local: false,
+            sample_count: 0,
+            trend: [],
+          }
+        }
 
-      if (!matchedName) {
-        // No match found anywhere — return item as-is with no comparison data
-        const weightStr = extractWeight(item.name)
+        // Fetch stats + trend in parallel
+        const [{ local, national }, trend] = await Promise.all([
+          fetchStats(matchedName, dept),
+          fetchTrend(matchedName, dept),
+        ])
+
+        // Use local stats if ≥2 different store chains present, else national
+        const localChains = new Set(local.map((r) => r.store_chain))
+        const useLocal = localChains.size >= 2
+        const allStats = useLocal ? local : national
+
+        if (allStats.length === 0) {
+          const weightStr = extractWeight(matchedName)
+          const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
+          return {
+            name: item.name,
+            your_price: item.price,
+            avg_price: item.price,
+            savings: 0,
+            cheaper_store: null,
+            normalized_price: normalized?.label ?? null,
+            avg_normalized_price: null,
+            is_local: false,
+            sample_count: 0,
+            trend,
+          }
+        }
+
+        // Overall weighted average across ALL stores (for display context)
+        const totalWeight = allStats.reduce(
+          (s, r) => s + (r.freshness_score ?? 0.5) * r.sample_count,
+          0
+        )
+        const weightedAvg =
+          totalWeight > 0
+            ? allStats.reduce(
+                (s, r) => s + r.avg_price * (r.freshness_score ?? 0.5) * r.sample_count,
+                0
+              ) / totalWeight
+            : allStats.reduce((s, r) => s + r.avg_price, 0) / allStats.length
+
+        // Cheapest OTHER store: exclude current store + 'Inconnu' (not actionable)
+        const otherStats = allStats.filter(
+          (r) =>
+            r.store_chain !== store_name &&
+            r.store_chain !== 'Inconnu' &&
+            r.store_chain != null
+        )
+        const cheapestOther =
+          otherStats.length > 0
+            ? otherStats.reduce((a, b) => (a.avg_price < b.avg_price ? a : b))
+            : null
+
+        const weightStr = extractWeight(matchedName)
         const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
+        const avgNormalized = weightStr ? computeNormalizedPrice(weightedAvg, weightStr) : null
+        const totalSampleCount = allStats.reduce((s, r) => s + r.sample_count, 0)
 
-        comparisons.push({
+        // Sanity check: reject match if avg < 20% of scanned price (wrong product)
+        const isSane = item.price === 0 || weightedAvg >= item.price * 0.20
+
+        // Savings = your price - cheapest other store (actionable: where to go instead)
+        const rawSavings = cheapestOther && isSane ? item.price - cheapestOther.avg_price : 0
+
+        return {
           name: item.name,
           your_price: item.price,
-          avg_price: item.price,
-          savings: 0,
-          cheaper_store: null,
+          avg_price: Math.round((isSane ? weightedAvg : item.price) * 100) / 100,
+          savings: Math.round(rawSavings * 100) / 100,
+          cheaper_store: rawSavings > 0 ? cheapestOther!.store_chain : null,
           normalized_price: normalized?.label ?? null,
-          avg_normalized_price: null,
-          is_local: false,
-          sample_count: 0,
-          trend: [],
-        })
-        continue
-      }
-
-      // Fetch stats + trend in parallel
-      const [{ local: localStats, national: nationalStats }, trend] = await Promise.all([
-        fetchStats(matchedName, dept, store_name ?? null),
-        fetchTrend(matchedName, dept),
-      ])
-
-      // Use local stats if ≥2 different store chains present, else national
-      const localChains = new Set(localStats.map((r) => r.store_chain))
-      const useLocal = localChains.size >= 2
-      const stats = useLocal ? localStats : nationalStats
-      const isLocal = useLocal
-
-      const weightStr = extractWeight(matchedName)
-      const normalized = weightStr ? computeNormalizedPrice(item.price, weightStr) : null
-
-      if (stats.length === 0) {
-        comparisons.push({
-          name: item.name,
-          your_price: item.price,
-          avg_price: item.price,
-          savings: 0,
-          cheaper_store: null,
-          normalized_price: normalized?.label ?? null,
-          avg_normalized_price: null,
-          is_local: false,
-          sample_count: 0,
+          avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
+          is_local: useLocal,
+          sample_count: totalSampleCount,
           trend,
-        })
-        continue
-      }
-
-      // Weighted average across all matching store chains
-      const totalWeight = stats.reduce((s, r) => s + (r.freshness_score ?? 0.5) * r.sample_count, 0)
-      const weightedAvg = totalWeight > 0
-        ? stats.reduce((s, r) => s + r.avg_price * (r.freshness_score ?? 0.5) * r.sample_count, 0) / totalWeight
-        : stats.reduce((s, r) => s + r.avg_price, 0) / stats.length
-
-      // Cheapest store: lowest avg_price row
-      const cheapestRow = stats.reduce((a, b) => a.avg_price < b.avg_price ? a : b)
-
-      const avgNormalized = weightStr ? computeNormalizedPrice(weightedAvg, weightStr) : null
-      const totalSampleCount = stats.reduce((s, r) => s + r.sample_count, 0)
-
-      // Sanity check: reject if avg is < 20% of scanned price (likely wrong product)
-      const isSane = item.price === 0 || weightedAvg >= item.price * 0.20
-      const effectiveAvg = isSane ? weightedAvg : item.price
-      const effectiveSavings = isSane ? item.price - weightedAvg : 0
-
-      comparisons.push({
-        name: item.name,
-        your_price: item.price,
-        avg_price: Math.round(effectiveAvg * 100) / 100,
-        savings: Math.round(effectiveSavings * 100) / 100,
-        cheaper_store: isSane ? cheapestRow.store_chain : null,
-        normalized_price: normalized?.label ?? null,
-        avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
-        is_local: isLocal,
-        sample_count: totalSampleCount,
-        trend,
+        }
       })
-    }
+    )
 
     // ── Total savings ─────────────────────────────────────────────────────────
     const totalSavings = comparisons.reduce(
@@ -331,7 +344,8 @@ Réponds UNIQUEMENT avec le nom exact de la liste, ou "null" si aucun ne corresp
 
         for (const watch of watches) {
           const comp = comparisons.find(
-            (c) => (matchCache.get(c.name.toLowerCase().trim()) ?? '') === watch.item_name_normalised
+            (c) =>
+              (matchCache.get(c.name.toLowerCase().trim()) ?? '') === watch.item_name_normalised
           )
           if (comp && watch.last_seen_price && comp.avg_price < watch.last_seen_price * 0.95) {
             notifications.push({

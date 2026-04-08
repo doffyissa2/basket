@@ -509,35 +509,66 @@ export default function ScanPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center py-20"
+              className="flex flex-col items-center justify-center py-16"
             >
               {imagePreview && (
-                <div className="relative w-48 rounded-2xl overflow-hidden mb-8" style={{ border: '1px solid rgba(17,17,17,0.1)' }}>
-                  <img src={imagePreview} alt="Ticket" className="w-full opacity-50" />
+                <div className="relative w-44 rounded-2xl overflow-hidden mb-8" style={{ border: '1px solid rgba(17,17,17,0.1)', boxShadow: '0 12px 40px rgba(17,17,17,0.12)' }}>
+                  <img src={imagePreview} alt="Ticket" className="w-full opacity-60" />
                   {/* Scanning line */}
                   <motion.div
                     className="absolute left-0 right-0 h-0.5"
                     style={{ background: 'linear-gradient(90deg, transparent, #7ed957, transparent)' }}
-                    animate={{ y: [0, 192, 0] }}
-                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                    animate={{ y: [0, 176, 0] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                  {/* Glow overlay */}
+                  <motion.div
+                    className="absolute inset-0"
+                    style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(126,217,87,0.08) 100%)' }}
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
                   />
                 </div>
               )}
-              <div className="h-8 mb-3 overflow-hidden">
+
+              {/* Cycling message */}
+              <div className="h-8 mb-4 overflow-hidden">
                 <AnimatePresence mode="wait">
                   <motion.p
                     key={parseMessageIdx}
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -12 }}
-                    transition={{ duration: 0.3 }}
-                    className="text-lg font-semibold text-graphite text-center"
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.25 }}
+                    className="text-base font-semibold text-graphite text-center"
                   >
                     {PARSE_MESSAGES[parseMessageIdx]}
                   </motion.p>
                 </AnimatePresence>
               </div>
-              <p className="text-graphite/40 text-sm">Notre IA analyse votre ticket</p>
+
+              {/* Step progress dots */}
+              <div className="flex items-center gap-2 mb-5">
+                {PARSE_MESSAGES.map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="rounded-full"
+                    animate={{
+                      width: i === parseMessageIdx ? 20 : 6,
+                      backgroundColor:
+                        i < parseMessageIdx
+                          ? '#7ed957'
+                          : i === parseMessageIdx
+                          ? '#111111'
+                          : 'rgba(17,17,17,0.15)',
+                    }}
+                    style={{ height: 6 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                ))}
+              </div>
+
+              <p className="text-graphite/35 text-xs">Cela prend généralement 10–20 secondes</p>
             </motion.div>
           )}
 
@@ -550,6 +581,24 @@ export default function ScanPage() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
             >
+              {/* Comparison-in-progress banner (shown during 'results' while compare-prices runs) */}
+              {step === 'results' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+                  style={{ background: 'rgba(17,17,17,0.04)', border: '1px solid rgba(17,17,17,0.07)' }}
+                >
+                  <motion.div
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ background: '#00D09C' }}
+                    animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                    transition={{ duration: 1.1, repeat: Infinity }}
+                  />
+                  <p className="text-sm text-graphite/55 font-medium">Comparaison des prix en cours…</p>
+                </motion.div>
+              )}
+
               {/* Savings banner */}
               {step === 'comparison' && (
                 <motion.div
