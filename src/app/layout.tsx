@@ -3,10 +3,35 @@ import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import PWASetup from '@/components/PWASetup'
 
+const BASE_URL = 'https://basketbeta.com'
+
 export const metadata: Metadata = {
-  title: 'Basket — Payez-vous trop cher vos courses ?',
-  description: 'Scannez vos tickets de caisse et découvrez si vous payez plus cher que vos voisins. Trouvez les meilleurs prix près de chez vous.',
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: 'Basket — Payez-vous trop cher vos courses ?',
+    template: '%s — Basket',
+  },
+  description: 'Scannez vos tickets de caisse et découvrez si vous payez plus cher que vos voisins. Comparez les prix de 15 enseignes et économisez chaque semaine.',
   manifest: '/manifest.json',
+  keywords: ['comparaison prix courses', 'ticket de caisse', 'Lidl', 'Leclerc', 'Aldi', 'économies', 'supermarché'],
+  authors: [{ name: 'Basket', url: BASE_URL }],
+  creator: 'Basket',
+  openGraph: {
+    type: 'website',
+    locale: 'fr_FR',
+    url: BASE_URL,
+    siteName: 'Basket',
+    title: 'Basket — Payez-vous trop cher vos courses ?',
+    description: 'Scannez vos tickets de caisse et découvrez si vous payez plus cher que vos voisins. Comparez les prix de 15 enseignes et économisez chaque semaine.',
+    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'Basket' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Basket — Payez-vous trop cher vos courses ?',
+    description: 'Scannez vos tickets de caisse et comparez les prix de 15 enseignes françaises.',
+    images: ['/icon-512.png'],
+    creator: '@basketapp',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',

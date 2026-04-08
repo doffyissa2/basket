@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Authenticated user routes — no indexing value
+Disallow: /dashboard
+Disallow: /scan
+Disallow: /profile
+Disallow: /bilan
+Disallow: /liste
+Disallow: /notifications
+Disallow: /receipt/
+Disallow: /api/
+
+Sitemap: https://basketbeta.com/sitemap.xml

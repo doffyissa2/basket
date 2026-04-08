@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { motion, LayoutGroup } from 'framer-motion'
 import { Home, Camera, User, ShoppingCart, Map } from 'lucide-react'
 
@@ -32,7 +33,7 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
 
             if (tab.isFab) {
               return (
-                <a key={tab.id} href={tab.href} className="flex flex-col items-center" style={{ marginBottom: '12px' }}>
+                <Link key={tab.id} href={tab.href} className="flex flex-col items-center" style={{ marginBottom: '12px' }}>
                   <motion.div
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
@@ -48,12 +49,12 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                     <tab.icon className="w-6 h-6 text-white" />
                   </motion.div>
                   <span className="text-[10px] mt-1 font-medium text-graphite/60">{tab.label}</span>
-                </a>
+                </Link>
               )
             }
 
             return (
-              <a key={tab.id} href={tab.href} className="flex flex-col items-center gap-1 py-1 relative min-w-[52px]">
+              <Link key={tab.id} href={tab.href} className="flex flex-col items-center gap-1 py-1 relative min-w-[52px]">
                 <motion.div
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -78,7 +79,7 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
-              </a>
+              </Link>
             )
           })}
         </div>

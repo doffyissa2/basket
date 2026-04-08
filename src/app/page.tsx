@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import Link from 'next/link'
 import NewsletterSection from '@/components/NewsletterSection'
 
 declare module 'react' {
@@ -355,26 +356,26 @@ export default function HomePage() {
       >
         <div className="max-w-[1400px] mx-auto px-8 h-16 flex items-center justify-between gap-8">
           {/* Logo */}
-          <a href="/" className="flex items-center gap-2.5 flex-shrink-0">
+          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
             <img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />
             <span className="font-sans font-bold tracking-tight text-graphite text-sm">Basket <span className="font-mono text-[9px] text-graphite/40 font-normal tracking-wider">(Beta)</span></span>
-          </a>
+          </Link>
 
           {/* Nav links */}
           <div className="hidden md:flex items-center gap-8 font-mono text-xs text-graphite/50">
-            <a href="/basket-ai" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</a>
-            <a href="/vision" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</a>
-            <a href="/comment-ca-marche" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</a>
-            <a href="/carte" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</a>
+            <Link href="/basket-ai" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</Link>
+            <Link href="/vision" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</Link>
+            <Link href="/comment-ca-marche" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</Link>
+            <Link href="/carte" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</Link>
           </div>
 
           {/* CTA */}
-          <a href="/login" className="flex-shrink-0">
+          <Link href="/login" className="flex-shrink-0">
             <button className="relative overflow-hidden rounded-xl bg-signal text-graphite px-5 py-2 font-sans text-xs font-semibold uppercase tracking-wider group transition-transform duration-300 hover:scale-[1.03] magnetic-btn">
               <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
               <span className="relative z-10 group-hover:text-signal transition-colors duration-500">Se connecter</span>
             </button>
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -418,11 +419,11 @@ export default function HomePage() {
           </div>
           {/* CTA at bottom centered */}
           <div className="flex flex-col items-center gap-2 relative z-10">
-            <a href="/login" className="w-full max-w-xs">
+            <Link href="/login" className="w-full max-w-xs">
               <button className="w-full rounded-2xl bg-signal text-graphite py-4 font-sans text-sm font-bold uppercase tracking-wide">
                 Commencer
               </button>
-            </a>
+            </Link>
             <span className="font-mono text-xs text-graphite/40 text-center">Gratuit · Sans CB</span>
           </div>
         </div>
@@ -902,7 +903,7 @@ export default function HomePage() {
           Prêt à payer <span className="text-signal">moins</span> ?
         </h2>
         <p className="font-mono text-sm text-graphite/50 mb-8 md:mb-[6vh] max-w-md">Rejoignez des milliers de Français qui économisent chaque semaine grâce à Basket.</p>
-        <a href="/login">
+        <Link href="/login">
           <button className="relative overflow-hidden rounded-[2rem] bg-signal text-graphite px-8 py-4 md:px-[3vw] md:py-[2vh] min-w-[200px] font-sans text-sm font-bold uppercase tracking-tight group hover:scale-[1.05] transition-transform duration-500 magnetic-btn flex items-center justify-center gap-3 md:gap-[1vw]">
             <span className="absolute inset-0 bg-graphite translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
             <span className="relative z-10 group-hover:text-signal transition-colors duration-500 flex items-center gap-3 md:gap-[1vw]">
@@ -910,7 +911,7 @@ export default function HomePage() {
               <iconify-icon icon="solar:arrow-right-linear" className="text-lg" />
             </span>
           </button>
-        </a>
+        </Link>
       </section>
 
       {/* ==================== FOOTER ==================== */}
@@ -932,16 +933,16 @@ export default function HomePage() {
           </div>
           <div className="flex flex-col md:flex-row gap-[8vw] mt-[4vh] md:mt-0">
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
-              <li><a href="/login" className="hover:text-signal transition-colors hover-trigger">Créer un compte</a></li>
-              <li><a href="/basket-ai" className="hover:text-signal transition-colors hover-trigger">Basket AI</a></li>
-              <li><a href="/comment-ca-marche" className="hover:text-signal transition-colors hover-trigger">Comment ça marche</a></li>
-              <li><a href="/vision" className="hover:text-signal transition-colors hover-trigger">Vision</a></li>
+              <li><Link href="/login" className="hover:text-signal transition-colors hover-trigger">Créer un compte</Link></li>
+              <li><Link href="/basket-ai" className="hover:text-signal transition-colors hover-trigger">Basket AI</Link></li>
+              <li><Link href="/comment-ca-marche" className="hover:text-signal transition-colors hover-trigger">Comment ça marche</Link></li>
+              <li><Link href="/vision" className="hover:text-signal transition-colors hover-trigger">Vision</Link></li>
             </ul>
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
-              <li><a href="/carte" className="hover:text-signal transition-colors hover-trigger">Carte des prix</a></li>
-              <li><a href="/contact" className="hover:text-signal transition-colors hover-trigger">Contact</a></li>
-              <li><a href="/privacy" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</a></li>
-              <li><a href="/terms" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</a></li>
+              <li><Link href="/carte" className="hover:text-signal transition-colors hover-trigger">Carte des prix</Link></li>
+              <li><Link href="/contact" className="hover:text-signal transition-colors hover-trigger">Contact</Link></li>
+              <li><Link href="/privacy" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</Link></li>
+              <li><Link href="/terms" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</Link></li>
             </ul>
           </div>
         </div>
