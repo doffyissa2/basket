@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera } from 'lucide-react'
-import { use } from 'react'
 
 interface ReceiptDetail {
   id: string
@@ -21,8 +21,9 @@ interface PriceItem {
   quantity: number | null
 }
 
-export default function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function ReceiptDetailPage() {
+  const params = useParams()
+  const id = params.id as string
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null)
   const [items, setItems] = useState<PriceItem[]>([])
   const [loading, setLoading] = useState(true)
