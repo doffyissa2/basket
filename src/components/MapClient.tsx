@@ -1,13 +1,10 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
-import L from 'leaflet'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/mapbox'
+import type { MapRef } from 'react-map-gl/mapbox'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import type { StorePin } from '@/app/api/price-map/route'
-
-// Fix Leaflet default icon (webpack strips asset paths)
-delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl
-L.Icon.Default.mergeOptions({ iconUrl: '', shadowUrl: '', iconRetinaUrl: '' })
 
 function pinColor(tier: StorePin['price_tier']): string {
   if (tier === 'cheap') return '#7ed957'
@@ -15,15 +12,7 @@ function pinColor(tier: StorePin['price_tier']): string {
   return '#EF4444'
 }
 
-function FlyToUser({ coords }: { coords: { lat: number; lon: number } | null }) {
-  const map = useMap()
-  useEffect(() => {
-    if (coords) map.flyTo([coords.lat, coords.lon], 13, { duration: 1.5 })
-  }, [map, coords])
-  return null
-}
-
-function StorePopup({ pin }: { pin: StorePin }) {
+function StorePopup({ pin, onClose }: { pin: StorePin; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
 
   const fullAddress = [pin.address, pin.postcode, pin.city].filter(Boolean).join(', ') || null
@@ -43,9 +32,18 @@ function StorePopup({ pin }: { pin: StorePin }) {
     <div style={{
       background: '#1A1A1A', color: '#fff', borderRadius: 14,
       padding: '14px 16px', minWidth: 220, maxWidth: 270, fontFamily: 'inherit',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
     }}>
+      {/* Close */}
+      <button onClick={onClose} style={{
+        position: 'absolute', top: 8, right: 8,
+        background: 'rgba(255,255,255,0.08)', border: 'none',
+        color: '#9CA3AF', borderRadius: '50%', width: 20, height: 20,
+        cursor: 'pointer', fontSize: 12, lineHeight: '20px', textAlign: 'center',
+      }}>×</button>
+
       {/* Header */}
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 10, paddingRight: 16 }}>
         <p style={{ fontWeight: 800, fontSize: 15, margin: '0 0 2px' }}>{pin.store_name}</p>
         {fullAddress && (
           <p style={{ color: '#6B7280', fontSize: 11, margin: 0, lineHeight: 1.4 }}>
@@ -120,24 +118,27 @@ interface MapClientProps {
 }
 
 export default function MapClient({ userCoords, accessToken }: MapClientProps) {
+  const mapRef = useRef<MapRef>(null)
   const [pins, setPins] = useState<StorePin[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('Tous')
   const [message, setMessage] = useState<string | null>(null)
+  const [selectedPin, setSelectedPin] = useState<StorePin | null>(null)
 
   useEffect(() => {
     if (!accessToken) return
-    fetch('/api/price-map', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
+    fetch('/api/price-map', { headers: { Authorization: `Bearer ${accessToken}` } })
       .then((r) => r.json())
-      .then((d) => {
-        setPins(d.pins ?? [])
-        if (d.message) setMessage(d.message)
-      })
+      .then((d) => { setPins(d.pins ?? []); if (d.message) setMessage(d.message) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [accessToken])
+
+  // Fly to user location once map + coords are ready
+  useEffect(() => {
+    if (!userCoords || !mapRef.current) return
+    mapRef.current.flyTo({ center: [userCoords.lon, userCoords.lat], zoom: 13, duration: 1500 })
+  }, [userCoords])
 
   const chains = useMemo(() => {
     const set = new Set(pins.map((p) => p.store_chain))
@@ -174,7 +175,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
         <span className="ml-auto text-[11px] text-[#4B5563]">{visible.length} magasins</span>
       </div>
 
-      {/* Map area */}
+      {/* Map */}
       <div className="flex-1 relative" style={{ minHeight: 0 }}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center"
@@ -188,58 +189,68 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center px-8"
             style={{ background: 'rgba(10,10,10,0.9)', pointerEvents: 'none' }}>
             <p className="text-white font-semibold mb-2">Aucune donnée disponible</p>
-            <p className="text-sm text-[#6B7280] max-w-xs">
-              {message ?? 'Les prix seront affichés ici une fois le catalogue synchronisé. Lancez le cron sync-store-locations pour démarrer.'}
+            <p className="text-sm text-[#6B7280] max-xs">
+              {message ?? 'Les prix seront affichés ici une fois le catalogue synchronisé.'}
             </p>
           </div>
         )}
 
-        <MapContainer
-          center={[46.603354, 1.888334]}
-          zoom={6}
-          style={{ height: '100%', width: '100%', background: '#111' }}
-          zoomControl
+        <Map
+          ref={mapRef}
+          initialViewState={{ longitude: 1.888334, latitude: 46.603354, zoom: 6 }}
+          style={{ width: '100%', height: '100%' }}
+          mapStyle="mapbox://styles/mapbox/dark-v11"
+          mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+          onClick={() => setSelectedPin(null)}
         >
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            subdomains="abcd"
-            maxZoom={20}
-          />
-          <FlyToUser coords={userCoords ?? null} />
+          <NavigationControl position="bottom-right" showCompass={false} />
 
+          {/* User position */}
           {userCoords && (
-            <CircleMarker
-              center={[userCoords.lat, userCoords.lon]}
-              radius={8}
-              pathOptions={{ color: '#fff', fillColor: '#7ed957', fillOpacity: 1, weight: 2 }}
-            >
-              <Popup closeButton={false}>
-                <div style={{ background: '#1A1A1A', color: '#fff', borderRadius: 8, padding: '8px 10px', minWidth: 100 }}>
-                  <p style={{ fontWeight: 700, fontSize: 12, margin: 0 }}>Votre position</p>
-                </div>
-              </Popup>
-            </CircleMarker>
+            <Marker longitude={userCoords.lon} latitude={userCoords.lat}>
+              <div style={{
+                width: 16, height: 16, borderRadius: '50%',
+                background: '#7ed957', border: '3px solid #fff',
+                boxShadow: '0 0 12px rgba(126,217,87,0.6)',
+              }} />
+            </Marker>
           )}
 
-          {visible.map((pin, i) => (
-            <CircleMarker
-              key={i}
-              center={[pin.lat, pin.lon]}
-              radius={Math.min(5 + Math.sqrt(pin.item_count) * 1.5, 18)}
-              pathOptions={{
-                color: pinColor(pin.price_tier),
-                fillColor: pinColor(pin.price_tier),
-                fillOpacity: 0.85,
-                weight: 1.5,
-              }}
+          {/* Store pins */}
+          {visible.map((pin, i) => {
+            const size = Math.min(10 + Math.sqrt(pin.item_count) * 3, 36)
+            const color = pinColor(pin.price_tier)
+            return (
+              <Marker key={i} longitude={pin.lon} latitude={pin.lat}
+                onClick={(e) => { e.originalEvent.stopPropagation(); setSelectedPin(pin) }}>
+                <div style={{
+                  width: size, height: size, borderRadius: '50%',
+                  background: color, border: '2px solid rgba(255,255,255,0.25)',
+                  cursor: 'pointer', boxShadow: `0 0 8px ${color}55`,
+                  transition: 'transform 0.15s',
+                }}
+                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                />
+              </Marker>
+            )
+          })}
+
+          {/* Selected pin popup */}
+          {selectedPin && (
+            <Popup
+              longitude={selectedPin.lon}
+              latitude={selectedPin.lat}
+              closeButton={false}
+              closeOnClick={false}
+              onClose={() => setSelectedPin(null)}
+              offset={20}
+              style={{ padding: 0 }}
             >
-              <Popup minWidth={220} maxWidth={280}>
-                <StorePopup pin={pin} />
-              </Popup>
-            </CircleMarker>
-          ))}
-        </MapContainer>
+              <StorePopup pin={selectedPin} onClose={() => setSelectedPin(null)} />
+            </Popup>
+          )}
+        </Map>
       </div>
     </div>
   )

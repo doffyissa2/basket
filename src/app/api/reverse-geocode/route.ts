@@ -21,24 +21,23 @@ export async function GET(request: NextRequest) {
   const latNum = Math.max(-90, Math.min(90, Number(lat)))
   const lonNum = Math.max(-180, Math.min(180, Number(lon)))
 
+  const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+  if (!MAPBOX_TOKEN) return NextResponse.json({ error: 'Geocoding unavailable' }, { status: 503 })
+
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latNum}&lon=${lonNum}`,
-      {
-        headers: {
-          'User-Agent': 'Basket-App/1.0 (basket.fr)',
-          'Accept-Language': 'fr',
-        },
-        next: { revalidate: 300 },
-      }
-    )
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lonNum},${latNum}.json`
+      + `?access_token=${MAPBOX_TOKEN}&types=postcode&language=fr&country=fr`
+
+    const res = await fetch(url, { next: { revalidate: 300 } })
 
     if (!res.ok) return NextResponse.json({ error: 'Geocoding failed' }, { status: 502 })
 
     const data = await res.json()
-    const postcode = data?.address?.postcode ?? null
+    const feature = data?.features?.[0] ?? null
+    const postcode = feature?.text ?? null
+    const display_name = feature?.place_name ?? null
 
-    return NextResponse.json({ postcode, display_name: data?.display_name ?? null })
+    return NextResponse.json({ postcode, display_name })
   } catch {
     return NextResponse.json({ error: 'Network error' }, { status: 502 })
   }
