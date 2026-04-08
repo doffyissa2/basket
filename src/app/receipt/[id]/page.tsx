@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera } from 'lucide-react'
 
@@ -23,6 +24,7 @@ interface PriceItem {
 
 export default function ReceiptDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const id = (params?.id as string) ?? ''
 
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null)
@@ -67,6 +69,14 @@ export default function ReceiptDetailPage() {
     init()
   }, [id])
 
+  // When not found: toast immediately, redirect after 2.5 s
+  useEffect(() => {
+    if (!notFound) return
+    toast.error('Ce ticket n\'est pas disponible')
+    const t = setTimeout(() => router.push('/dashboard'), 2500)
+    return () => clearTimeout(t)
+  }, [notFound, router])
+
   if (loading) {
     return (
       <div className="min-h-[100dvh] bg-paper flex items-center justify-center">
@@ -79,12 +89,10 @@ export default function ReceiptDetailPage() {
     return (
       <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col items-center justify-center px-8 text-center">
         <Receipt className="w-12 h-12 text-graphite/20 mb-4" />
-        <p className="font-bold text-graphite mb-1">Ticket introuvable</p>
-        <p className="text-sm text-graphite/40 mb-4">Ce ticket n'existe pas dans votre compte.</p>
-        <p className="text-xs text-graphite/30 mb-6">Si vous venez de vous reconnecter, essayez de rafraîchir la page.</p>
-        <a href="/dashboard" className="text-sm font-semibold" style={{ color: '#7ed957' }}>
-          ← Retour au tableau de bord
-        </a>
+        <p className="font-bold text-graphite mb-2">Ticket introuvable</p>
+        <p className="text-sm text-graphite/40 mb-6">Redirection vers le tableau de bord…</p>
+        <div className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
       </div>
     )
   }
