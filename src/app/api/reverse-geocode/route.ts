@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lonNum},${latNum}.json`
       + `?access_token=${MAPBOX_TOKEN}&types=postcode&language=fr&country=fr`
 
-    const res = await fetch(url, { next: { revalidate: 300 } })
+    const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(10_000) })
 
     if (!res.ok) return NextResponse.json({ error: 'Geocoding failed' }, { status: 502 })
 

@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const type = searchParams.get('type') === 'xp' ? 'xp' : 'savings'
-  const dept = searchParams.get('dept')?.slice(0, 2) ?? null   // max 2 chars, no injection
+  const rawDept = searchParams.get('dept') ?? null
+  const dept = rawDept && /^\d{2}$/.test(rawDept) ? rawDept : null
 
   const supabase = getServiceClient()
 

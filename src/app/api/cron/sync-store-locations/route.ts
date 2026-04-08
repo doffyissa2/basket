@@ -191,8 +191,7 @@ export async function POST(request: NextRequest) {
 
   let upserted = 0
   for (let i = 0; i < rows.length; i += 500) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('store_locations') as any)
+    const { error } = await supabase.from('store_locations')
       .upsert(rows.slice(i, i + 500), { onConflict: 'osm_id', ignoreDuplicates: false })
     if (error) console.error('[osm] upsert error:', error.message)
     else upserted += Math.min(500, rows.length - i)

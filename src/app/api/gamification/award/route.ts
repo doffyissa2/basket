@@ -234,12 +234,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Log to xp_log ─────────────────────────────────────────────────────────
-  await supabase.from('xp_log').insert({
+  const { error: logErr } = await supabase.from('xp_log').insert({
     user_id:  userId,
     amount:   xpGained,
     reason:   logReason,
     metadata: context,
   })
+  if (logErr) console.error('[gamification/award] xp_log insert error:', logErr)
 
   const result: XPAwardResult = {
     xp_gained:   xpGained,

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabase-service'
 
 /**
- * POST /api/rebuild-stats?key=YOUR_SECRET
+ * POST /api/rebuild-stats
  *
- * Protected endpoint — caller must supply the correct secret via ?key=
+ * Protected endpoint — caller must supply the correct secret via Authorization header:
+ *   Authorization: Bearer YOUR_SECRET
  * Intended to be called by a Supabase scheduled Edge Function or external cron.
  *
  * Steps:
@@ -13,15 +14,16 @@ import { getServiceClient } from '@/lib/supabase-service'
  *  3. Refresh basket_inflation_weekly materialized view via RPC
  */
 export async function POST(request: NextRequest) {
-  // ── Auth: check secret key ─────────────────────────────────────────────
-  const { searchParams } = request.nextUrl
-  const providedKey = searchParams.get('key') ?? ''
+  // ── Auth: check secret key from Authorization header ───────────────────
   const expectedKey = process.env.REBUILD_STATS_SECRET_KEY
 
   if (!expectedKey) {
     console.error('[rebuild-stats] REBUILD_STATS_SECRET_KEY env var not set')
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
   }
+
+  const authHeader = request.headers.get('authorization') ?? ''
+  const providedKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
 
   if (providedKey !== expectedKey) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -346,8 +346,7 @@ export async function POST(request: NextRequest) {
   let inserted = 0
   const insertErrors: string[] = []
   for (let i = 0; i < rows.length; i += 100) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('community_prices') as any)
+    const { error } = await supabase.from('community_prices')
       .upsert(rows.slice(i, i + 100), {
         onConflict: 'item_name_normalised,unit_price,source,source_date,store_chain',
         ignoreDuplicates: true,

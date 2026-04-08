@@ -41,8 +41,7 @@ async function upsertPrices(prices: ScrapedPrice[]): Promise<number> {
       scraped_at: new Date().toISOString(),
     }))
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('market_prices') as any)
+    const { error } = await supabase.from('market_prices')
       .upsert(chunk, { onConflict: 'chain,product_name_normalised,region', ignoreDuplicates: false })
 
     if (error) console.error('[sync-market-prices] upsert error:', error.message)
