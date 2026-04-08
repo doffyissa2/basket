@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 function getServiceClient() {
@@ -7,6 +7,142 @@ function getServiceClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+}
+
+// ── Chain normaliser (mirrors community scraper) ──────────────────────────────
+const CHAIN_PATTERNS: [RegExp, string][] = [
+  [/leclerc/i, 'Leclerc'],
+  [/lidl/i, 'Lidl'],
+  [/aldi/i, 'Aldi'],
+  [/intermarché|intermarche|itm/i, 'Intermarché'],
+  [/carrefour/i, 'Carrefour'],
+  [/super\s*u|hyper\s*u|u\s*express|utile/i, 'Super U'],
+  [/monoprix|monop'/i, 'Monoprix'],
+  [/casino/i, 'Casino'],
+  [/franprix/i, 'Franprix'],
+  [/auchan/i, 'Auchan'],
+  [/picard/i, 'Picard'],
+  [/biocoop/i, 'Biocoop'],
+  [/netto/i, 'Netto'],
+  [/grand\s*frais/i, 'Grand Frais'],
+]
+
+function normalizeChain(raw: string): string {
+  for (const [re, canonical] of CHAIN_PATTERNS) {
+    if (re.test(raw)) return canonical
+  }
+  return raw.trim()
+}
+
+function normaliseProductName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// ── Fetch price anchors from community_prices ─────────────────────────────────
+// Returns a formatted section to inject into the Claude prompt so it can
+// self-correct obvious OCR price errors (e.g. 19,89€ for milk → 1,89€).
+async function fetchPriceAnchors(supabase: SupabaseClient): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('community_prices')
+      .select('item_name, item_name_normalised, unit_price')
+      .order('processed_at', { ascending: false })
+      .limit(1000)
+
+    if (!data || data.length === 0) return ''
+
+    // Group by normalised name, compute min/max/median
+    const groups: Record<string, { name: string; prices: number[] }> = {}
+    for (const row of data) {
+      const key = row.item_name_normalised as string
+      if (!groups[key]) groups[key] = { name: row.item_name as string, prices: [] }
+      groups[key].prices.push(row.unit_price as number)
+    }
+
+    const anchors = Object.values(groups)
+      .filter(g => g.prices.length >= 2 && g.name.length > 3)
+      .map(g => {
+        const s = [...g.prices].sort((a, b) => a - b)
+        return { name: g.name, min: s[0], max: s[s.length - 1], count: s.length }
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 50)
+
+    if (anchors.length === 0) return ''
+
+    return `\n\n── PRIX DE RÉFÉRENCE (données réelles France) ───────────────────────────────\nSi un prix semble aberrant, corrige-le en utilisant ces fourchettes :\n${anchors
+      .map(a => `- ${a.name} : ${a.min.toFixed(2)}€ – ${a.max.toFixed(2)}€`)
+      .join('\n')}`
+  } catch {
+    return ''
+  }
+}
+
+// ── Post-parse price validation ───────────────────────────────────────────────
+// Detects and auto-corrects obvious OCR digit errors using community_prices.
+async function validateItemPrices(
+  items: ParsedItem[],
+  supabase: SupabaseClient
+): Promise<ParsedItem[]> {
+  try {
+    const { data } = await supabase
+      .from('community_prices')
+      .select('item_name_normalised, unit_price')
+      .limit(2000)
+
+    if (!data || data.length === 0) return items
+
+    // Build price lookup map
+    const priceMap: Record<string, number[]> = {}
+    for (const row of data) {
+      const key = row.item_name_normalised as string
+      if (!priceMap[key]) priceMap[key] = []
+      priceMap[key].push(row.unit_price as number)
+    }
+    const keys = Object.keys(priceMap)
+
+    return items.map(item => {
+      if (item.price <= 0 || item.price > 500) return item
+
+      const norm = normaliseProductName(item.name)
+      const normWords = norm.split(' ').filter(w => w.length > 3)
+      if (normWords.length === 0) return item
+
+      // Find best-matching key by word overlap
+      let bestKey: string | null = null
+      let bestScore = 0
+      for (const key of keys) {
+        const keyWords = key.split(' ')
+        const overlap = normWords.filter(w => keyWords.includes(w)).length
+        const score = overlap / Math.max(normWords.length, keyWords.length)
+        if (score > bestScore && score >= 0.45) { bestScore = score; bestKey = key }
+      }
+      if (!bestKey) return item
+
+      const prices = priceMap[bestKey]
+      const sorted = [...prices].sort((a, b) => a - b)
+      const median = sorted[Math.floor(sorted.length / 2)]
+
+      // Auto-correct leading-digit OCR error (19.89 → 1.89, 29.90 → 2.90)
+      if (item.price >= median * 6 && item.price >= 5) {
+        const corrected = parseFloat((item.price / 10).toFixed(2))
+        if (Math.abs(corrected - median) / median < 0.6) {
+          console.log(`[parse-receipt] price correction: ${item.name} ${item.price}→${corrected} (median=${median})`)
+          return { ...item, price: corrected, confidence: Math.min(item.confidence ?? 1, 0.75) }
+        }
+      }
+
+      return item
+    })
+  } catch {
+    return items
+  }
 }
 
 interface ParsedItem {
@@ -164,12 +300,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
     }
 
-    // ── Fetch all known receipt format hints ──────────────────────────────
+    // ── Fetch all known receipt format hints + price anchors ─────────────
     const supabase = getServiceClient()
-    const { data: formats } = await supabase
-      .from('receipt_formats')
-      .select('store_chain, format_hints')
-      .order('store_chain')
+    const [{ data: formats }, priceAnchorsSection] = await Promise.all([
+      supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'),
+      fetchPriceAnchors(supabase),
+    ])
 
     const formatHintsSection =
       formats && formats.length > 0
@@ -181,7 +317,7 @@ export async function POST(request: NextRequest) {
     const safeMediaType = (media_type as string) || 'image/jpeg'
 
     // ── First parse attempt ───────────────────────────────────────────────
-    let textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection, false))
+    let textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection + priceAnchorsSection, false))
 
     let cleaned = textContent.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     let parsed: ParsedReceipt = JSON.parse(cleaned)
@@ -199,7 +335,7 @@ export async function POST(request: NextRequest) {
     if (isParseQualityBad(parsed)) {
       console.log('[parse-receipt] Quality check failed, retrying with stricter prompt')
 
-      textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection, true))
+      textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection + priceAnchorsSection, true))
 
       cleaned = textContent.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
       const retryParsed: ParsedReceipt = JSON.parse(cleaned)
@@ -209,7 +345,6 @@ export async function POST(request: NextRequest) {
         retryParsed.total = Number(retryParsed.total) || retryParsed.items.reduce(
           (s, i) => s + i.price * i.quantity, 0
         )
-        // Use retry result only if it's better (more items or better total)
         if (
           retryParsed.items.length >= parsed.items.length &&
           retryParsed.total > 0
@@ -217,6 +352,19 @@ export async function POST(request: NextRequest) {
           parsed = retryParsed
         }
       }
+    }
+
+    // ── Post-parse intelligence ───────────────────────────────────────────
+    // 1. Normalize store chain name using our OSM chain map
+    parsed.store_name = normalizeChain(parsed.store_name)
+
+    // 2. Validate/correct item prices against community_prices data
+    parsed.items = await validateItemPrices(parsed.items, supabase)
+
+    // Recompute total after any price corrections
+    const correctedTotal = parsed.items.reduce((s, i) => s + i.price * i.quantity, 0)
+    if (Math.abs(correctedTotal - parsed.total) / (parsed.total || 1) < 0.15) {
+      parsed.total = correctedTotal
     }
 
     return NextResponse.json(parsed)
