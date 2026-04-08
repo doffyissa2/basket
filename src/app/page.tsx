@@ -333,7 +333,7 @@ export default function HomePage() {
           {/* Logo */}
           <a href="/" className="flex items-center gap-2.5 flex-shrink-0">
             <img src="/basket_logo.png" alt="Basket" className="h-7 w-7" />
-            <span className="font-sans font-bold tracking-tight text-graphite text-sm">Basket</span>
+            <span className="font-sans font-bold tracking-tight text-graphite text-sm">Basket <span className="font-mono text-[9px] text-graphite/40 font-normal tracking-wider">(Beta)</span></span>
           </a>
 
           {/* Nav links */}
@@ -356,13 +356,48 @@ export default function HomePage() {
 
       {/* ==================== HERO ==================== */}
       <header className="h-[100dvh] flex flex-col justify-end pb-[10vh] px-[5vw] relative overflow-hidden pt-16" id="hero">
-        <div className="z-10 w-full max-w-[80vw]">
+        <div className="relative z-10 w-full max-w-[80vw] md:max-w-[80vw]">
           <h1 className="font-sans text-[8vw] leading-[0.9] tracking-tighter text-graphite font-extrabold split-target">
             Le chemin le plus court
           </h1>
           <h1 className="font-sans text-[9vw] leading-[0.9] tracking-tighter font-extrabold hero-line-2 mt-[1vh]">
             vers les <span className="text-signal">économies.</span>
           </h1>
+
+          {/* Mobile hero CTA */}
+          <div className="md:hidden mt-6 flex items-center gap-3">
+            <a href="/login">
+              <button className="rounded-2xl bg-signal text-graphite px-6 py-3 font-sans text-sm font-bold uppercase tracking-wide">
+                Commencer
+              </button>
+            </a>
+            <span className="font-mono text-xs text-graphite/40">Gratuit · Sans CB</span>
+          </div>
+        </div>
+
+        {/* Mobile Receipt - floats in hero on mobile */}
+        <div className="md:hidden absolute top-[12vh] left-0 right-0 flex justify-center items-center z-0 pointer-events-none">
+          <div className="receipt-float" style={{ transform: 'rotate(2deg)', perspective: '800px' }}>
+            <div className="w-48 bg-white rounded-3xl shadow-2xl p-4 relative overflow-hidden border border-graphite/5">
+              <div className="scan-line absolute left-0 w-full h-[2px] bg-signal/60 z-20" style={{ boxShadow: '0 0 16px rgba(126,217,87,0.5)' }} />
+              <div className="text-center mb-2.5 border-b border-dashed border-graphite/20 pb-2.5">
+                <p className="font-mono text-[9px] text-graphite/40 uppercase tracking-wider">Carrefour Market</p>
+                <p className="font-mono text-[8px] text-graphite/25 mt-0.5">08/04/2026 — 14:32</p>
+              </div>
+              <div className="space-y-1.5 font-mono text-[9px]">
+                <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Lait demi-écrémé 1L</span><span className="text-graphite font-medium flex-shrink-0">1,15 €</span></div>
+                <div className="flex justify-between price-pop-delay"><span className="text-graphite/70 truncate pr-2">Beurre Président 250g</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
+                <div className="flex justify-between price-pop-delay2"><span className="text-graphite/70 truncate pr-2">Pâtes Barilla 500g</span><span className="text-graphite font-medium flex-shrink-0">1,29 €</span></div>
+                <div className="flex justify-between price-pop"><span className="text-graphite/70 truncate pr-2">Eau Cristaline 6×1.5L</span><span className="text-graphite font-medium flex-shrink-0">2,49 €</span></div>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-graphite/20 flex justify-between font-sans text-[10px]">
+                <span className="font-bold">TOTAL</span><span className="font-bold">7,42 €</span>
+              </div>
+              <div className="mt-2 bg-signal/10 rounded-xl p-1.5 text-center">
+                <p className="font-sans text-[9px] font-bold text-signal flex items-center justify-center gap-1"><img src="/basket_logo.png" alt="" className="h-3 w-3" />Basket : économisez 3,40 € chez Lidl</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Animated Receipt */}
@@ -408,7 +443,7 @@ export default function HomePage() {
             <iconify-icon icon="solar:brain-linear" className="text-2xl text-signal" />
           </div>
           <div className="font-mono text-xs text-graphite/80 space-y-1 h-[15vh] overflow-hidden opacity-70" id="terminal-feed" />
-          <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[4vh]">
+          <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[4vh]">
             Lecture intelligente<br />de vos tickets
           </h3>
         </div>
@@ -423,7 +458,7 @@ export default function HomePage() {
             <span className="font-sans text-[5vw] leading-none tracking-tighter font-extrabold text-graphite" id="uptime-counter">0</span>
             <span className="font-mono text-lg text-signal mb-[1vh] ml-2">produits</span>
           </div>
-          <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite">
+          <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
             +40 000 prix<br />comparés en temps réel
           </h3>
         </div>
@@ -438,7 +473,7 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-offwhite/60 backdrop-blur-[8px] z-10 group-hover:backdrop-blur-none transition-all duration-[2s]" />
           <div className="relative z-0 mt-auto">
             <div className="font-mono text-xs text-signal mb-[2vh] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 delay-500">[DONNÉES_PROTÉGÉES]</div>
-            <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite">
+            <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
               Vos données<br />restent privées
             </h3>
           </div>
@@ -449,17 +484,17 @@ export default function HomePage() {
       <section className="py-[20vh] px-[5vw] bg-graphite rounded-[3rem] mx-[2vw] my-[5vh] text-paper relative overflow-hidden" id="philosophy">
         <div className="relative z-10 max-w-[70vw] mx-auto text-center flex flex-col items-center">
           <p className="font-mono text-xs text-paper/40 mb-[8vh] uppercase tracking-tight border border-paper/10 px-[1.5vw] py-[0.5vh] rounded-full">Notre Vision</p>
-          <p className="font-sans text-[2vw] text-paper/50 font-light mb-[4vh] tracking-tight contrast-1">
+          <p className="font-sans text-lg md:text-[2vw] text-paper/50 font-light mb-[4vh] tracking-tight contrast-1">
             Chaque semaine, des millions de Français paient plus cher que nécessaire.
           </p>
-          <h2 className="font-sans text-[6vw] leading-[0.9] font-extrabold text-signal contrast-2 split-target-2">
+          <h2 className="font-sans text-4xl md:text-[6vw] leading-[0.9] font-extrabold text-signal contrast-2 split-target-2">
             Découvrez si votre voisin a payé son pain moins cher que vous.
           </h2>
         </div>
       </section>
 
       {/* ==================== COMMENT ÇA MARCHE (horizontal scroll) ==================== */}
-      <section className="h-screen w-full overflow-hidden bg-paper relative flex items-center pr-wrapper mt-[10vh]" id="protocol">
+      <section className="hidden md:flex h-screen w-full overflow-hidden bg-paper relative items-center pr-wrapper mt-[10vh]" id="protocol">
         <div className="w-[300vw] flex h-full pr-container">
           <div className="w-screen h-full flex flex-col justify-center px-[10vw] relative">
             <span className="font-mono text-[15vw] text-graphite/[0.03] leading-none absolute top-[20vh] left-[5vw]">01</span>
@@ -485,12 +520,33 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Mobile "Comment ça marche" — vertical (desktop uses horizontal scroll above) */}
+      <section className="md:hidden py-16 px-5 bg-paper" id="protocol-mobile">
+        <p className="font-mono text-xs text-graphite/50 uppercase tracking-tight mb-2">Comment ça marche</p>
+        <h2 className="font-sans text-4xl font-extrabold tracking-tighter text-graphite mb-10">3 étapes,<br /><span className="text-signal">c&apos;est tout.</span></h2>
+        <div className="space-y-0">
+          {[
+            { n: '01', title: 'Scannez', desc: 'Prenez en photo votre ticket de caisse. Notre IA lit chaque article et chaque prix en quelques secondes.', color: 'text-graphite' },
+            { n: '02', title: 'Comparez', desc: 'Basket compare instantanément vos prix avec ceux de 15 enseignes françaises. Vous voyez où vous auriez payé moins.', color: 'text-graphite' },
+            { n: '03', title: 'Économisez', desc: 'Faites vos courses au bon endroit. Basket vous montre le magasin le moins cher près de chez vous, article par article.', color: 'text-signal' },
+          ].map((step, i) => (
+            <div key={step.n} className="flex gap-5 py-8" style={{ borderBottom: i < 2 ? '1px solid rgba(17,17,17,0.08)' : 'none' }}>
+              <span className="font-mono text-[10vw] font-bold text-graphite/10 leading-none flex-shrink-0 w-12">{step.n}</span>
+              <div>
+                <h3 className={`font-sans text-3xl font-extrabold tracking-tighter ${step.color} mb-2`}>{step.title}</h3>
+                <p className="font-mono text-sm text-graphite/60 leading-relaxed">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ==================== CARTE (Topology) ==================== */}
       <section className="py-[15vh] px-[5vw] relative z-10" id="topology">
         <div className="mb-[8vh] flex flex-col md:flex-row md:items-end justify-between gap-[4vh]">
           <div>
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Carte des prix</span>
-            <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+            <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
               Trouvez le <span className="text-signal">moins cher</span> près de chez vous.
             </h2>
           </div>
@@ -522,7 +578,7 @@ export default function HomePage() {
                 <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Auchan</span>
               </div>
             </div>
-            <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[30vh] relative z-10">
+            <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-[30vh] relative z-10">
               Carte interactive<br />de votre quartier
             </h3>
           </div>
@@ -540,7 +596,7 @@ export default function HomePage() {
               </div>
               <div className="flex justify-between items-center font-mono text-xs"><span className="text-graphite/40">Aldi</span><span className="text-graphite/40">Monoprix — 1,35 €</span></div>
             </div>
-            <h3 className="font-sans text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
+            <h3 className="font-sans text-sm md:text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
               Prix le<br />plus bas
             </h3>
           </div>
@@ -553,11 +609,11 @@ export default function HomePage() {
             </div>
             <div className="flex items-center justify-center flex-1 py-[4vh]">
               <div className="text-center">
-                <p className="font-sans text-[3vw] font-extrabold text-signal">-30%</p>
+                <p className="font-sans text-2xl md:text-[3vw] font-extrabold text-signal">-30%</p>
                 <p className="font-mono text-xs text-graphite/50 mt-1">Beurre chez Lidl</p>
               </div>
             </div>
-            <h3 className="font-sans text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
+            <h3 className="font-sans text-sm md:text-[1.5vw] leading-tight tracking-tighter font-bold text-graphite">
               Alertes<br />prix bas
             </h3>
           </div>
@@ -570,7 +626,7 @@ export default function HomePage() {
             </div>
             <div className="flex items-end justify-between">
               <div>
-                <h3 className="font-sans text-[2vw] leading-none tracking-tighter font-bold text-graphite mb-[1vh]">Rapport hebdomadaire</h3>
+                <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mb-[1vh]">Rapport hebdomadaire</h3>
                 <p className="font-mono text-xs text-graphite/50">Recevez chaque dimanche un résumé de vos économies possibles.</p>
               </div>
               <div className="flex items-end gap-[0.5vw] h-[6vh]">
@@ -592,21 +648,21 @@ export default function HomePage() {
           </div>
           <div className="flex flex-col border-t border-paper/10">
             <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
-              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Reconnaissance IA</h3>
+              <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Reconnaissance IA</h3>
               <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Notre intelligence artificielle lit votre ticket en quelques secondes et identifie chaque produit automatiquement.</p>
                 <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
               </div>
             </div>
             <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
-              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Comparaison instantanée</h3>
+              <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Comparaison instantanée</h3>
               <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Chaque produit est comparé en temps réel avec les prix de 15 enseignes françaises dans votre zone.</p>
                 <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
               </div>
             </div>
             <div className="py-[5vh] border-b border-paper/10 flex flex-col md:flex-row md:items-center justify-between gap-[4vh] group hover-trigger parameter-row">
-              <h3 className="font-sans text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Recommandations personnalisées</h3>
+              <h3 className="font-sans text-2xl md:text-[4vw] font-bold tracking-tighter text-paper/60 group-hover:text-signal transition-colors duration-500">Recommandations personnalisées</h3>
               <div className="md:w-[40%] flex justify-between items-center gap-[2vw]">
                 <p className="font-mono text-xs text-paper/40 group-hover:text-paper/80 transition-colors duration-500 md:max-w-[20vw]">Basket apprend vos habitudes et vous suggère le meilleur magasin pour votre liste de courses chaque semaine.</p>
                 <iconify-icon icon="solar:arrow-right-up-linear" className="text-3xl text-paper/20 group-hover:text-signal group-hover:rotate-45 transition-all duration-500" />
@@ -620,7 +676,7 @@ export default function HomePage() {
       <section className="relative z-10 px-[5vw] py-[15vh] min-h-[200vh]" id="stacking-cards-section">
         <div className="mb-[8vh] relative z-20">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Sous le capot</span>
-          <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
             Comment <span className="text-signal">Basket</span> fonctionne.
           </h2>
         </div>
@@ -632,7 +688,7 @@ export default function HomePage() {
               <iconify-icon icon="solar:camera-linear" className="text-3xl text-signal" />
             </div>
             <div className="relative z-10">
-              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-graphite leading-none">Capture</h3>
+              <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-graphite leading-none">Capture</h3>
               <p className="font-mono text-sm text-graphite/60 mt-[2vh] max-w-md">Photographiez votre ticket de caisse. Notre OCR intelligent extrait chaque article, prix et quantité en quelques secondes — même les tickets froissés.</p>
             </div>
           </div>
@@ -643,7 +699,7 @@ export default function HomePage() {
               <iconify-icon icon="solar:chart-2-linear" className="text-3xl text-signal" />
             </div>
             <div className="relative z-10">
-              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-paper leading-none">Analyse</h3>
+              <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-paper leading-none">Analyse</h3>
               <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Basket compare vos prix avec notre base de plus de 33 000 références dans 15 enseignes. L&apos;algorithme de matching intelligent identifie les meilleurs prix même quand les noms diffèrent.</p>
             </div>
           </div>
@@ -654,7 +710,7 @@ export default function HomePage() {
               <iconify-icon icon="solar:wallet-money-linear" className="text-3xl text-signal" />
             </div>
             <div className="relative z-10">
-              <h3 className="font-sans text-[4vw] tracking-tighter font-extrabold text-signal leading-none">Économies</h3>
+              <h3 className="font-sans text-3xl md:text-[4vw] tracking-tighter font-extrabold text-signal leading-none">Économies</h3>
               <p className="font-mono text-sm text-paper/60 mt-[2vh] max-w-md">Vous recevez votre rapport personnalisé : combien vous auriez économisé, dans quel magasin, article par article. Partagez-le sur WhatsApp et faites économiser votre entourage.</p>
             </div>
           </div>
@@ -680,7 +736,7 @@ export default function HomePage() {
       <section className="py-[15vh] px-[5vw] relative z-10" id="matrix-section">
         <div className="mb-[8vh]">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Suivi personnel</span>
-          <h2 className="font-sans text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-4xl md:text-[6vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
             Vos <span className="text-signal">analyses.</span>
           </h2>
         </div>
@@ -701,7 +757,7 @@ export default function HomePage() {
               </svg>
             </div>
             <div className="relative z-10 mt-auto flex justify-between items-end">
-              <h3 className="font-sans text-[3vw] tracking-tighter font-bold text-graphite leading-none">Rapport<br />de la semaine</h3>
+              <h3 className="font-sans text-xl md:text-[3vw] tracking-tighter font-bold text-graphite leading-none">Rapport<br />de la semaine</h3>
               <div className="text-right">
                 <span className="block font-mono text-xs text-graphite/40">Envoyé chaque dimanche</span>
               </div>
@@ -720,12 +776,12 @@ export default function HomePage() {
                 <circle cx="50" cy="50" r="45" fill="none" stroke="#7ed957" strokeWidth="2" strokeDasharray="283" strokeDashoffset="283" id="entropy-circle" strokeLinecap="round" />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="font-sans text-[4vw] tracking-tighter font-extrabold text-graphite leading-none" id="entropy-value">0</span>
+                <span className="font-sans text-2xl md:text-[4vw] tracking-tighter font-extrabold text-graphite leading-none" id="entropy-value">0</span>
                 <span className="font-mono text-xs text-signal tracking-tight mt-[1vh]">€ économisés</span>
               </div>
             </div>
             <div>
-              <h3 className="font-sans text-[2vw] tracking-tighter font-bold text-graphite leading-none">Bilan<br />mensuel</h3>
+              <h3 className="font-sans text-base md:text-[2vw] tracking-tighter font-bold text-graphite leading-none">Bilan<br />mensuel</h3>
             </div>
           </div>
         </div>
@@ -735,7 +791,7 @@ export default function HomePage() {
       <section className="py-[15vh] px-[5vw] relative z-10 bg-offwhite rounded-[3rem] mx-[2vw] my-[5vh] border border-graphite/10" id="ecosystem">
         <div className="mb-[8vh] text-center max-w-[50vw] mx-auto">
           <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Enseignes compatibles</span>
-          <h2 className="font-sans text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
+          <h2 className="font-sans text-3xl md:text-[5vw] tracking-tighter text-graphite font-extrabold leading-none mt-[2vh]">
             Tous vos <span className="text-signal">magasins.</span>
           </h2>
         </div>
@@ -748,9 +804,57 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ==================== BETA SECTION ==================== */}
+      <section className="py-16 md:py-[10vh] px-5 md:px-[5vw] relative z-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-graphite rounded-[2rem] md:rounded-[3rem] p-8 md:p-[4vw] relative overflow-hidden">
+            {/* Glow accent */}
+            <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-20 pointer-events-none"
+              style={{ background: 'radial-gradient(circle, #7ed957 0%, transparent 70%)', transform: 'translate(30%, -30%)' }} />
+
+            <div className="relative z-10">
+              {/* Beta badge */}
+              <div className="inline-flex items-center gap-2 bg-signal/15 border border-signal/30 rounded-full px-4 py-1.5 mb-6">
+                <div className="w-2 h-2 rounded-full bg-signal animate-pulse" />
+                <span className="font-mono text-xs text-signal font-semibold uppercase tracking-wider">Version Beta</span>
+              </div>
+
+              <h2 className="font-sans text-3xl md:text-[4vw] font-extrabold tracking-tighter text-paper leading-none mb-4">
+                Basket est en <span className="text-signal">phase beta.</span>
+              </h2>
+              <p className="font-mono text-sm text-paper/50 max-w-xl mb-8 leading-relaxed">
+                Nous travaillons activement à améliorer la reconnaissance de tickets, la base de données de prix et les recommandations personnalisées. Vos retours nous aident à construire le meilleur outil possible.
+              </p>
+
+              {/* App store badges */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
+                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                  <div>
+                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
+                    <p className="font-sans text-sm font-bold text-paper">App Store</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
+                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M3.18 23.76c.3.17.65.19.96.07l12.45-6.99-2.78-2.78-10.63 9.7zm-1.11-18.9c-.06.2-.07.43-.07.67v17.94c0 .24.01.47.07.67l.07.06 10.04-10.04v-.22L2.14 4.79l-.07.07zM20.93 9.97l-2.78-1.56-3.12 3.12 3.12 3.12 2.81-1.58c.8-.45.8-1.19-.03-1.1zM4.14.24L16.59 7.23l-2.78 2.78L3.18.31C3.49.13 3.84.07 4.14.24z"/></svg>
+                  <div>
+                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
+                    <p className="font-sans text-sm font-bold text-paper">Google Play</p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="font-mono text-xs text-paper/30">
+                En attendant, utilisez Basket directement depuis votre navigateur — ajoutez-le à votre écran d&apos;accueil pour une expérience native.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ==================== CTA ==================== */}
       <section className="py-[20vh] px-[5vw] relative z-10 flex flex-col items-center justify-center text-center overflow-hidden" id="cta">
-        <h2 className="font-sans text-[7vw] leading-[0.9] text-graphite font-extrabold mb-[4vh] split-target-cta">
+        <h2 className="font-sans text-5xl md:text-[7vw] leading-[0.9] text-graphite font-extrabold mb-[4vh] split-target-cta">
           Prêt à payer <span className="text-signal">moins</span> ?
         </h2>
         <p className="font-mono text-sm text-graphite/50 mb-[6vh] max-w-md">Rejoignez des milliers de Français qui économisent chaque semaine grâce à Basket.</p>
@@ -779,7 +883,7 @@ export default function HomePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[10vw] relative z-10">
           <div>
-            <h2 className="font-sans text-[6vw] font-extrabold tracking-tighter uppercase leading-none text-paper flex items-center gap-[1vw]"><img src="/basket_logo.png" alt="Basket" className="h-[6vw] w-[6vw]" />Basket</h2>
+            <h2 className="font-sans text-[10vw] md:text-[6vw] font-extrabold tracking-tighter uppercase leading-none text-paper flex items-center gap-[1vw]"><img src="/basket_logo.png" alt="Basket" className="h-[10vw] w-[10vw] md:h-[6vw] md:w-[6vw]" />Basket <span className="font-mono text-xs md:text-[14px] text-paper/40 font-normal tracking-wider normal-case">(Beta)</span></h2>
             <p className="font-mono text-xs text-paper/40 mt-[3vh] max-w-xs">Le chemin le plus court vers les économies. Scannez, comparez, économisez — chaque semaine.</p>
           </div>
           <div className="flex flex-col md:flex-row gap-[8vw] mt-[4vh] md:mt-0">
