@@ -7,8 +7,7 @@ import { Bell, ArrowLeft, TrendingDown, Check, Sparkles, ShoppingBag } from 'luc
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import Link from 'next/link'
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
+import { EASE } from '@/lib/hooks'
 
 interface Notification {
   id: string; type: string; title: string; body: string; read: boolean

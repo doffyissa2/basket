@@ -7,8 +7,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
+import { EASE } from '@/lib/hooks'
 
 interface ReceiptDetail {
   id: string; store_name: string | null; total_amount: number | null

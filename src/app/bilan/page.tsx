@@ -11,26 +11,7 @@ import {
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import Link from 'next/link'
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
-
-function useCountUp(target: number, duration = 1200) {
-  const [v, setV] = useState(0)
-  const started = useRef(false)
-  useEffect(() => {
-    if (started.current) return
-    if (target === 0) { setV(0); return }
-    started.current = true
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1)
-      setV(Math.round(target * (1 - Math.pow(1 - p, 4)) * 100) / 100)
-      if (p < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [target, duration])
-  return v
-}
+import { EASE, useCountUp } from '@/lib/hooks'
 
 function getCurrentWeekRange(): [Date, Date] {
   const now = new Date()

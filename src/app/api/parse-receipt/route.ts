@@ -1,39 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
-
-// ── Chain normaliser (mirrors community scraper) ──────────────────────────────
-const CHAIN_PATTERNS: [RegExp, string][] = [
-  [/leclerc/i, 'Leclerc'],
-  [/lidl/i, 'Lidl'],
-  [/aldi/i, 'Aldi'],
-  [/intermarché|intermarche|itm/i, 'Intermarché'],
-  [/carrefour/i, 'Carrefour'],
-  [/super\s*u|hyper\s*u|u\s*express|utile/i, 'Super U'],
-  [/monoprix|monop'/i, 'Monoprix'],
-  [/casino/i, 'Casino'],
-  [/franprix/i, 'Franprix'],
-  [/auchan/i, 'Auchan'],
-  [/picard/i, 'Picard'],
-  [/biocoop/i, 'Biocoop'],
-  [/netto/i, 'Netto'],
-  [/grand\s*frais/i, 'Grand Frais'],
-]
-
-function normalizeChain(raw: string): string {
-  for (const [re, canonical] of CHAIN_PATTERNS) {
-    if (re.test(raw)) return canonical
-  }
-  return raw.trim()
-}
+import { getServiceClient } from '@/lib/supabase-service'
+import { normalizeStoreChain } from '@/lib/store-chains'
 
 function normaliseProductName(name: string): string {
   return name
@@ -360,7 +330,7 @@ export async function POST(request: NextRequest) {
 
     // ── Post-parse intelligence ───────────────────────────────────────────
     // 1. Normalize store chain name using our OSM chain map
-    parsed.store_name = normalizeChain(parsed.store_name)
+    parsed.store_name = normalizeStoreChain(parsed.store_name)
 
     // 2. Validate/correct item prices against community_prices data
     parsed.items = await validateItemPrices(parsed.items, supabase)

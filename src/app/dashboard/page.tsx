@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
@@ -13,26 +13,7 @@ import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import OnboardingFlow from '@/components/OnboardingFlow'
 import Link from 'next/link'
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
-
-function useCountUp(target: number, duration = 1400) {
-  const [value, setValue] = useState(0)
-  const started = useRef(false)
-  useEffect(() => {
-    if (started.current) return
-    if (target === 0) { setValue(0); return }
-    started.current = true
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1)
-      setValue(Math.round(target * (1 - Math.pow(1 - p, 4)) * 100) / 100)
-      if (p < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [target, duration])
-  return value
-}
+import { EASE, useCountUp } from '@/lib/hooks'
 
 function getLevel(count: number) {
   if (count >= 100) return { label: 'Champion',    Icon: Crown,    color: '#F59E0B', bg: 'rgba(245,158,11,0.15)',   border: 'rgba(245,158,11,0.3)',   next: Infinity, progress: 100 }

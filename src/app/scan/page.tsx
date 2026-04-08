@@ -13,7 +13,7 @@ import { normalizeProductName } from '@/lib/normalize'
 import type { XPAwardResult } from '@/lib/gamification'
 import { getFrameStyle, LEGENDARY_GRADIENT } from '@/lib/gamification'
 
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
+import { EASE, useCountUp } from '@/lib/hooks'
 
 // ── XP float "+N XP" ─────────────────────────────────────────────────────────
 function XPFloat({ amount, onDone }: { amount: number; onDone: () => void }) {
@@ -180,22 +180,6 @@ const PARSE_MESSAGES = [
   'Analyse des prix...',
   'Calcul de vos économies...',
 ]
-
-function useCountUp(target: number, duration = 1200) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (target === 0) return
-    const start = performance.now()
-    const tick = (now: number) => {
-      const progress = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - progress, 3)
-      setCount(Math.round(target * eased * 100) / 100)
-      if (progress < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [target, duration])
-  return count
-}
 
 function ConfettiParticles() {
   const particles = Array.from({ length: 25 }, (_, i) => ({

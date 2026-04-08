@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
@@ -16,26 +16,7 @@ import {
   type AvatarFrame, type BadgeRarity, type LevelProgress,
 } from '@/lib/gamification'
 
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
-
-// ── Animated counter ──────────────────────────────────────────────────────────
-function useCountUp(target: number, duration = 1200) {
-  const [v, setV] = useState(0)
-  const started = useRef(false)
-  useEffect(() => {
-    if (started.current) return
-    if (target === 0) { setV(0); return }
-    started.current = true
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1)
-      setV(Math.round(target * (1 - Math.pow(1 - p, 4)) * 100) / 100)
-      if (p < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [target, duration])
-  return v
-}
+import { EASE, useCountUp } from '@/lib/hooks'
 
 // ── Rarity style maps ─────────────────────────────────────────────────────────
 const RARITY_BG: Record<BadgeRarity, string> = {

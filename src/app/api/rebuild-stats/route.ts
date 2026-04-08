@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-// ── Supabase service-role client (bypasses RLS) ────────────────────────────
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { getServiceClient } from '@/lib/supabase-service'
 
 /**
  * POST /api/rebuild-stats?key=YOUR_SECRET
