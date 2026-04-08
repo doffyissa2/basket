@@ -14,18 +14,23 @@ import { getServiceClient } from '@/lib/supabase-service'
  *  3. Refresh basket_inflation_weekly materialized view via RPC
  */
 export async function POST(request: NextRequest) {
-  // ── Auth: check secret key from Authorization header ───────────────────
-  const expectedKey = process.env.REBUILD_STATS_SECRET_KEY
-
-  if (!expectedKey) {
-    console.error('[rebuild-stats] REBUILD_STATS_SECRET_KEY env var not set')
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
-  }
-
+  // ── Auth: accept Vercel's automatic cron secret or a manual override ───
   const authHeader = request.headers.get('authorization') ?? ''
   const providedKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
 
-  if (providedKey !== expectedKey) {
+  const vercelSecret  = process.env.VERCEL_CRON_SECRET
+  const manualSecret  = process.env.REBUILD_STATS_SECRET_KEY
+
+  if (!vercelSecret && !manualSecret) {
+    console.error('[rebuild-stats] No auth secret configured')
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
+  }
+
+  const authorized =
+    (vercelSecret && providedKey === vercelSecret) ||
+    (manualSecret && providedKey === manualSecret)
+
+  if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -83,3 +88,6 @@ export async function POST(request: NextRequest) {
     { status: allOk ? 200 : 207 } // 207 = partial success
   )
 }
+
+// Vercel cron jobs trigger GET — delegate to POST
+export const GET = POST
