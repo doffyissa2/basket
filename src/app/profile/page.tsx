@@ -5,15 +5,20 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
   LogOut, MapPin, Bell, Trash2, Receipt, Package, TrendingDown,
-  Store, AlertTriangle, Loader2, Crown, Trophy, Flame, Star, Sparkles,
-  ChevronRight, Lock,
+  Store, AlertTriangle, Loader2, Lock, Check, ChevronRight, Trophy,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import Link from 'next/link'
+import {
+  BADGES, LEGENDARY_GRADIENT, LEGENDARY_ELITE_GRADIENT,
+  getFrameStyle, RARITY_COLOR,
+  type AvatarFrame, type BadgeRarity, type LevelProgress,
+} from '@/lib/gamification'
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
 
+// ── Animated counter ──────────────────────────────────────────────────────────
 function useCountUp(target: number, duration = 1200) {
   const [v, setV] = useState(0)
   const started = useRef(false)
@@ -32,31 +37,88 @@ function useCountUp(target: number, duration = 1200) {
   return v
 }
 
-function getLevel(count: number) {
-  if (count >= 100) return { label: 'Champion',    Icon: Crown,    color: '#F59E0B', bg: 'rgba(245,158,11,0.15)',   border: 'rgba(245,158,11,0.3)',   next: Infinity, progress: 100 }
-  if (count >= 50)  return { label: 'Expert',      Icon: Trophy,   color: '#EF4444', bg: 'rgba(239,68,68,0.15)',    border: 'rgba(239,68,68,0.3)',    next: 100, progress: (count-50)/50*100 }
-  if (count >= 20)  return { label: 'Économe',     Icon: Flame,    color: '#00D09C', bg: 'rgba(0,208,156,0.15)',    border: 'rgba(0,208,156,0.3)',    next: 50,  progress: (count-20)/30*100 }
-  if (count >= 5)   return { label: 'Explorateur', Icon: Star,     color: '#7ed957', bg: 'rgba(126,217,87,0.15)',  border: 'rgba(126,217,87,0.3)',  next: 20,  progress: (count-5)/15*100 }
-  return                    { label: 'Débutant',   Icon: Sparkles, color: '#a3f07a', bg: 'rgba(163,240,122,0.12)', border: 'rgba(163,240,122,0.25)', next: 5,   progress: count/5*100 }
+// ── Rarity style maps ─────────────────────────────────────────────────────────
+const RARITY_BG: Record<BadgeRarity, string> = {
+  common:    'rgba(17,17,17,0.06)',
+  rare:      'rgba(126,217,87,0.08)',
+  epic:      'rgba(185,242,255,0.1)',
+  legendary: 'rgba(255,215,0,0.1)',
+}
+const RARITY_BORDER: Record<BadgeRarity, string> = {
+  common:    '1px solid rgba(17,17,17,0.1)',
+  rare:      '1px solid rgba(126,217,87,0.2)',
+  epic:      '1px solid rgba(185,242,255,0.25)',
+  legendary: '1px solid rgba(255,215,0,0.3)',
+}
+const RARITY_LABEL: Record<BadgeRarity, string> = {
+  common:    'Commun',
+  rare:      'Rare',
+  epic:      'Épique',
+  legendary: 'Légendaire',
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
+interface GamificationState {
+  xp:             number
+  level:          number
+  title:          string
+  frame:          AvatarFrame
+  progress:       LevelProgress
+  scan_streak:    number
+  longest_streak: number
+  total_savings:  number
+  total_scans:    number
+  next_level:     { level: number; title: string; xp_required: number; unlock: string } | null
+  badges:         { id: string; unlocked_at: string }[]
+  weekly_challenges: { id: string; text: string; xp: number; completed: boolean }[]
+  dept_rank:      number | null
+}
+
+interface LeaderboardRow {
+  id:            string
+  display_name:  string
+  level:         number
+  title:         string
+  total_savings: number
+  is_me:         boolean
 }
 
 interface ProfileStats { receipts: number; items: number; favoriteStore: string | null; totalSaved: number }
 
-const ACHIEVEMENTS = [
-  { id: 'first',   emoji: '🧾', label: 'Premier ticket',       desc: 'Bienvenue dans Basket !', unlocked: (r: number, _s: number) => r >= 1 },
-  { id: 'five',    emoji: '⭐', label: '5 tickets scannés',    desc: 'Vous prenez l\'habitude', unlocked: (r: number, _s: number) => r >= 5 },
-  { id: 'saving',  emoji: '💰', label: 'Première économie',    desc: 'Vous avez économisé !',   unlocked: (_r: number, s: number) => s > 0 },
-  { id: 'ten',     emoji: '🔥', label: '10 tickets',            desc: 'Bel effort !',            unlocked: (r: number, _s: number) => r >= 10 },
-  { id: 'five€',   emoji: '💎', label: '€5 économisés',        desc: 'Ça commence bien',        unlocked: (_r: number, s: number) => s >= 5 },
-  { id: 'twenty',  emoji: '🏆', label: '20 tickets',            desc: 'Expert en devenir',       unlocked: (r: number, _s: number) => r >= 20 },
-  { id: 'twenty€', emoji: '🌟', label: '€20 économisés',       desc: 'Impressionnant !',        unlocked: (_r: number, s: number) => s >= 20 },
-  { id: 'fifty',   emoji: '👑', label: '50 tickets',            desc: 'Véritable économe',       unlocked: (r: number, _s: number) => r >= 50 },
-  { id: 'fifty€',  emoji: '🎯', label: '€50 économisés',       desc: 'Maître des économies',    unlocked: (_r: number, s: number) => s >= 50 },
-]
+// ── Avatar frame ring component ───────────────────────────────────────────────
+function AvatarRing({ frame, size = 80, children }: { frame: AvatarFrame; size?: number; children: React.ReactNode }) {
+  const isLegendary = frame === 'legendary' || frame === 'legendary_elite'
+  const gradient    = frame === 'legendary_elite' ? LEGENDARY_ELITE_GRADIENT : LEGENDARY_GRADIENT
+  const style       = getFrameStyle(frame)
+
+  if (isLegendary) {
+    return (
+      <div className="relative" style={{ width: size, height: size }}>
+        {/* Animated gradient ring */}
+        <div className="absolute inset-0 rounded-full animate-spin"
+          style={{ background: gradient, animationDuration: '4s', padding: 3 }}>
+          <div className="w-full h-full rounded-full" style={{ background: '#111' }} />
+        </div>
+        <div className="absolute inset-[3px] rounded-full overflow-hidden">{children}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative rounded-full overflow-hidden"
+      style={{ width: size, height: size, border: style.border, boxShadow: style.glow }}>
+      {children}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const [user,              setUser]             = useState<User | null>(null)
   const [stats,             setStats]            = useState<ProfileStats>({ receipts: 0, items: 0, favoriteStore: null, totalSaved: 0 })
+  const [gam,               setGam]              = useState<GamificationState | null>(null)
+  const [leaderboard,       setLeaderboard]      = useState<LeaderboardRow[]>([])
   const [loading,           setLoading]          = useState(true)
   const [postcode,          setPostcode]         = useState('')
   const [editingPostcode,   setEditingPostcode]  = useState(false)
@@ -68,22 +130,38 @@ export default function ProfilePage() {
   const receiptsVal = useCountUp(stats.receipts)
   const itemsVal    = useCountUp(stats.items)
   const savedVal    = useCountUp(stats.totalSaved)
+  const xpVal       = useCountUp(gam?.xp ?? 0)
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
-      setUser(user)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.href = '/login'; return }
+      const { user: u, access_token: token } = session
+      setUser(u)
 
-      const [{ count: rc }, { count: ic }, { data: profile }, { data: topStore }, { data: savingsData }] = await Promise.all([
-        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('price_items').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('profiles').select('postcode').eq('id', user.id).single(),
-        supabase.from('receipts').select('store_name').eq('user_id', user.id).not('store_name', 'is', null),
-        supabase.from('receipts').select('savings_amount').eq('user_id', user.id),
+      // Clear badge notification now that the user is on the profile page
+      try { localStorage.removeItem('basket_gam_new_badge') } catch { /* ignore */ }
+
+      // Phase 1: profile data + gamification in parallel
+      const [
+        { count: rc },
+        { count: ic },
+        { data: profileRow },
+        { data: topStore },
+        { data: savingsData },
+        gamRes,
+      ] = await Promise.all([
+        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', u.id),
+        supabase.from('price_items').select('*', { count: 'exact', head: true }).eq('user_id', u.id),
+        supabase.from('profiles').select('postcode, display_name').eq('id', u.id).single(),
+        supabase.from('receipts').select('store_name').eq('user_id', u.id).not('store_name', 'is', null),
+        supabase.from('receipts').select('savings_amount').eq('user_id', u.id),
+        fetch('/api/gamification', { headers: { Authorization: `Bearer ${token}` } }),
       ])
 
-      if (profile?.postcode) setPostcode(profile.postcode)
+      const pc       = (profileRow?.postcode as string) ?? ''
+      const dept     = pc.slice(0, 2)
+      if (pc) setPostcode(pc)
 
       let favStore: string | null = null
       if (topStore && topStore.length > 0) {
@@ -91,12 +169,30 @@ export default function ProfilePage() {
         topStore.forEach((r: { store_name: string | null }) => {
           if (r.store_name) counts[r.store_name] = (counts[r.store_name] || 0) + 1
         })
-        favStore = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || null
+        favStore = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
       }
-
       const totalSaved = savingsData?.reduce((s, r) => s + (r.savings_amount || 0), 0) ?? 0
       setStats({ receipts: rc || 0, items: ic || 0, favoriteStore: favStore, totalSaved })
+
+      if (gamRes.ok) {
+        const gamData: GamificationState = await gamRes.json()
+        setGam(gamData)
+        // Update localStorage streak for BottomNav
+        try { localStorage.setItem('basket_gam_streak', String(gamData.scan_streak)) } catch { /* ignore */ }
+      }
+
       setLoading(false)
+
+      // Phase 2: leaderboard (dept needed)
+      if (dept && token) {
+        const lbRes = await fetch(`/api/leaderboard?type=savings&dept=${dept}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (lbRes.ok) {
+          const lbData = await lbRes.json()
+          setLeaderboard(lbData.top?.slice(0, 5) ?? [])
+        }
+      }
     }
     init()
   }, [])
@@ -135,12 +231,11 @@ export default function ProfilePage() {
     setEditingPostcode(false)
   }
 
-  const level    = getLevel(stats.receipts)
-  const username = user?.email?.split('@')[0] ?? ''
-  const initial  = username[0]?.toUpperCase() ?? '?'
-
-  const unlockedAchievements = ACHIEVEMENTS.filter(a => a.unlocked(stats.receipts, stats.totalSaved))
-  const lockedAchievements   = ACHIEVEMENTS.filter(a => !a.unlocked(stats.receipts, stats.totalSaved))
+  const username    = user?.email?.split('@')[0] ?? ''
+  const initial     = username[0]?.toUpperCase() ?? '?'
+  const frame       = gam?.frame ?? 'default'
+  const earnedIds   = new Set((gam?.badges ?? []).map((b) => b.id))
+  const earnedCount = earnedIds.size
 
   if (loading) {
     return (
@@ -154,67 +249,88 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-paper text-graphite pb-28">
-      {/* Header */}
-      <div className="relative overflow-hidden pt-14 pb-8 px-5 text-center"
-        style={{ background: '#111' }}>
+
+      {/* ── Dark header ─────────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden pt-14 pb-8 px-5 text-center" style={{ background: '#111' }}>
         <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
           style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.08) 0%, transparent 70%)' }} />
 
-        {/* Avatar + level ring */}
+        {/* Avatar */}
         <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-          className="relative inline-flex mb-4">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white"
-            style={{ background: 'linear-gradient(135deg, #7ed957, #a3f07a)' }}>
-            {initial}
-          </div>
-          {/* Level badge */}
-          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center"
-            style={{ background: level.bg, border: `2px solid #111`, boxShadow: `0 0 0 1px ${level.color}` }}>
-            <level.Icon className="w-3.5 h-3.5" style={{ color: level.color }} />
-          </div>
+          className="inline-flex mb-4 relative">
+          <AvatarRing frame={frame} size={80}>
+            <div className="w-full h-full rounded-full flex items-center justify-center text-3xl font-extrabold text-white"
+              style={{ background: 'linear-gradient(135deg, #1e1e1e, #2a2a2a)' }}>
+              {initial}
+            </div>
+          </AvatarRing>
+          {/* Level bubble */}
+          <motion.div
+            initial={{ scale: 0 }} animate={{ scale: 1 }}
+            transition={{ delay: 0.3, type: 'spring', stiffness: 400, damping: 20 }}
+            className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold text-graphite"
+            style={{ background: '#7ed957', border: '2px solid #111' }}>
+            {gam?.level ?? 1}
+          </motion.div>
         </motion.div>
 
         <h1 className="text-xl font-extrabold text-white">{username}</h1>
-        <p className="text-sm text-white/40 mt-0.5">{user?.email}</p>
+        <p className="text-sm mt-0.5 font-semibold" style={{ color: '#7ed957' }}>{gam?.title ?? 'Débutant'}</p>
 
-        {/* Level + progress */}
+        {/* Streak */}
+        {(gam?.scan_streak ?? 0) > 0 && (
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="flex items-center justify-center gap-1.5 mt-3">
+            <span className="text-base">🔥</span>
+            <span className="text-sm font-bold" style={{ color: '#F59E0B' }}>
+              {gam!.scan_streak} semaine{gam!.scan_streak > 1 ? 's' : ''} consécutive{gam!.scan_streak > 1 ? 's' : ''}
+            </span>
+          </motion.div>
+        )}
+
+        {/* XP progress bar */}
         <div className="mt-4 max-w-xs mx-auto">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-bold" style={{ color: level.color }}>{level.label}</span>
-            {level.next !== Infinity && (
-              <span className="text-[10px] text-white/30 font-semibold">
-                {level.next - stats.receipts} tickets vers {
-                  level.label === 'Débutant' ? 'Explorateur' :
-                  level.label === 'Explorateur' ? 'Économe' :
-                  level.label === 'Économe' ? 'Expert' : 'Champion'
-                }
+            <span className="text-xs font-bold" style={{ color: '#7ed957' }}>
+              {Math.round(xpVal).toLocaleString('fr-FR')} XP
+            </span>
+            {gam?.next_level ? (
+              <span className="text-[10px] text-white/30 font-medium">
+                {(gam.next_level.xp_required - (gam.xp ?? 0)).toLocaleString('fr-FR')} XP → Nv.{gam.next_level.level}
               </span>
+            ) : (
+              <span className="text-[10px] text-white/30">Niveau max</span>
             )}
           </div>
           <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-            <motion.div className="h-full rounded-full" style={{ background: level.color }}
-              initial={{ width: 0 }} animate={{ width: `${level.progress}%` }}
-              transition={{ delay: 0.4, duration: 1, ease: EASE }} />
+            <motion.div className="h-full rounded-full"
+              style={{ background: 'linear-gradient(90deg, #7ed957, #00D09C)' }}
+              initial={{ width: 0 }}
+              animate={{ width: `${gam?.progress.percent ?? 0}%` }}
+              transition={{ delay: 0.4, duration: 1.2, ease: EASE }} />
           </div>
         </div>
 
-        <p className="text-[10px] text-white/25 mt-3">
-          Membre depuis {user?.created_at ? new Date(user.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : '—'}
+        <p className="text-[10px] text-white/20 mt-3">
+          Membre depuis {user?.created_at
+            ? new Date(user.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+            : '—'}
         </p>
       </div>
 
       <main className="max-w-lg mx-auto px-5 space-y-4 pt-4">
 
-        {/* Stats grid */}
+        {/* ── Stats grid ───────────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, ease: EASE }}
           className="grid grid-cols-2 gap-3">
           {[
-            { Icon: Receipt,     label: 'Tickets scannés',   value: Math.round(receiptsVal).toLocaleString('fr-FR'), color: '#7ed957' },
-            { Icon: Package,     label: 'Produits analysés', value: Math.round(itemsVal).toLocaleString('fr-FR'),    color: '#a3f07a' },
-            { Icon: TrendingDown, label: 'Économies totales', value: `€${savedVal.toFixed(2)}`,                     color: '#00D09C' },
-            { Icon: Store,       label: 'Magasin favori',    value: stats.favoriteStore || '—',                      color: 'rgba(17,17,17,0.4)' },
+            { Icon: Receipt,      label: 'Tickets scannés',   value: Math.round(receiptsVal).toLocaleString('fr-FR'), color: '#7ed957' },
+            { Icon: Package,      label: 'Produits analysés', value: Math.round(itemsVal).toLocaleString('fr-FR'),    color: '#a3f07a' },
+            { Icon: TrendingDown, label: 'Économies totales', value: `€${savedVal.toFixed(2)}`,                      color: '#00D09C' },
+            { Icon: Store,        label: 'Magasin favori',    value: stats.favoriteStore || '—',                     color: 'rgba(17,17,17,0.4)' },
           ].map((card, i) => (
             <motion.div key={card.label}
               initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -230,51 +346,163 @@ export default function ProfilePage() {
           ))}
         </motion.div>
 
-        {/* Achievements */}
-        {(unlockedAchievements.length > 0 || lockedAchievements.length > 0) && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22, ease: EASE }}
-            className="rounded-2xl overflow-hidden bg-white"
-            style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
-            <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-graphite/40">Achievements</p>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(126,217,87,0.12)', color: '#7ed957' }}>
-                  {unlockedAchievements.length}/{ACHIEVEMENTS.length}
-                </span>
-              </div>
+        {/* ── Next level teaser ────────────────────────────────────────── */}
+        {gam?.next_level && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, ease: EASE }}
+            className="rounded-2xl p-4 flex items-center gap-4"
+            style={{ background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(126,217,87,0.12)' }}>
+              <Lock className="w-5 h-5" style={{ color: '#7ed957' }} />
             </div>
-            <div className="p-4 grid grid-cols-3 gap-3">
-              {ACHIEVEMENTS.map((a, i) => {
-                const unlocked = a.unlocked(stats.receipts, stats.totalSaved)
-                return (
-                  <motion.div key={a.id}
-                    initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.25 + i * 0.04, type: 'spring', stiffness: 400, damping: 25 }}
-                    className="flex flex-col items-center gap-1.5 p-2 rounded-xl text-center"
-                    style={{
-                      background: unlocked ? 'rgba(126,217,87,0.06)' : 'rgba(17,17,17,0.03)',
-                      border: unlocked ? '1px solid rgba(126,217,87,0.2)' : '1px solid rgba(17,17,17,0.06)',
-                      opacity: unlocked ? 1 : 0.45,
-                    }}>
-                    <span className="text-2xl leading-none">{unlocked ? a.emoji : '🔒'}</span>
-                    <p className="text-[9px] font-bold text-graphite/60 leading-tight">{a.label}</p>
-                    {unlocked && (
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
-                        transition={{ delay: 0.5 + i * 0.03, type: 'spring', stiffness: 500, damping: 20 }}
-                        className="w-1.5 h-1.5 rounded-full" style={{ background: '#7ed957' }} />
-                    )}
-                  </motion.div>
-                )
-              })}
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-white/35 uppercase tracking-wider font-bold mb-0.5">
+                Prochaine récompense — Nv.{gam.next_level.level}
+              </p>
+              <p className="text-sm font-semibold text-white/80 truncate">{gam.next_level.unlock}</p>
+              <p className="text-[10px] text-white/30 mt-0.5">{gam.next_level.title}</p>
+            </div>
+            <div className="flex-shrink-0 text-right">
+              <p className="text-sm font-extrabold" style={{ color: '#7ed957' }}>
+                {(gam.next_level.xp_required - (gam.xp ?? 0)).toLocaleString('fr-FR')}
+              </p>
+              <p className="text-[9px] text-white/30">XP restants</p>
             </div>
           </motion.div>
         )}
 
-        {/* Settings */}
+        {/* ── Weekly challenges ─────────────────────────────────────────── */}
+        {gam && gam.weekly_challenges.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22, ease: EASE }}
+            className="rounded-2xl overflow-hidden bg-white"
+            style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
+            <div className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
+              <p className="text-xs font-bold uppercase tracking-wider text-graphite/40">Défis de la semaine</p>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(126,217,87,0.1)', color: '#7ed957' }}>
+                {gam.weekly_challenges.filter((c) => c.completed).length}/{gam.weekly_challenges.length}
+              </span>
+            </div>
+            <div>
+              {gam.weekly_challenges.map((c, i) => (
+                <div key={c.id}
+                  className="flex items-center gap-3 px-5 py-4"
+                  style={{ borderBottom: i < gam.weekly_challenges.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none' }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                    style={{ background: c.completed ? '#7ed957' : 'rgba(17,17,17,0.08)' }}>
+                    {c.completed && <Check className="w-3 h-3 text-white" />}
+                  </div>
+                  <p className={`text-sm flex-1 ${c.completed ? 'line-through text-graphite/35' : 'text-graphite'}`}>
+                    {c.text}
+                  </p>
+                  <span className="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0"
+                    style={{ background: c.completed ? 'rgba(0,208,156,0.1)' : 'rgba(126,217,87,0.1)', color: c.completed ? '#00D09C' : '#7ed957' }}>
+                    +{c.xp} XP
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Badge collection ─────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, ease: EASE }}
+          transition={{ delay: 0.26, ease: EASE }}
+          className="rounded-2xl overflow-hidden bg-white"
+          style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
+          <div className="px-5 py-4 flex items-center justify-between"
+            style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
+            <p className="text-xs font-bold uppercase tracking-wider text-graphite/40">Collection</p>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(126,217,87,0.1)', color: '#7ed957' }}>
+              {earnedCount}/{BADGES.length}
+            </span>
+          </div>
+          <div className="p-4 grid grid-cols-4 gap-2.5">
+            {BADGES.map((badge, i) => {
+              const earned = earnedIds.has(badge.id)
+              return (
+                <motion.div key={badge.id}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: earned ? 1 : 0.38, scale: 1 }}
+                  transition={{ delay: 0.28 + i * 0.03, type: 'spring', stiffness: 400, damping: 25 }}
+                  className="flex flex-col items-center gap-1 p-2.5 rounded-2xl text-center"
+                  style={{
+                    background: earned ? RARITY_BG[badge.rarity] : 'rgba(17,17,17,0.03)',
+                    border:     earned ? RARITY_BORDER[badge.rarity] : '1px solid rgba(17,17,17,0.06)',
+                  }}>
+                  <span className="text-2xl leading-none">{earned ? badge.icon : '🔒'}</span>
+                  <p className="text-[8px] font-bold text-graphite/60 leading-tight text-center">{badge.name}</p>
+                  {earned ? (
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: RARITY_COLOR[badge.rarity] }} />
+                  ) : (
+                    <p className="text-[7px] text-graphite/30 leading-tight text-center line-clamp-2">
+                      {RARITY_LABEL[badge.rarity]}
+                    </p>
+                  )}
+                </motion.div>
+              )
+            })}
+          </div>
+        </motion.div>
+
+        {/* ── Leaderboard mini ─────────────────────────────────────────── */}
+        {(leaderboard.length > 0 || gam?.dept_rank) && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, ease: EASE }}
+            className="rounded-2xl overflow-hidden bg-white"
+            style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
+            <div className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <Trophy className="w-3.5 h-3.5" style={{ color: '#F59E0B' }} />
+                <p className="text-xs font-bold uppercase tracking-wider text-graphite/40">
+                  Classement — Dépt. {postcode.slice(0, 2) || '—'}
+                </p>
+              </div>
+              {gam?.dept_rank && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}>
+                  #{gam.dept_rank}
+                </span>
+              )}
+            </div>
+            {leaderboard.length > 0 ? (
+              leaderboard.map((row, i) => (
+                <div key={row.id}
+                  className="flex items-center gap-3 px-5 py-3.5"
+                  style={{
+                    borderBottom: i < leaderboard.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none',
+                    background:   row.is_me ? 'rgba(126,217,87,0.04)' : undefined,
+                  }}>
+                  <span className="w-5 text-xs font-extrabold text-graphite/30 text-right flex-shrink-0">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-graphite truncate">
+                      {row.is_me ? 'Vous' : row.display_name}
+                    </p>
+                    <p className="text-[10px] text-graphite/40">{row.title}</p>
+                  </div>
+                  <p className="text-sm font-bold text-graphite flex-shrink-0">
+                    €{Number(row.total_savings).toFixed(0)}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="px-5 py-6 text-center">
+                <p className="text-xs text-graphite/40">Scannez plus de tickets pour apparaître dans le classement.</p>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Settings ─────────────────────────────────────────────────── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.34, ease: EASE }}
           className="rounded-2xl overflow-hidden bg-white"
           style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
           <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
@@ -299,7 +527,7 @@ export default function ProfilePage() {
                       style={{ background: 'rgba(17,17,17,0.06)', border: '1px solid rgba(17,17,17,0.12)' }}
                       autoFocus
                       onFocus={(e) => (e.currentTarget.style.borderColor = '#7ed957')}
-                      onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.12)')} />
+                      onBlur={(e)  => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.12)')} />
                     <button onClick={handlePostcodeSave} className="text-xs font-semibold" style={{ color: '#7ed957' }}>Sauver</button>
                     <button onClick={() => setEditingPostcode(false)} className="text-xs text-graphite/35">Annuler</button>
                   </div>
@@ -328,7 +556,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <motion.button onClick={() => setNotifications(!notifications)}
-              className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+              className="relative w-11 h-6 rounded-full flex-shrink-0"
               style={{ background: notifications ? '#7ed957' : 'rgba(17,17,17,0.12)' }}>
               <motion.div className="absolute top-0.5 bottom-0.5 w-5 h-5 bg-white rounded-full shadow"
                 animate={{ left: notifications ? '22px' : '2px' }}
@@ -337,15 +565,15 @@ export default function ProfilePage() {
           </div>
         </motion.div>
 
-        {/* Links */}
+        {/* ── Links ────────────────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35, ease: EASE }}
+          transition={{ delay: 0.38, ease: EASE }}
           className="rounded-2xl overflow-hidden bg-white"
           style={{ border: '1px solid rgba(17,17,17,0.07)' }}>
           {[
             { label: 'Politique de confidentialité', href: '/privacy' },
-            { label: 'Conditions générales', href: '/terms' },
-            { label: 'Contact', href: '/contact' },
+            { label: "Conditions d'utilisation",     href: '/terms' },
+            { label: 'Contact',                       href: '/contact' },
           ].map((link, i) => (
             <Link key={link.href} href={link.href}
               className="flex items-center justify-between px-5 py-3.5 hover:bg-black/[0.02] transition-colors"
@@ -356,18 +584,18 @@ export default function ProfilePage() {
           ))}
         </motion.div>
 
-        {/* Logout */}
+        {/* ── Logout ───────────────────────────────────────────────────── */}
         <motion.button initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, ease: EASE }}
+          transition={{ delay: 0.42, ease: EASE }}
           onClick={handleLogout} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
           className="w-full h-12 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 glass text-graphite">
           <LogOut className="w-4 h-4" />
           Déconnexion
         </motion.button>
 
-        {/* Delete account */}
+        {/* ── Delete account ───────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ delay: 0.45 }} className="text-center pb-4">
+          transition={{ delay: 0.46 }} className="text-center pb-4">
           <button onClick={() => setShowDeleteConfirm(true)}
             className="text-xs text-graphite/30 hover:text-red-500 transition-colors flex items-center gap-1.5 mx-auto">
             <Trash2 className="w-3 h-3" />
@@ -375,7 +603,7 @@ export default function ProfilePage() {
           </button>
         </motion.div>
 
-        {/* Delete modal */}
+        {/* ── Delete confirm modal ─────────────────────────────────────── */}
         <AnimatePresence>
           {showDeleteConfirm && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -414,9 +642,17 @@ export default function ProfilePage() {
             </motion.div>
           )}
         </AnimatePresence>
+
       </main>
 
-      <BottomNav active="profile" />
+      <BottomNav
+        active="profile"
+        profileMeta={{
+          level:       gam?.level ?? 1,
+          streak:      gam?.scan_streak ?? 0,
+          hasNewBadge: false,   // cleared on mount above
+        }}
+      />
     </div>
   )
 }

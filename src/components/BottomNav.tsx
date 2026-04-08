@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { motion, LayoutGroup } from 'framer-motion'
 import { Home, Camera, User, ShoppingCart, Map } from 'lucide-react'
@@ -12,15 +13,46 @@ const TABS = [
   { id: 'profile', label: 'Profil',  icon: User,          href: '/profile' },
 ]
 
-export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste' | 'profile' | 'carte' }) {
+interface ProfileMeta {
+  level:       number
+  streak?:     number
+  hasNewBadge?: boolean
+}
+
+interface BottomNavProps {
+  active:       'home' | 'scan' | 'liste' | 'profile' | 'carte'
+  profileMeta?: ProfileMeta
+}
+
+export default function BottomNav({ active, profileMeta }: BottomNavProps) {
+  // Read badge notification from localStorage (written by scan page after award)
+  const [localBadge, setLocalBadge] = useState(false)
+  const [localLevel, setLocalLevel] = useState<number | null>(null)
+  const [localStreak, setLocalStreak] = useState(0)
+
+  useEffect(() => {
+    try {
+      const badge  = localStorage.getItem('basket_gam_new_badge')
+      const level  = localStorage.getItem('basket_gam_level')
+      const streak = localStorage.getItem('basket_gam_streak')
+      if (badge)  setLocalBadge(true)
+      if (level)  setLocalLevel(parseInt(level, 10))
+      if (streak) setLocalStreak(parseInt(streak, 10))
+    } catch { /* ignore */ }
+  }, [])
+
+  const level    = profileMeta?.level  ?? localLevel
+  const streak   = profileMeta?.streak ?? localStreak
+  const hasBadge = profileMeta?.hasNewBadge ?? localBadge
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
       style={{
-        background: 'rgba(245,243,238,0.95)',
-        backdropFilter: 'blur(20px)',
+        background:           'rgba(245,243,238,0.95)',
+        backdropFilter:       'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(17,17,17,0.08)',
+        borderTop:            '1px solid rgba(17,17,17,0.08)',
       }}
     >
       <LayoutGroup>
@@ -29,7 +61,8 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
           style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', paddingTop: '8px' }}
         >
           {TABS.map((tab) => {
-            const isActive = active === tab.id
+            const isActive     = active === tab.id
+            const isProfileTab = tab.id === 'profile'
 
             if (tab.isFab) {
               return (
@@ -39,10 +72,10 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                     whileTap={{ scale: 0.92 }}
                     className="flex items-center justify-center rounded-full"
                     style={{
-                      width: 52,
-                      height: 52,
+                      width:      52,
+                      height:     52,
                       background: '#111111',
-                      boxShadow: '0 4px 20px rgba(17,17,17,0.25)',
+                      boxShadow:  '0 4px 20px rgba(17,17,17,0.25)',
                     }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
@@ -58,8 +91,40 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                 <motion.div
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  className="flex flex-col items-center gap-1"
+                  className="flex flex-col items-center gap-1 relative"
                 >
+                  {/* Profile-tab extras */}
+                  {isProfileTab && (
+                    <>
+                      {/* New badge red dot */}
+                      {hasBadge && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                          className="absolute -top-1 -right-1 w-2 h-2 rounded-full z-10"
+                          style={{ background: '#EF4444' }}
+                        />
+                      )}
+                      {/* Level chip */}
+                      {level && level > 1 && !hasBadge && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                          className="absolute -top-1.5 -right-2 px-1.5 py-0.5 rounded-full text-[8px] font-bold z-10 leading-none"
+                          style={{ background: '#7ed957', color: '#111' }}
+                        >
+                          {level}
+                        </motion.div>
+                      )}
+                      {/* Streak fire */}
+                      {streak >= 2 && (
+                        <span className="absolute -top-1.5 -left-2 text-[10px] leading-none">🔥</span>
+                      )}
+                    </>
+                  )}
+
                   <tab.icon
                     className="w-5 h-5 transition-colors"
                     style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.35)' }}
@@ -71,6 +136,7 @@ export default function BottomNav({ active }: { active: 'home' | 'scan' | 'liste
                     {tab.label}
                   </span>
                 </motion.div>
+
                 {isActive && (
                   <motion.div
                     layoutId="activeTabIndicator"

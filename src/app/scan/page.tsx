@@ -365,6 +365,11 @@ export default function ScanPage() {
           duration: 4000,
         })
       })
+      // Persist to localStorage so BottomNav + other pages can read it
+      try {
+        localStorage.setItem('basket_gam_level', String(result.new_level))
+        if (result.new_badges.length > 0) localStorage.setItem('basket_gam_new_badge', '1')
+      } catch { /* ignore */ }
     } catch (e) {
       console.warn('[gamification] award failed (non-critical):', e)
     }
