@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera } from 'lucide-react'
@@ -23,14 +23,20 @@ interface PriceItem {
 
 export default function ReceiptDetailPage() {
   const params = useParams()
-  const id = params.id as string
+  const pathname = usePathname()
+  // Use params.id if available, fall back to parsing the pathname (more reliable in Next.js 15+)
+  const id = (params?.id as string) || pathname.split('/').filter(Boolean).pop() || ''
+
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null)
   const [items, setItems] = useState<PriceItem[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
+    if (!id) return
     const init = async () => {
+      setLoading(true)
+      setNotFound(false)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/login'; return }
 

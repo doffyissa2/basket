@@ -4,7 +4,12 @@ import { fuzzyMatch } from '@/lib/fuzzy-match'
 import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
-interface PriceRow { unit_price: number; store_name: string }
+interface StatRow {
+  avg_price: number
+  store_chain: string
+  sample_count: number
+  freshness_score: number | null
+}
 
 export async function POST(request: NextRequest) {
   const rlResponse = await checkRateLimit(request, 'shoppingListBestStore')
@@ -25,14 +30,14 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    // Fetch unique product names from DB
+    // Fetch unique product names from product_price_stats (aggregated, covers all stores)
     const { data: allProducts } = await supabase
-      .from('price_items')
+      .from('product_price_stats')
       .select('item_name_normalised')
-      .limit(500)
+      .limit(400)
 
     const uniqueProducts = [
-      ...new Set(allProducts?.map((p) => p.item_name_normalised) || []),
+      ...new Set((allProducts ?? []).map((p: { item_name_normalised: string }) => p.item_name_normalised)),
     ] as string[]
 
     if (uniqueProducts.length === 0) {
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
-    // Per-store price tally: store → { total: sum of best prices, items: count }
+    // Per-store price tally: store → { total: sum of best prices, items: count, wins: count }
     const storePrices: Record<string, { total: number; items: number; wins: number }> = {}
     const perItem: { name: string; best_store: string | null; best_price: number | null }[] = []
 
@@ -52,49 +57,51 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      let priceData: PriceRow[] | null = null
+      let statsData: StatRow[] | null = null
 
-      // Try local first
+      // Try local dept first
       if (dept) {
         const { data } = await supabase
-          .from('price_items')
-          .select('unit_price, store_name')
+          .from('product_price_stats')
+          .select('avg_price, store_chain, sample_count, freshness_score')
           .eq('item_name_normalised', matched)
-          .like('postcode', `${dept}%`)
-          .limit(50)
-        if (data && data.length >= 3) priceData = data
+          .eq('dept', dept)
+          .neq('store_chain', 'Inconnu')
+          .order('avg_price', { ascending: true })
+          .limit(20)
+        if (data && data.length >= 2) statsData = data as StatRow[]
       }
 
-      if (!priceData || priceData.length < 3) {
+      // Fall back to national stats
+      if (!statsData || statsData.length < 2) {
         const { data } = await supabase
-          .from('price_items')
-          .select('unit_price, store_name')
+          .from('product_price_stats')
+          .select('avg_price, store_chain, sample_count, freshness_score')
           .eq('item_name_normalised', matched)
-          .limit(50)
-        priceData = data
+          .neq('store_chain', 'Inconnu')
+          .order('avg_price', { ascending: true })
+          .limit(20)
+        statsData = data as StatRow[] | null
       }
 
-      if (!priceData || priceData.length === 0) {
+      if (!statsData || statsData.length === 0) {
         perItem.push({ name: itemName, best_store: null, best_price: null })
         continue
       }
 
-      // Compute avg price per store for this item
-      const byStore: Record<string, number[]> = {}
-      for (const p of priceData) {
-        if (!byStore[p.store_name]) byStore[p.store_name] = []
-        byStore[p.store_name].push(p.unit_price)
+      // storeAvgs already sorted by avg_price ascending from the DB query
+      const storeAvgs = statsData
+        .filter((r) => r.store_chain)
+        .map((r) => ({ store: r.store_chain, avg: r.avg_price }))
+
+      if (storeAvgs.length === 0) {
+        perItem.push({ name: itemName, best_store: null, best_price: null })
+        continue
       }
 
-      const storeAvgs: { store: string; avg: number }[] = Object.entries(byStore).map(
-        ([store, prices]) => ({ store, avg: prices.reduce((a, b) => a + b, 0) / prices.length })
-      )
-      storeAvgs.sort((a, b) => a.avg - b.avg)
-
       const best = storeAvgs[0]
-      if (!best) { perItem.push({ name: itemName, best_store: null, best_price: null }); continue }
 
-      // Accumulate per-store totals (best-case: what would this item cost at each store?)
+      // Accumulate per-store totals
       for (const { store, avg } of storeAvgs) {
         if (!storePrices[store]) storePrices[store] = { total: 0, items: 0, wins: 0 }
         storePrices[store].total += avg
@@ -109,7 +116,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Best overall store = most wins
+    // Best overall store = most wins (cheapest on most items)
     const bestEntry = Object.entries(storePrices).sort((a, b) => b[1].wins - a[1].wins)[0]
 
     // Store comparison: top 5 stores sorted by total cost (ascending)
