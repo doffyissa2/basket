@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, usePathname } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera } from 'lucide-react'
@@ -23,9 +23,7 @@ interface PriceItem {
 
 export default function ReceiptDetailPage() {
   const params = useParams()
-  const pathname = usePathname()
-  // Use params.id if available, fall back to parsing the pathname (more reliable in Next.js 15+)
-  const id = (params?.id as string) || pathname.split('/').filter(Boolean).pop() || ''
+  const id = (params?.id as string) ?? ''
 
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null)
   const [items, setItems] = useState<PriceItem[]>([])
@@ -37,15 +35,19 @@ export default function ReceiptDetailPage() {
     const init = async () => {
       setLoading(true)
       setNotFound(false)
-      const { data: { user } } = await supabase.auth.getUser()
+
+      // Verify auth first — getUser() validates the JWT with Supabase server
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      if (authErr) console.error('[receipt] auth error:', authErr)
       if (!user) { window.location.href = '/login'; return }
 
-      const [{ data: receiptData, error: receiptErr }, { data: itemsData }] = await Promise.all([
+      // RLS policy (auth.uid() = user_id) handles ownership — no need to also
+      // filter by user_id here, which can fail if auth.uid() isn't resolved yet
+      const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }] = await Promise.all([
         supabase
           .from('receipts')
           .select('id, store_name, total_amount, savings_amount, receipt_date, created_at')
           .eq('id', id)
-          .eq('user_id', user.id)
           .single(),
         supabase
           .from('price_items')
@@ -55,7 +57,8 @@ export default function ReceiptDetailPage() {
           .limit(100),
       ])
 
-      if (receiptErr) console.error('[receipt] query error:', receiptErr)
+      if (receiptErr) console.error('[receipt] receipts query error:', receiptErr)
+      if (itemsErr) console.error('[receipt] price_items query error:', itemsErr)
       if (!receiptData) { setNotFound(true); setLoading(false); return }
       setReceipt(receiptData)
       setItems(itemsData ?? [])
