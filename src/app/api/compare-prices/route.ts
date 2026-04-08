@@ -45,11 +45,11 @@ interface ComparisonResult {
 }
 
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = await checkRateLimit(request, 'comparePrices')
-  if (rateLimitResponse) return rateLimitResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rateLimitResponse = await checkRateLimit(request, 'comparePrices', authResult.userId)
+  if (rateLimitResponse) return rateLimitResponse
 
   try {
     const { items, postcode, store_name } = await request.json()

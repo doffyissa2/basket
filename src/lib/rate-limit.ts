@@ -56,8 +56,10 @@ const limiters = {
 export type LimiterKey = keyof typeof limiters
 
 // ── Identifier helper ────────────────────────────────────────────────────────
-// Uses the real client IP from standard proxy headers, falls back to "unknown".
-function getIdentifier(request: NextRequest): string {
+// Prefers an explicit userId (stable across IPs, VPNs, mobile networks).
+// Falls back to the real client IP when no userId is available.
+function getIdentifier(request: NextRequest, userId?: string): string {
+  if (userId) return `user:${userId}`
   return (
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
     request.headers.get('x-real-ip') ??
@@ -68,16 +70,18 @@ function getIdentifier(request: NextRequest): string {
 // ── Main check function ──────────────────────────────────────────────────────
 // Returns null if the request is allowed, or a 429 NextResponse if it is not.
 // If Upstash is not configured, always returns null (allow).
+// Pass userId (from requireAuth) to enforce per-user limits instead of per-IP.
 export async function checkRateLimit(
   request: NextRequest,
-  limiterKey: LimiterKey
+  limiterKey: LimiterKey,
+  userId?: string
 ): Promise<NextResponse | null> {
   const limiter = limiters[limiterKey]
 
   // No Redis configured — skip gracefully
   if (!limiter) return null
 
-  const identifier = getIdentifier(request)
+  const identifier = getIdentifier(request, userId)
 
   try {
     const { success, limit, remaining, reset } = await limiter.limit(identifier)

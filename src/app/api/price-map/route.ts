@@ -32,11 +32,11 @@ export interface StorePin {
 }
 
 export async function GET(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'priceMap')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'priceMap', authResult.userId)
+  if (rlResponse) return rlResponse
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

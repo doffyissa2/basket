@@ -21,11 +21,11 @@ function getServiceClient() {
  * Returns immediately with 202 while DB work happens (non-blocking).
  */
 export async function POST(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'triggerStatsRefresh')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'triggerStatsRefresh', authResult.userId)
+  if (rlResponse) return rlResponse
 
   // Respond immediately — DB work runs in the background
   const supabase = getServiceClient()

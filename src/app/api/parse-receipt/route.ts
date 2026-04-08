@@ -286,11 +286,11 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
 }
 
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = await checkRateLimit(request, 'parseReceipt')
-  if (rateLimitResponse) return rateLimitResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rateLimitResponse = await checkRateLimit(request, 'parseReceipt', authResult.userId)
+  if (rateLimitResponse) return rateLimitResponse
 
   try {
     const { image_base64, media_type } = await request.json()

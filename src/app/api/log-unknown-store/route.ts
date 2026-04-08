@@ -20,11 +20,11 @@ function getServiceClient() {
  * Body: { raw_name: string, lat?: number, lon?: number }
  */
 export async function POST(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'logUnknownStore')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'logUnknownStore', authResult.userId)
+  if (rlResponse) return rlResponse
 
   try {
     const { raw_name, lat, lon } = await request.json()

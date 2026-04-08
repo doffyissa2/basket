@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fuzzyMatch } from '@/lib/fuzzy-match'
 import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -13,11 +12,11 @@ interface StatRow {
 }
 
 export async function POST(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'shoppingListBestStore')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'shoppingListBestStore', authResult.userId)
+  if (rlResponse) return rlResponse
 
   try {
     const { items, postcode } = await request.json()
@@ -31,28 +30,21 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    // ── 1. Fetch candidate product names (aggregated stats, not raw items) ──
-    const { data: allProducts } = await supabase
-      .from('product_price_stats')
-      .select('item_name_normalised')
-      .limit(400)
-
-    const uniqueProducts = [
-      ...new Set((allProducts ?? []).map((p: { item_name_normalised: string }) => p.item_name_normalised)),
-    ] as string[]
-
-    if (uniqueProducts.length === 0) {
-      return NextResponse.json({ best_store: null, estimated_savings: 0, items_count: 0, per_item: [], store_comparison: [] })
-    }
-
     const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
-    // ── 2. Fuzzy-match all items in-memory (no DB calls) ───────────────────
+    // ── 1. Match all items via match_product RPC (full catalogue, pg_trgm) ──
+    // Fire all RPC calls concurrently — no sequential N+1
     const matchMap = new Map<string, string | null>()
-    for (const itemName of items as string[]) {
-      const { matched } = fuzzyMatch(itemName, uniqueProducts)
-      matchMap.set(itemName, matched ?? null)
-    }
+    await Promise.all(
+      (items as string[]).map(async (itemName) => {
+        const key = itemName.toLowerCase().trim()
+        const { data, error } = await supabase.rpc('match_product', { search_name: key })
+        const matched = (!error && data && data.length > 0 && data[0].matched_name)
+          ? (data[0].matched_name as string)
+          : null
+        matchMap.set(itemName, matched)
+      })
+    )
 
     const matchedNames = [...new Set([...matchMap.values()].filter(Boolean))] as string[]
 

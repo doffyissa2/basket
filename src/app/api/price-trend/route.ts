@@ -21,11 +21,11 @@ function getServiceClient() {
  *   weeks – number of weeks to return, default 12, max 52
  */
 export async function GET(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'priceTrend')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'priceTrend', authResult.userId)
+  if (rlResponse) return rlResponse
 
   try {
     const { searchParams } = request.nextUrl

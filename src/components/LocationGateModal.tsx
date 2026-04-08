@@ -31,7 +31,12 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
         setStatus('geocoding')
         const { latitude: lat, longitude: lon } = pos.coords
         try {
-          const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`)
+          const { data: { session } } = await supabase.auth.getSession()
+          const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`, {
+            headers: session?.access_token
+              ? { Authorization: `Bearer ${session.access_token}` }
+              : {},
+          })
           const data = await res.json()
           if (data.postcode) {
             await supabase.from('profiles').update({ postcode: data.postcode }).eq('id', userId)

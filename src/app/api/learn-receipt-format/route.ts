@@ -24,11 +24,11 @@ function getServiceClient() {
  * Body: { store_chain: string, sample_items: string[] }
  */
 export async function POST(request: NextRequest) {
-  const rlResponse = await checkRateLimit(request, 'learnReceiptFormat')
-  if (rlResponse) return rlResponse
-
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
+
+  const rlResponse = await checkRateLimit(request, 'learnReceiptFormat', authResult.userId)
+  if (rlResponse) return rlResponse
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ skipped: true })
