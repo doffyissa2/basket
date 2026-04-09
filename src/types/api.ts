@@ -36,6 +36,7 @@ export interface ComparisonItem {
   normalized_price:     string | null
   avg_normalized_price: string | null
   is_local:             boolean
+  sample_count:         number
 }
 
 export interface BestStore {

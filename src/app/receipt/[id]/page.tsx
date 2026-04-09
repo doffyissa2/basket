@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles } from 'lucide-react'
+import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import { EASE } from '@/lib/hooks'
 
@@ -14,6 +14,8 @@ interface ReceiptDetail {
   savings_amount?: number | null; receipt_date: string | null; created_at: string
 }
 interface PriceItem { item_name: string; unit_price: number; quantity: number | null }
+interface ComparisonItem { name: string; your_price: number; avg_price: number; savings: number; cheaper_store: string | null; sample_count: number }
+interface BestStore { name: string; items_cheaper: number; total_savings: number }
 
 // Confetti particle for savings celebration
 function Confetti({ show }: { show: boolean }) {
@@ -46,11 +48,14 @@ export default function ReceiptDetailPage() {
   const router = useRouter()
   const id = (params?.id as string) ?? ''
 
-  const [receipt,   setReceipt]   = useState<ReceiptDetail | null>(null)
-  const [items,     setItems]     = useState<PriceItem[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [notFound,  setNotFound]  = useState(false)
-  const [confetti,  setConfetti]  = useState(false)
+  const [receipt,     setReceipt]     = useState<ReceiptDetail | null>(null)
+  const [items,       setItems]       = useState<PriceItem[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [notFound,    setNotFound]    = useState(false)
+  const [confetti,    setConfetti]    = useState(false)
+  const [comparisons, setComparisons] = useState<ComparisonItem[]>([])
+  const [bestStore,   setBestStore]   = useState<BestStore | null>(null)
+  const [cmpLoading,  setCmpLoading]  = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -87,6 +92,32 @@ export default function ReceiptDetailPage() {
       if (((savingsRow?.savings_amount) ?? 0) > 0) {
         setTimeout(() => setConfetti(true), 400)
         setTimeout(() => setConfetti(false), 2200)
+      }
+
+      // Fetch price comparison in background so users can see cheaper alternatives
+      if (itemsData && itemsData.length > 0) {
+        setCmpLoading(true)
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const { data: profile } = await supabase.from('profiles').select('postcode').eq('id', user.id).single()
+          if (session) {
+            const res = await fetch('/api/compare-prices', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({
+                items:      itemsData.map(i => ({ name: i.item_name, price: i.unit_price })),
+                store_name: receiptData.store_name,
+                postcode:   profile?.postcode ?? null,
+              }),
+            })
+            if (res.ok) {
+              const cmp = await res.json()
+              setComparisons(cmp.comparisons ?? [])
+              setBestStore(cmp.best_store ?? null)
+            }
+          }
+        } catch { /* non-critical, ignore */ }
+        setCmpLoading(false)
       }
     }
     init()
@@ -255,21 +286,43 @@ export default function ReceiptDetailPage() {
                 style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
                 Articles ({items.length})
               </p>
-              {items.map((item, i) => (
-                <motion.div key={i}
-                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.15 + i * 0.03, ease: EASE }}
-                  className="flex items-center justify-between px-4 py-3"
-                  style={{ borderBottom: i < items.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none' }}>
-                  <div className="flex-1 min-w-0 pr-3">
-                    <p className="text-sm text-graphite truncate">{item.item_name}</p>
-                    {item.quantity && item.quantity > 1 && (
-                      <p className="text-[11px] text-graphite/35">×{item.quantity}</p>
-                    )}
-                  </div>
-                  <p className="text-sm font-bold text-graphite flex-shrink-0">{item.unit_price.toFixed(2)} €</p>
-                </motion.div>
-              ))}
+              {items.map((item, i) => {
+                const cmp = comparisons.find(c => c.name.toLowerCase() === item.item_name.toLowerCase())
+                const hasCheaper = cmp && cmp.savings > 0.01
+                return (
+                  <motion.div key={i}
+                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 + i * 0.03, ease: EASE }}
+                    className="px-4 py-3"
+                    style={{
+                      borderBottom: i < items.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none',
+                      borderLeft: hasCheaper ? '3px solid #00D09C' : undefined,
+                      background: hasCheaper ? 'rgba(0,208,156,0.03)' : undefined,
+                    }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0 pr-3">
+                        <p className="text-sm text-graphite truncate">{item.item_name}</p>
+                        {item.quantity && item.quantity > 1 && (
+                          <p className="text-[11px] text-graphite/35">×{item.quantity}</p>
+                        )}
+                        {hasCheaper && cmp && (
+                          <p className="text-[11px] mt-0.5 font-medium" style={{ color: '#00D09C' }}>
+                            Moins cher chez {cmp.cheaper_store} · {cmp.avg_price.toFixed(2)} €
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-graphite">{item.unit_price.toFixed(2)} €</p>
+                        {hasCheaper && cmp && (
+                          <p className="text-[11px] font-semibold" style={{ color: '#00D09C' }}>
+                            −{cmp.savings.toFixed(2)} €
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
               {receipt?.total_amount && (
                 <div className="flex items-center justify-between px-4 py-3.5"
                   style={{ borderTop: '2px solid rgba(17,17,17,0.08)', background: 'rgba(126,217,87,0.04)' }}>
@@ -291,6 +344,35 @@ export default function ReceiptDetailPage() {
             className="glass rounded-2xl p-8 text-center">
             <Receipt className="w-8 h-8 text-graphite/20 mx-auto mb-2" />
             <p className="text-sm text-graphite/50">Aucun article enregistré pour ce ticket</p>
+          </motion.div>
+        )}
+
+        {/* Comparison loading skeleton */}
+        {cmpLoading && (
+          <div className="rounded-2xl p-4 animate-pulse" style={{ background: 'rgba(17,17,17,0.04)', height: 72 }} />
+        )}
+
+        {/* Best store recommendation */}
+        {!cmpLoading && bestStore && bestStore.items_cheaper >= 2 && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ ease: EASE }}
+            className="rounded-2xl p-4 flex items-center gap-4"
+            style={{ background: '#111', borderLeft: '3px solid #7ed957' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(126,217,87,0.15)' }}>
+              <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white">
+                Prochaine fois, allez chez{' '}
+                <span style={{ color: '#7ed957' }}>{bestStore.name}</span>
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Économisez{' '}
+                <span style={{ color: '#00D09C' }}>€{bestStore.total_savings.toFixed(2)}</span>
+                {' '}sur {bestStore.items_cheaper} articles
+              </p>
+            </div>
           </motion.div>
         )}
 

@@ -369,7 +369,7 @@ export default function ScanPage() {
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
       // Compress all images in parallel
-      const compressed = await Promise.all(imageFiles.map(f => compressImage(f)))
+      const compressed = await Promise.all(imageFiles.map(f => compressImage(f, 1600, 0.92)))
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
@@ -898,10 +898,23 @@ export default function ScanPage() {
 
               {/* Items */}
               <div className="space-y-2 mb-5">
+                {/* No data banner */}
+                {step === 'comparison' && comparisons.length > 0 && comparisons.every(c => c.sample_count === 0) && (
+                  <div className="rounded-xl px-4 py-3 mb-2 flex items-start gap-2"
+                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <span className="text-amber-500 text-sm flex-shrink-0">⚠</span>
+                    <p className="text-xs text-graphite/60 leading-relaxed">
+                      Pas encore assez de données pour ces produits dans votre secteur — revenez dans quelques jours !
+                    </p>
+                  </div>
+                )}
+
                 {parsedReceipt.items.map((item, idx) => {
                   const comparison = comparisons.find((c) => c.name.toLowerCase() === item.name.toLowerCase())
                   const hasSaving = comparison && comparison.savings > 0.01
                   const isEditing = editingIdx === idx
+                  const lowConfidence = (item.confidence ?? 1) < 0.7
+                  const veryLowConfidence = (item.confidence ?? 1) < 0.5
 
                   return (
                     <div key={idx}>
@@ -957,14 +970,20 @@ export default function ScanPage() {
                           transition={{ delay: idx * 0.06, duration: 0.35 }}
                           className="flex items-center justify-between rounded-xl px-4 py-3"
                           style={{
-                            background: hasSaving ? 'rgba(0,208,156,0.06)' : 'rgba(17,17,17,0.04)',
+                            background: hasSaving ? 'rgba(0,208,156,0.06)' : veryLowConfidence ? 'rgba(245,158,11,0.05)' : 'rgba(17,17,17,0.04)',
                             border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(17,17,17,0.06)',
-                            borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
+                            borderLeft: hasSaving ? '3px solid #00D09C' : veryLowConfidence ? '3px solid #F59E0B' : undefined,
                           }}
                         >
                           <div className="flex-1 min-w-0 pr-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-medium text-graphite truncate">{item.name}</p>
+                              {lowConfidence && step === 'comparison' && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                                  style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
+                                  ⚠ à vérifier
+                                </span>
+                              )}
                               {step === 'comparison' && comparison && (
                                 <span
                                   className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"

@@ -390,6 +390,23 @@ export async function POST(request: NextRequest) {
     // 3. Find nearest matching store for accurate location data
     const storeLocation = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
 
+    // 4. If no existing store found but user shared their GPS coords, add the scanned
+    //    location to store_locations so it appears on the map for all users.
+    if (!storeLocation.lat && callerLat && callerLon && parsed.store_name) {
+      const pseudoId = `basket_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${callerLat.toFixed(3)}_${callerLon.toFixed(3)}`
+      await supabase.from('store_locations').upsert({
+        osm_id:    pseudoId,
+        chain:     parsed.store_name,
+        name:      parsed.store_name,
+        latitude:  callerLat,
+        longitude: callerLon,
+        address:   null,
+        source:    'user_scan',
+      }, { onConflict: 'osm_id', ignoreDuplicates: true })
+      storeLocation.lat = callerLat
+      storeLocation.lon = callerLon
+    }
+
     return NextResponse.json({
       ...parsed,
       raw_ocr_text:    textContent,

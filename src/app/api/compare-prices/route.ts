@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     const { data: candidates } = await supabase
       .from('product_price_stats')
       .select('item_name_normalised')
-      .limit(400)
+      .limit(3000)
     const candidateNames = [
       ...new Set((candidates ?? []).map((c: { item_name_normalised: string }) => c.item_name_normalised)),
     ] as string[]
