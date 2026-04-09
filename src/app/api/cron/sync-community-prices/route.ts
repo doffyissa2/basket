@@ -322,24 +322,37 @@ export async function POST(request: NextRequest) {
   const offPages = await Promise.all(
     Array.from({ length: 20 }, (_, i) => i + 1).map(p => fetchOFFPrices(p))
   )
+  // In-memory dedup: prevents duplicate rows within a single run.
+  // Use sentinel '' for NULL fields because Set comparisons treat two nulls as different,
+  // mirroring PostgreSQL's NULL != NULL behaviour in unique indexes.
+  const seen = new Set<string>()
+
   for (const items of offPages) {
     for (const item of items) {
+      const normName   = normaliseProductName(item.name)
+      const chain      = normalizeChain(item.store) ?? ''
+      const sourceDate = item.date?.split('T')[0]   ?? ''
+
+      const dedupKey = `${normName}|${item.price}|${sourceDate}|${chain}`
+      if (seen.has(dedupKey)) continue
+      seen.add(dedupKey)
+
       rows.push({
-        store_chain: normalizeChain(item.store),
-        postcode_dept: null,
-        item_name: item.name,
-        item_name_normalised: normaliseProductName(item.name),
-        unit_price: item.price,
-        ean: item.ean,
-        city: item.city,
-        source: 'open_food_facts_prices',
-        source_date: item.date?.split('T')[0] ?? null,
-        processed_at: new Date().toISOString(),
+        store_chain:          chain      || null,
+        postcode_dept:        null,
+        item_name:            item.name,
+        item_name_normalised: normName,
+        unit_price:           item.price,
+        ean:                  item.ean,
+        city:                 item.city,
+        source:               'open_food_facts_prices',
+        source_date:          sourceDate || null,
+        processed_at:         new Date().toISOString(),
       })
       postsProcessed++
     }
   }
-  console.log(`[sync-community-prices] OFF prices: ${rows.length} items from 10 pages`)
+  console.log(`[sync-community-prices] OFF prices: ${rows.length} unique items (deduped from ${offPages.flat().length} raw)`)
 
   console.log(`[sync-community-prices] ${postsProcessed} posts → ${rows.length} items`)
 
@@ -362,7 +375,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     posts_processed: postsProcessed,
-    items_extracted: rows.length,
+    items_unique: rows.length,
     inserted,
     insert_errors: insertErrors,
     elapsed_s: Math.round((Date.now() - startedAt) / 1000),
