@@ -66,7 +66,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
 
             if (tab.isFab) {
               return (
-                <Link key={tab.id} href={tab.href} className="flex flex-col items-center" style={{ marginBottom: '12px' }}>
+                <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center" style={{ marginBottom: '12px' }}>
                   <motion.div
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
@@ -87,7 +87,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
             }
 
             return (
-              <Link key={tab.id} href={tab.href} className="flex flex-col items-center gap-1 py-1 relative min-w-[52px]">
+              <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-1 py-1 relative min-w-[52px]">
                 <motion.div
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}

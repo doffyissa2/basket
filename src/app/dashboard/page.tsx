@@ -64,7 +64,8 @@ const STORE_ACCENT = ['#7ed957', '#00D09C', '#F59E0B', '#a3f07a', '#60A5FA']
 
 export default function DashboardPage() {
   const [user,           setUser]           = useState<User | null>(null)
-  const [loading,        setLoading]        = useState(true)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_loading,       setLoading]        = useState(false)
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalSavings,   setTotalSavings]   = useState(0)
   const [totalSpent,     setTotalSpent]     = useState(0)
@@ -163,15 +164,7 @@ export default function DashboardPage() {
   const savingsRate = totalSpent > 0 ? (totalSavings / (totalSpent + totalSavings) * 100) : 0
   const username    = user?.email?.split('@')[0] ?? ''
 
-  if (loading) {
-    return (
-      <div className="min-h-[100dvh] bg-paper flex items-center justify-center">
-        <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-8 h-8 rounded-full border-2 border-t-transparent"
-          style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
-      </div>
-    )
-  }
+  // No blocking spinner — render immediately with skeleton content
 
   return (
     <>
