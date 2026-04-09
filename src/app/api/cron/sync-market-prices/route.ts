@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   // Group by chain — one dedup set per chain keyed by normalised name
   type MarketRow = {
-    chain: string
+    store_chain: string
     product_name: string
     product_name_normalised: string
     ean: string | null
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
       .find((t: string) => !t.includes(':')) ?? null
 
     chainMap.set(normName, {
-      chain,
+      store_chain: chain,
       product_name: name,
       product_name_normalised: normName,
       ean: item.product?.code ?? null,
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       const { error } = await supabase
         .from('market_prices')
         .upsert(rows.slice(i, i + 200), {
-          onConflict: 'chain,product_name_normalised,region',
+          onConflict: 'store_chain,product_name_normalised,region',
           ignoreDuplicates: false,
         })
       if (error) {

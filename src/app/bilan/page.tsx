@@ -80,7 +80,7 @@ function SpendingChart({ weeks }: { weeks: { label: string; amount: number; isCu
 
 interface MonthReceipt {
   id: string
-  store_name: string | null
+  store_chain: string | null
   total_amount: number | null
   savings_amount: number | null
   receipt_date: string | null
@@ -155,7 +155,7 @@ export default function BilanPage() {
 
       const [{ data: allRecent }, { data: prev }, { data: monthItems }] = await Promise.all([
         supabase.from('receipts')
-          .select('id, store_name, total_amount, savings_amount, receipt_date, created_at')
+          .select('id, store_chain, total_amount, savings_amount, receipt_date, created_at')
           .eq('user_id', user.id)
           .gte('receipt_date', threeMonthsAgo.toISOString().split('T')[0])
           .order('receipt_date', { ascending: true }),
@@ -215,8 +215,8 @@ export default function BilanPage() {
           .sort((a, b) => (b.savings_amount ?? 0) - (a.savings_amount ?? 0))[0]
         if (topSavingsReceipt) {
           setBestDecision({
-            item: topSavingsReceipt.store_name ?? 'ce magasin',
-            store: topSavingsReceipt.store_name ?? '?',
+            item: topSavingsReceipt.store_chain ?? 'ce magasin',
+            store: topSavingsReceipt.store_chain ?? '?',
             saved: topSavingsReceipt.savings_amount ?? 0,
           })
         }
@@ -239,7 +239,7 @@ export default function BilanPage() {
 
   const storeBreakdown = Object.entries(
     monthReceipts.reduce<Record<string, { total: number; savings: number; count: number }>>((acc, r) => {
-      const key = r.store_name || 'Autre'
+      const key = r.store_chain || 'Autre'
       if (!acc[key]) acc[key] = { total: 0, savings: 0, count: 0 }
       acc[key].total += r.total_amount || 0
       acc[key].savings += r.savings_amount || 0
@@ -551,7 +551,7 @@ export default function BilanPage() {
                 <div className="px-4 py-3.5">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-graphite">{r.store_name || 'Magasin'}</p>
+                      <p className="text-sm font-semibold text-graphite">{r.store_chain || 'Magasin'}</p>
                       <p className="text-[11px] text-graphite/40">
                         {(r.receipt_date ? new Date(r.receipt_date) : new Date(r.created_at))
                           .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}

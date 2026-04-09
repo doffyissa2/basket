@@ -94,7 +94,7 @@ function SkeletonRow({ delay = 0 }: { delay?: number }) {
 }
 
 interface RecentReceipt {
-  id: string; store_name: string | null; total_amount: number | null
+  id: string; store_chain: string | null; total_amount: number | null
   receipt_date: string | null; created_at: string; savings_amount: number | null
 }
 interface AreaInsight { cheapestChain: string; postcode: string }
@@ -145,7 +145,7 @@ export default function DashboardPage() {
         { data: all },
       ] = await Promise.all([
         supabase.from('receipts')
-          .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
+          .select('id, store_chain, total_amount, receipt_date, created_at, savings_amount')
           .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10),
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
@@ -157,7 +157,7 @@ export default function DashboardPage() {
 
       if (receiptsErr) {
         const { data: fb } = await supabase.from('receipts')
-          .select('id, store_name, total_amount, receipt_date, created_at')
+          .select('id, store_chain, total_amount, receipt_date, created_at')
           .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10)
         if (fb) setRecentReceipts(fb as RecentReceipt[])
       } else if (receipts) {
@@ -597,7 +597,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-graphite truncate">
-                              {r.store_name || 'Magasin'}
+                              {r.store_chain || 'Magasin'}
                             </p>
                             <p className="text-[11px] text-graphite/40">{dateStr}</p>
                           </div>

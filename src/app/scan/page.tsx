@@ -502,7 +502,7 @@ export default function ScanPage() {
         .from('receipts')
         .select('id')
         .eq('user_id', user.id)
-        .eq('store_name', storeChain)
+        .eq('store_chain', storeChain)
         .eq('total_amount', parsed.total)
         .eq('receipt_date', receiptDate)
         .limit(1)
@@ -520,7 +520,6 @@ export default function ScanPage() {
           .from('receipts')
           .insert({
             user_id:         user.id,
-            store_name:      storeChain,
             store_chain:     storeChain,
             total_amount:    parsed.total,
             receipt_date:    receiptDate,
@@ -548,7 +547,6 @@ export default function ScanPage() {
             quantity: item.quantity,
             unit_price: item.price,
             total_price: item.price * item.quantity,
-            store_name: storeChain,
             store_chain: storeChain,
             postcode: postcode || null,
             latitude: userCoords?.lat ?? null,
@@ -581,7 +579,7 @@ export default function ScanPage() {
         },
         body: JSON.stringify({
           items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price })),
-          postcode: postcode || null, store_name: storeChain,
+          postcode: postcode || null, store_chain: storeChain,
         }),
       })
 

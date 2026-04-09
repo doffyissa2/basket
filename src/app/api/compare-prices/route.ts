@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse
 
   try {
-    const { items, postcode, store_name } = await request.json()
+    const { items, postcode, store_chain } = await request.json()
 
     if (!items || !Array.isArray(items)) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         // Cheapest OTHER store: exclude current store + 'Inconnu' (not actionable)
         const otherStats = allStats.filter(
           (r) =>
-            r.store_chain !== store_name &&
+            r.store_chain !== store_chain &&
             r.store_chain !== 'Inconnu' &&
             r.store_chain != null
         )

@@ -110,7 +110,7 @@ export default function ProfilePage() {
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', u.id),
         supabase.from('price_items').select('*', { count: 'exact', head: true }).eq('user_id', u.id),
         supabase.from('profiles').select('postcode, display_name').eq('id', u.id).single(),
-        supabase.from('receipts').select('store_name').eq('user_id', u.id).not('store_name', 'is', null),
+        supabase.from('receipts').select('store_chain').eq('user_id', u.id).not('store_chain', 'is', null),
         supabase.from('receipts').select('savings_amount').eq('user_id', u.id),
         fetch('/api/gamification', { headers: { Authorization: `Bearer ${token}` } }),
       ])
@@ -122,8 +122,8 @@ export default function ProfilePage() {
       let favStore: string | null = null
       if (topStore && topStore.length > 0) {
         const counts: Record<string, number> = {}
-        topStore.forEach((r: { store_name: string | null }) => {
-          if (r.store_name) counts[r.store_name] = (counts[r.store_name] || 0) + 1
+        topStore.forEach((r: { store_chain: string | null }) => {
+          if (r.store_chain) counts[r.store_chain] = (counts[r.store_chain] || 0) + 1
         })
         favStore = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
       }

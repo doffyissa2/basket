@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     // market_prices: chain-level catalog prices
     supabase
       .from('market_prices')
-      .select('chain, unit_price')
+      .select('store_chain, unit_price')
       .limit(25000),
     // community_prices: all rows (for chain fallback avg) + location rows (for per-store items)
     supabase
@@ -102,8 +102,8 @@ export async function GET(request: NextRequest) {
   for (const r of mpRows) {
     const p = r.unit_price as number
     if (p <= 0 || p > 300) continue
-    if (!mpByChain.has(r.chain)) mpByChain.set(r.chain, [])
-    mpByChain.get(r.chain)!.push(p)
+    if (!mpByChain.has(r.store_chain)) mpByChain.set(r.store_chain, [])
+    mpByChain.get(r.store_chain)!.push(p)
   }
 
   // ── Chain avg_price from community_prices (fallback) ──────────────────────

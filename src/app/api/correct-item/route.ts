@@ -47,10 +47,10 @@ export async function POST(request: NextRequest) {
       try {
         const { data: receiptRow } = await supabase
           .from('receipts')
-          .select('store_name')
+          .select('store_chain')
           .eq('id', receipt_id)
           .single()
-        const storeChain = receiptRow?.store_name ?? null
+        const storeChain = receiptRow?.store_chain ?? null
 
         await supabase.from('ocr_corrections').upsert({
           original_text: String(original_name).trim().slice(0, 500),

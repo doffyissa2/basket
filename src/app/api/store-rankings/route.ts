@@ -59,7 +59,7 @@ export async function GET() {
   const [mpRes, cpRes] = await Promise.all([
     supabase
       .from('market_prices')
-      .select('chain, product_name_normalised, unit_price')
+      .select('store_chain, product_name_normalised, unit_price')
       .gt('unit_price', 0.1)
       .lt('unit_price', 150)
       .limit(30000),
@@ -74,7 +74,7 @@ export async function GET() {
   ])
 
   const chainMap = new Map<string, ChainData>()
-  for (const r of mpRes.data  ?? []) addRow(chainMap, r.chain ?? '', r.product_name_normalised ?? '', r.unit_price)
+  for (const r of mpRes.data  ?? []) addRow(chainMap, r.store_chain ?? '', r.product_name_normalised ?? '', r.unit_price)
   for (const r of cpRes.data  ?? []) addRow(chainMap, r.store_chain ?? '', r.item_name_normalised ?? '', r.unit_price)
 
   // Build entries — only chains with ≥10 observations

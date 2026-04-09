@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { EASE } from '@/lib/hooks'
 
 interface ReceiptDetail {
-  id: string; store_name: string | null; total_amount: number | null
+  id: string; store_chain: string | null; total_amount: number | null
   savings_amount?: number | null; receipt_date: string | null; created_at: string
 }
 interface PriceItem { item_name: string; unit_price: number; quantity: number | null }
@@ -67,7 +67,7 @@ export default function ReceiptDetailPage() {
 
       const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }, { data: savingsRow }] = await Promise.all([
         supabase.from('receipts')
-          .select('id, store_name, total_amount, receipt_date, created_at')
+          .select('id, store_chain, total_amount, receipt_date, created_at')
           .eq('id', id)
           .eq('user_id', user.id)
           .maybeSingle(),
@@ -105,9 +105,9 @@ export default function ReceiptDetailPage() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
               body: JSON.stringify({
-                items:      itemsData.map(i => ({ name: i.item_name, price: i.unit_price })),
-                store_name: receiptData.store_name,
-                postcode:   profile?.postcode ?? null,
+                items:       itemsData.map(i => ({ name: i.item_name, price: i.unit_price })),
+                store_chain: receiptData.store_chain,
+                postcode:    profile?.postcode ?? null,
               }),
             })
             if (res.ok) {
@@ -134,7 +134,7 @@ export default function ReceiptDetailPage() {
   const shareReceipt = () => {
     if (!receipt) return
     const lines = [
-      `🧾 ${receipt.store_name || 'Magasin'}`,
+      `🧾 ${receipt.store_chain || 'Magasin'}`,
       receipt.total_amount ? `💰 Total : €${receipt.total_amount.toFixed(2)}` : '',
       (receipt.savings_amount ?? 0) > 0 ? `✅ Économisé : €${receipt.savings_amount!.toFixed(2)}` : '',
       `${items.length} articles`,
@@ -190,7 +190,7 @@ export default function ReceiptDetailPage() {
         </motion.div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-base text-graphite truncate">
-            {receipt?.store_name || 'Magasin'}
+            {receipt?.store_chain || 'Magasin'}
           </p>
           <p className="text-xs text-graphite/40 capitalize">{dateDisplay}</p>
         </div>
@@ -244,7 +244,7 @@ export default function ReceiptDetailPage() {
               <ShoppingBag className="w-4 h-4" style={{ color: '#7ed957' }} />
             </div>
             <p className="text-sm font-semibold" style={{ color: hasSavings ? 'rgba(255,255,255,0.7)' : '#111' }}>
-              {receipt?.store_name || 'Magasin'}
+              {receipt?.store_chain || 'Magasin'}
             </p>
           </div>
 
