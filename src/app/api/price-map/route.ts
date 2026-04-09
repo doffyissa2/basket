@@ -1,18 +1,16 @@
 /**
  * GET /api/price-map
  *
- * Returns colored store pins for the carte.
+ * Returns store pins for the carte.
  *
- * Data sources:
- * 1. market_prices  — scraped catalog prices, grouped by chain (10 rows, not 5k)
- * 2. community_prices — community-submitted real prices, grouped by chain
- *    (catches Aldi and any chain missing from market_prices)
- * 3. store_locations — real GPS from OpenStreetMap for all stores
- *
- * Fix vs previous version:
- * - Removed .limit(2000) on store_locations — fetches ALL stores (paginated)
- * - Aggregate in DB (GROUP BY chain) instead of loading every product row
- * - community_prices fills gaps for chains with no market_prices data
+ * Design:
+ *  - ALL store_locations are returned (4k+ pins) — paginated
+ *  - community_prices rows with lat/lon are clustered per store location
+ *    → gives REAL per-store prices and top items (not chain averages)
+ *  - Price tier is assigned by CHAIN RANK (cheapest chain = green, not per-store)
+ *    so every Lidl is green and every Monoprix is orange — which is correct
+ *  - Stores without any community_prices data within 2 km get the chain avg price
+ *    as a fallback and no top_items (popup says "Prix nationaux")
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,21 +19,32 @@ import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 export interface StorePin {
-  store_chain:  string
-  store_name:   string
-  lat:          number
-  lon:          number
-  avg_price:    number
-  item_count:   number
-  receipt_count: number
-  top_items:    { name: string; avg_price: number }[]
-  price_tier:   'cheap' | 'mid' | 'expensive'
-  address:      string | null
-  city:         string | null
-  postcode:     string | null
+  store_chain:    string
+  store_name:     string
+  lat:            number
+  lon:            number
+  avg_price:      number
+  item_count:     number
+  receipt_count:  number
+  top_items:      { name: string; avg_price: number }[]
+  price_tier:     'cheap' | 'mid' | 'expensive'
+  address:        string | null
+  city:           string | null
+  postcode:       string | null
+  has_local_data: boolean   // true = real prices from community_prices nearby
 }
 
-type ChainStat = { avg_price: number; item_count: number }
+// ── Haversine distance in metres ─────────────────────────────────────────────
+function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request)
@@ -49,69 +58,96 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // ── 1. Chain-level price aggregates from market_prices (10 rows, not 5k) ──
-  const { data: marketAgg } = await supabase
+  // ── 1. Community prices with GPS — source of truth for per-store data ──────
+  // Fetches all rows that have lat/lon (from OFF API location tags).
+  // These represent REAL prices submitted at specific stores.
+  const { data: cpRows } = await supabase
+    .from('community_prices')
+    .select('store_chain, latitude, longitude, item_name_normalised, unit_price')
+    .not('latitude', 'is', null)
+    .not('longitude', 'is', null)
+    .gt('unit_price', 0)
+    .lt('unit_price', 200)
+    .limit(30000)
+
+  // ── 2. Chain-level avg prices from market_prices (fallback for no-data stores)
+  const { data: mpRows } = await supabase
     .from('market_prices')
     .select('chain, unit_price')
-    .limit(20000)   // keep enough to aggregate correctly client-side
-
-  const chainStats = new Map<string, ChainStat>()
-
-  // Aggregate market prices per chain
-  const marketByChain = new Map<string, number[]>()
-  for (const row of marketAgg ?? []) {
-    if (!marketByChain.has(row.chain)) marketByChain.set(row.chain, [])
-    marketByChain.get(row.chain)!.push(row.unit_price)
-  }
-  for (const [chain, prices] of marketByChain) {
-    const avg = prices.reduce((s, p) => s + p, 0) / prices.length
-    chainStats.set(chain, { avg_price: avg, item_count: prices.length })
-  }
-
-  // ── 2. Community prices fill gaps (catches Aldi + user-scan chains) ────────
-  const { data: communityAgg } = await supabase
-    .from('community_prices')
-    .select('store_chain, unit_price')
-    .not('store_chain', 'is', null)
+    .gt('unit_price', 0)
+    .lt('unit_price', 200)
     .limit(20000)
 
-  const communityByChain = new Map<string, number[]>()
-  for (const row of communityAgg ?? []) {
-    const chain = row.store_chain as string
-    if (!chain) continue
-    if (!communityByChain.has(chain)) communityByChain.set(chain, [])
-    communityByChain.get(chain)!.push(row.unit_price as number)
-  }
-  for (const [chain, prices] of communityByChain) {
-    if (chainStats.has(chain)) continue  // market_prices takes priority
-    if (prices.length < 2) continue
-    const avg = prices.reduce((s, p) => s + p, 0) / prices.length
-    chainStats.set(chain, { avg_price: avg, item_count: prices.length })
+  // Build chain → avg_price map from market_prices
+  const mpByChain = new Map<string, number[]>()
+  for (const r of mpRows ?? []) {
+    if (!mpByChain.has(r.chain)) mpByChain.set(r.chain, [])
+    mpByChain.get(r.chain)!.push(r.unit_price as number)
   }
 
-  if (chainStats.size === 0) {
+  // Also build chain fallback from community_prices (for chains not in market_prices)
+  const cpByChain = new Map<string, number[]>()
+  for (const r of cpRows ?? []) {
+    const chain = r.store_chain as string
+    if (!chain) continue
+    if (!cpByChain.has(chain)) cpByChain.set(chain, [])
+    cpByChain.get(chain)!.push(r.unit_price as number)
+  }
+
+  // Final chain → { avg, item_count }
+  const chainAvg = new Map<string, { avg: number; count: number }>()
+  for (const [chain, prices] of mpByChain) {
+    chainAvg.set(chain, {
+      avg: prices.reduce((s, p) => s + p, 0) / prices.length,
+      count: prices.length,
+    })
+  }
+  for (const [chain, prices] of cpByChain) {
+    if (chainAvg.has(chain)) continue
+    if (prices.length < 2) continue
+    chainAvg.set(chain, {
+      avg: prices.reduce((s, p) => s + p, 0) / prices.length,
+      count: prices.length,
+    })
+  }
+
+  if (chainAvg.size === 0) {
     return NextResponse.json({ pins: [], message: 'No price data — run sync crons first' })
   }
 
-  // ── 3. Top items per chain from product_price_stats (already aggregated) ───
-  const { data: statsRows } = await supabase
-    .from('product_price_stats')
-    .select('store_chain, item_name_normalised, avg_price')
-    .order('avg_price', { ascending: true })
-    .limit(5000)
+  // ── 3. Assign price tier by CHAIN RANK (not per-store) ───────────────────
+  // Sort chains from cheapest to most expensive, split into thirds.
+  const chainRanking = [...chainAvg.entries()]
+    .sort(([, a], [, b]) => a.avg - b.avg)
 
-  const topItemsByChain = new Map<string, { name: string; avg_price: number }[]>()
-  for (const row of statsRows ?? []) {
-    const chain = row.store_chain as string
-    if (!chain) continue
-    if (!topItemsByChain.has(chain)) topItemsByChain.set(chain, [])
-    const items = topItemsByChain.get(chain)!
-    if (items.length < 3) {
-      items.push({ name: row.item_name_normalised as string, avg_price: row.avg_price as number })
-    }
+  const n = chainRanking.length
+  const chainTier = new Map<string, 'cheap' | 'mid' | 'expensive'>()
+  chainRanking.forEach(([chain], i) => {
+    const tier: 'cheap' | 'mid' | 'expensive' =
+      i < Math.ceil(n / 3) ? 'cheap'
+      : i < Math.ceil(2 * n / 3) ? 'mid'
+      : 'expensive'
+    chainTier.set(chain, tier)
+  })
+
+  // ── 4. Build spatial index of community_prices rows by chain ──────────────
+  // Key: canonical chain name. Value: array of located price observations.
+  type LocatedPrice = { lat: number; lon: number; name: string; price: number }
+  const cpSpatial = new Map<string, LocatedPrice[]>()
+
+  for (const r of cpRows ?? []) {
+    const chain = r.store_chain as string
+    const lat   = r.latitude as number
+    const lon   = r.longitude as number
+    const name  = r.item_name_normalised as string
+    const price = r.unit_price as number
+    if (!chain || !lat || !lon || !name) continue
+
+    if (!cpSpatial.has(chain)) cpSpatial.set(chain, [])
+    cpSpatial.get(chain)!.push({ lat, lon, name, price })
   }
 
-  // ── 4. All store locations — paginate to get every store ──────────────────
+  // ── 5. Fetch ALL store_locations — paginated ──────────────────────────────
   const allStores: Array<{
     chain: string; name: string; latitude: number; longitude: number
     address: string | null; city: string | null; postcode: string | null
@@ -133,41 +169,73 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ pins: [], message: 'Run sync-store-locations cron first' })
   }
 
-  // ── 5. Build one pin per store — assign chain-level price stats ───────────
-  const rawPins: Omit<StorePin, 'price_tier'>[] = []
+  // ── 6. Build one pin per store ────────────────────────────────────────────
+  const NEARBY_RADIUS_M = 2000  // 2 km — match community_prices to this store
+  const pins: StorePin[] = []
 
   for (const store of allStores) {
-    const stat = chainStats.get(store.chain)
-    if (!stat || stat.item_count < 1) continue   // skip chains with zero data
+    const fallback = chainAvg.get(store.chain)
+    if (!fallback) continue  // chain has zero price data anywhere — skip
 
-    rawPins.push({
-      store_chain:   store.chain,
-      store_name:    store.name,
-      lat:           store.latitude,
-      lon:           store.longitude,
-      avg_price:     Math.round(stat.avg_price * 100) / 100,
-      item_count:    stat.item_count,
-      receipt_count: 0,
-      top_items:     topItemsByChain.get(store.chain) ?? [],
-      address:       store.address,
-      city:          store.city,
-      postcode:      store.postcode,
+    // Find community_prices observations within 2 km of this specific store
+    const nearby = cpSpatial.get(store.chain) ?? []
+    const local: LocatedPrice[] = []
+
+    for (const obs of nearby) {
+      if (distM(store.latitude, store.longitude, obs.lat, obs.lon) <= NEARBY_RADIUS_M) {
+        local.push(obs)
+      }
+    }
+
+    let avgPrice: number
+    let itemCount: number
+    let topItems: { name: string; avg_price: number }[]
+    let hasLocalData: boolean
+
+    if (local.length >= 3) {
+      // Real location-specific data — use it
+      avgPrice  = Math.round((local.reduce((s, o) => s + o.price, 0) / local.length) * 100) / 100
+      itemCount = local.length
+
+      // Group by item name, compute per-item avg at this store
+      const itemMap = new Map<string, number[]>()
+      for (const obs of local) {
+        if (!itemMap.has(obs.name)) itemMap.set(obs.name, [])
+        itemMap.get(obs.name)!.push(obs.price)
+      }
+      topItems = [...itemMap.entries()]
+        .map(([name, ps]) => ({
+          name,
+          avg_price: Math.round((ps.reduce((a, b) => a + b, 0) / ps.length) * 100) / 100,
+        }))
+        .sort((a, b) => a.avg_price - b.avg_price)
+        .slice(0, 3)
+
+      hasLocalData = true
+    } else {
+      // No local data — use chain national average, no top items
+      avgPrice     = Math.round(fallback.avg * 100) / 100
+      itemCount    = fallback.count
+      topItems     = []
+      hasLocalData = false
+    }
+
+    pins.push({
+      store_chain:    store.chain,
+      store_name:     store.name,
+      lat:            store.latitude,
+      lon:            store.longitude,
+      avg_price:      avgPrice,
+      item_count:     itemCount,
+      receipt_count:  0,
+      top_items:      topItems,
+      price_tier:     chainTier.get(store.chain) ?? 'mid',
+      address:        store.address,
+      city:           store.city,
+      postcode:       store.postcode,
+      has_local_data: hasLocalData,
     })
   }
-
-  if (rawPins.length === 0) {
-    return NextResponse.json({ pins: [] })
-  }
-
-  // ── 6. Price tier by tertile ───────────────────────────────────────────────
-  const sorted = [...rawPins].sort((a, b) => a.avg_price - b.avg_price)
-  const n = sorted.length
-  const pins: StorePin[] = rawPins.map((pin) => {
-    const rank = sorted.indexOf(pin)
-    const tier: StorePin['price_tier'] =
-      rank < n / 3 ? 'cheap' : rank < (2 * n) / 3 ? 'mid' : 'expensive'
-    return { ...pin, price_tier: tier }
-  })
 
   return NextResponse.json({ pins })
 }

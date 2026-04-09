@@ -73,7 +73,7 @@ function StorePopup({ pin, onClose }: { pin: StorePin; onClose: () => void }) {
         </span>
       </div>
 
-      {pin.top_items.length > 0 && (
+      {pin.top_items.length > 0 ? (
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 8, marginBottom: 10 }}>
           <p style={{ fontSize: 9, color: '#4B5563', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
             Moins chers ici
@@ -88,6 +88,12 @@ function StorePopup({ pin, onClose }: { pin: StorePin; onClose: () => void }) {
               </span>
             </div>
           ))}
+        </div>
+      ) : (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 8, marginBottom: 10 }}>
+          <p style={{ fontSize: 10, color: '#4B5563', fontStyle: 'italic' }}>
+            Prix moyens nationaux — aucun prix local disponible pour ce magasin
+          </p>
         </div>
       )}
 
@@ -180,20 +186,21 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [pin.lon, pin.lat] as [number, number] },
       properties: {
-        store_name:    pin.store_name,
-        store_chain:   pin.store_chain,
-        address:       pin.address ?? null,
-        city:          pin.city ?? null,
-        postcode:      pin.postcode ?? null,
-        avg_price:     pin.avg_price,
-        price_tier:    pin.price_tier,
-        item_count:    pin.item_count,
-        receipt_count: pin.receipt_count,
-        lat:           pin.lat,
-        lon:           pin.lon,
-        top_items:     JSON.stringify(pin.top_items),
-        color:         pinColor(pin.price_tier),
-        radius:        Math.min(8 + Math.sqrt(pin.item_count) * 2, 18),
+        store_name:     pin.store_name,
+        store_chain:    pin.store_chain,
+        address:        pin.address ?? null,
+        city:           pin.city ?? null,
+        postcode:       pin.postcode ?? null,
+        avg_price:      pin.avg_price,
+        price_tier:     pin.price_tier,
+        item_count:     pin.item_count,
+        receipt_count:  pin.receipt_count,
+        lat:            pin.lat,
+        lon:            pin.lon,
+        top_items:      JSON.stringify(pin.top_items),
+        has_local_data: pin.has_local_data,
+        color:          pinColor(pin.price_tier),
+        radius:         Math.min(8 + Math.sqrt(pin.item_count) * 2, 18),
       },
     })),
   }), [visible])
@@ -234,18 +241,19 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
     if (pinHits.length > 0) {
       const p = pinHits[0].properties!
       setSelectedPin({
-        store_name:    p.store_name,
-        store_chain:   p.store_chain,
-        address:       p.address ?? null,
-        city:          p.city ?? null,
-        postcode:      p.postcode ?? null,
-        avg_price:     Number(p.avg_price),
-        price_tier:    p.price_tier as StorePin['price_tier'],
-        item_count:    Number(p.item_count),
-        receipt_count: Number(p.receipt_count),
-        lat:           Number(p.lat),
-        lon:           Number(p.lon),
-        top_items:     JSON.parse(p.top_items || '[]'),
+        store_name:     p.store_name,
+        store_chain:    p.store_chain,
+        address:        p.address ?? null,
+        city:           p.city ?? null,
+        postcode:       p.postcode ?? null,
+        avg_price:      Number(p.avg_price),
+        price_tier:     p.price_tier as StorePin['price_tier'],
+        item_count:     Number(p.item_count),
+        receipt_count:  Number(p.receipt_count),
+        lat:            Number(p.lat),
+        lon:            Number(p.lon),
+        top_items:      JSON.parse(p.top_items || '[]'),
+        has_local_data: p.has_local_data === true || p.has_local_data === 'true',
       })
       return
     }
