@@ -1059,6 +1059,9 @@ export default function HomePage() {
           </div>
           <span className="font-mono text-xs text-paper/30">© 2026 Basket</span>
         </div>
+        <p className="font-mono text-[10px] text-paper/20 mt-6 max-w-3xl relative z-10 leading-relaxed">
+          Basket est un outil de comparaison indépendant. Les noms de marques et enseignes (Carrefour, Lidl, Aldi, Leclerc, Intermarché, etc.) sont la propriété de leurs détenteurs respectifs. Basket n&apos;est affilié à aucun distributeur. Les prix affichés sont indicatifs, issus de données communautaires, et peuvent différer des prix pratiqués en magasin. Dernière mise à jour des données : voir chaque fiche produit.
+        </p>
       </footer>
 
     </div>

@@ -126,6 +126,11 @@ function StoreSheet({
           </div>
         </div>
 
+        {/* Price date note */}
+        <p style={{ fontFamily: 'monospace', fontSize: 10, color: '#4B5563', marginBottom: 10 }}>
+          Prix à titre indicatif · Données Basket, mises à jour régulièrement · Peuvent varier en magasin.
+        </p>
+
         {/* Top items */}
         {pin.top_items.length > 0 ? (
           <div style={{ marginBottom: 16 }}>

@@ -370,10 +370,25 @@ ${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
       }
     }
 
+    // ── Price freshness date ─────────────────────────────────────────────────
+    // Pick the most recent scraped_at from market_prices so the UI can show
+    // "Prix mis à jour le …" — legal requirement to surface data staleness.
+    const { data: freshRow } = await supabase
+      .from('market_prices')
+      .select('scraped_at')
+      .order('scraped_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const dataAsOf: string | null = freshRow?.scraped_at
+      ? new Date(freshRow.scraped_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null
+
     return NextResponse.json({
       comparisons,
       total_savings: Math.round(totalSavings * 100) / 100,
       best_store,
+      data_as_of: dataAsOf,
     })
   } catch (error) {
     console.error('Compare prices error:', error)

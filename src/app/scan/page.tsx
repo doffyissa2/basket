@@ -240,6 +240,7 @@ export default function ScanPage() {
   const [parsedReceipt, setParsedReceipt] = useState<ParsedReceipt | null>(null)
   const [comparisons, setComparisons] = useState<ComparisonItem[]>([])
   const [bestStore, setBestStore] = useState<BestStore | null>(null)
+  const [dataAsOf, setDataAsOf]   = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [parseMessageIdx, setParseMessageIdx] = useState(0)
@@ -507,6 +508,7 @@ export default function ScanPage() {
         const comparisonData = await compareResponse.json()
         setComparisons(comparisonData.comparisons || [])
         setBestStore(comparisonData.best_store || null)
+        if (comparisonData.data_as_of) setDataAsOf(comparisonData.data_as_of)
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
@@ -1034,6 +1036,13 @@ export default function ScanPage() {
                   )
                 })}
               </div>
+
+              {/* Price date disclaimer */}
+              {step === 'comparison' && dataAsOf && (
+                <p className="text-[10px] text-graphite/35 text-center mb-3 font-mono">
+                  Prix mis à jour le {dataAsOf} · À titre indicatif, les prix peuvent varier selon les magasins.
+                </p>
+              )}
 
               {/* Share card */}
               {step === 'comparison' && (
