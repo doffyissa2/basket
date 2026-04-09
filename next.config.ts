@@ -18,17 +18,19 @@ const securityHeaders = [
   // - default: same origin only
   // - scripts: self + inline (needed for Next.js hydration) + CDNs used by landing page
   // - styles: self + inline (Tailwind inlines styles)
-  // - images: self + data URIs + Supabase storage
-  // - connect: self + Supabase + Upstash + Anthropic + Nominatim + Overpass + OpenFoodFacts
+  // - images: self + data URIs + Supabase storage + Mapbox tiles
+  // - connect: self + Supabase + Upstash + Anthropic + Mapbox + Overpass + OpenFoodFacts
+  // - worker: blob: required by Mapbox GL JS web workers
   {
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.iconify.design",
+      "worker-src blob:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org https://*.cartocdn.com https://*.basemaps.cartocdn.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.upstash.io https://api.anthropic.com https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://api.prices.openfoodfacts.org https://prices.openfoodfacts.org",
+      "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org https://*.cartocdn.com https://*.basemaps.cartocdn.com https://*.mapbox.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.upstash.io https://api.anthropic.com https://overpass-api.de https://overpass.kumi.systems https://overpass.openstreetmap.fr https://api.prices.openfoodfacts.org https://prices.openfoodfacts.org https://*.mapbox.com https://events.mapbox.com",
       "media-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",
