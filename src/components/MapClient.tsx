@@ -480,9 +480,16 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
       {/* ── Overlay: search + filters ──────────────────────────────────────── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, pointerEvents: 'none' }}>
 
-        {/* Search bar */}
-        <div style={{ padding: '12px 12px 8px', pointerEvents: 'auto' }}>
-          <form onSubmit={handleSearch}>
+        {/* Search bar row (back button + input) */}
+        <div style={{ padding: 'calc(env(safe-area-inset-top) + 10px) 12px 8px', display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'auto' }}>
+          <a href="/dashboard" style={{
+            flexShrink: 0, width: 40, height: 40, borderRadius: 12,
+            background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#9CA3AF', textDecoration: 'none', fontSize: 18,
+          }}>‹</a>
+          <form onSubmit={handleSearch} style={{ flex: 1, minWidth: 0 }}>
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>🔍</span>
               <input
@@ -562,7 +569,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
       </div>
 
       {/* ── Store count badge ──────────────────────────────────────────────── */}
-      <div style={{ position: 'absolute', top: 108, right: 12, zIndex: 10, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 116px)', right: 12, zIndex: 10, pointerEvents: 'none' }}>
         <div style={{ background: 'rgba(26,26,26,0.9)', borderRadius: 8, padding: '4px 9px', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>
           <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>{visible.length.toLocaleString()} magasins</span>
         </div>

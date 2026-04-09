@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
     address: string | null; city: string | null; postcode: string | null
   }> = []
 
-  const PAGE = 2000
+  const PAGE = 1000   // PostgREST default max_rows; requesting >1000 silently caps at 1000
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from('store_locations')
