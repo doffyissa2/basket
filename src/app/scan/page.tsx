@@ -228,11 +228,15 @@ function readLocationCache(): { postcode: string; coords?: Coords } | null {
   return null
 }
 
+const PART_LABELS = ['Haut du ticket', 'Milieu', 'Bas du ticket']
+
 export default function ScanPage() {
   const [user, setUser] = useState<User | null>(null)
   const [step, setStep] = useState<'upload' | 'parsing' | 'results' | 'comparison'>('upload')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  // Alias for parsing step preview (first image)
+  const imagePreview = imagePreviews[0] ?? null
   const [parsedReceipt, setParsedReceipt] = useState<ParsedReceipt | null>(null)
   const [comparisons, setComparisons] = useState<ComparisonItem[]>([])
   const [bestStore, setBestStore] = useState<BestStore | null>(null)
@@ -281,14 +285,28 @@ export default function ScanPage() {
     return () => clearInterval(interval)
   }, [step])
 
+  const addImageFile = (file: File) => {
+    if (imageFiles.length >= 3) return
+    setError('')
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setImageFiles(prev => [...prev, file])
+      setImagePreviews(prev => [...prev, reader.result as string])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeImageFile = (idx: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== idx))
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setImageFile(file)
-    setError('')
-    const reader = new FileReader()
-    reader.onloadend = () => setImagePreview(reader.result as string)
-    reader.readAsDataURL(file)
+    addImageFile(file)
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
   }
 
   const awardScanXP = async (savings: number, store: string) => {
@@ -330,22 +348,23 @@ export default function ScanPage() {
   }
 
   const handleScan = async () => {
-    if (!imageFile || !user) return
+    if (imageFiles.length === 0 || !user) return
     setStep('parsing')
     setParseMessageIdx(0)
     setError('')
     gamificationAwarded.current = false
 
     try {
-      // Upload original file to storage (full quality for archival)
-      const fileName = `${user.id}/${Date.now()}-${imageFile.name}`
-      const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, imageFile)
+      // Upload first image to storage for archival (full quality)
+      const primaryFile = imageFiles[0]
+      const fileName = `${user.id}/${Date.now()}-${primaryFile.name}`
+      const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, primaryFile)
       if (uploadError) throw new Error('Erreur upload: ' + uploadError.message)
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
-      // Compress image before sending to Claude (faster + cheaper, same OCR quality)
-      const { base64, mediaType } = await compressImage(imageFile)
+      // Compress all images in parallel
+      const compressed = await Promise.all(imageFiles.map(f => compressImage(f)))
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
@@ -353,7 +372,9 @@ export default function ScanPage() {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ image_base64: base64, media_type: mediaType }),
+        body: JSON.stringify({
+          images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
+        }),
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
 
@@ -577,62 +598,80 @@ export default function ScanPage() {
               transition={{ duration: 0.35 }}
             >
               <h1 className="text-2xl font-extrabold mb-1 text-graphite">Scanner un ticket</h1>
-              <p className="text-graphite/50 text-sm mb-8">Prenez en photo ou importez votre ticket de caisse</p>
+              <p className="text-graphite/50 text-sm mb-6">
+                {imagePreviews.length === 0
+                  ? 'Ticket long ? Prenez jusqu\'à 3 photos du haut vers le bas.'
+                  : `${imagePreviews.length}/3 photo${imagePreviews.length > 1 ? 's' : ''} — ${imagePreviews.length < 3 ? 'ajoutez la suite si le ticket est long' : 'maximum atteint'}`}
+              </p>
 
-              {imagePreview ? (
-                <div>
-                  <div className="relative rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid rgba(17,17,17,0.1)' }}>
-                    <img src={imagePreview} alt="Ticket" className="w-full" />
-                    <button
-                      onClick={() => { setImageFile(null); setImagePreview(null) }}
-                      className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.85)' }}
-                    >
-                      <X className="w-4 h-4 text-graphite" />
-                    </button>
-                  </div>
-                  <motion.button
-                    onClick={handleScan}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full h-14 rounded-2xl font-bold text-white text-base"
-                    style={{ background: '#111111' }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  >
-                    Analyser ce ticket
-                  </motion.button>
+              {/* Thumbnails of added photos */}
+              {imagePreviews.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {imagePreviews.map((preview, idx) => (
+                    <motion.div key={idx}
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      className="relative rounded-2xl overflow-hidden flex items-center gap-3 p-3"
+                      style={{ background: 'rgba(17,17,17,0.04)', border: '1px solid rgba(17,17,17,0.08)' }}>
+                      <img src={preview} alt={PART_LABELS[idx]} className="w-14 h-14 object-cover rounded-xl flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-graphite">{PART_LABELS[idx]}</p>
+                        <p className="text-xs text-graphite/40">Photo {idx + 1}</p>
+                      </div>
+                      <button onClick={() => removeImageFile(idx)}
+                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(239,68,68,0.1)' }}>
+                        <X className="w-3.5 h-3.5 text-red-500" />
+                      </button>
+                    </motion.div>
+                  ))}
                 </div>
-              ) : (
-                <div className="space-y-3">
+              )}
+
+              {/* Add photo buttons */}
+              {imagePreviews.length < 3 && (
+                <div className="space-y-3 mb-4">
                   <motion.button
                     onClick={() => cameraInputRef.current?.click()}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center"
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-3xl p-6 flex items-center gap-4"
                     style={{ background: '#111111', boxShadow: '0 8px 30px rgba(17,17,17,0.2)' }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  >
-                    <Camera className="w-10 h-10 text-white" />
-                    <div>
-                      <p className="font-bold text-lg text-white">Prendre une photo</p>
-                      <p className="text-white/60 text-sm mt-0.5">Utilisez votre caméra</p>
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+                    <Camera className="w-8 h-8 text-white flex-shrink-0" />
+                    <div className="text-left">
+                      <p className="font-bold text-base text-white">
+                        {imagePreviews.length === 0 ? 'Photographier le ticket' : 'Ajouter la suite'}
+                      </p>
+                      <p className="text-white/50 text-xs mt-0.5">
+                        {imagePreviews.length === 0 ? 'Plusieurs photos possibles' : PART_LABELS[imagePreviews.length]}
+                      </p>
                     </div>
                   </motion.button>
-
                   <motion.button
                     onClick={() => fileInputRef.current?.click()}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full rounded-3xl p-8 flex flex-col items-center gap-3 text-center glass"
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  >
-                    <Upload className="w-10 h-10 text-graphite/50" />
-                    <div>
-                      <p className="font-bold text-lg text-graphite">Importer une image</p>
-                      <p className="text-graphite/40 text-sm mt-0.5">Depuis votre galerie</p>
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-3xl p-6 flex items-center gap-4 glass"
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+                    <Upload className="w-8 h-8 text-graphite/50 flex-shrink-0" />
+                    <div className="text-left">
+                      <p className="font-bold text-base text-graphite">
+                        {imagePreviews.length === 0 ? 'Importer depuis la galerie' : 'Importer la suite'}
+                      </p>
+                      <p className="text-graphite/40 text-xs mt-0.5">Depuis votre galerie</p>
                     </div>
                   </motion.button>
                 </div>
+              )}
+
+              {/* Analyse button — visible once at least 1 photo added */}
+              {imagePreviews.length > 0 && (
+                <motion.button
+                  onClick={handleScan}
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  className="w-full h-14 rounded-2xl font-bold text-white text-base mb-2"
+                  style={{ background: '#111111' }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+                  Analyser {imagePreviews.length > 1 ? `les ${imagePreviews.length} photos` : 'ce ticket'}
+                </motion.button>
               )}
 
               {error && (

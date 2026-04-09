@@ -184,13 +184,22 @@ Format attendu :
 - < 0.3 : trop incertain — OMETTRE l'article complètement${formatHintsSection}`
 }
 
-// ── Call Claude Vision ────────────────────────────────────────────────────────
+// ── Call Claude Vision (supports 1–3 images for long receipts) ───────────────
 async function callClaude(
   apiKey: string,
-  imageBase64: string,
-  mediaType: string,
+  images: Array<{ base64: string; mediaType: string }>,
   prompt: string
 ): Promise<string> {
+  const isMultiPart = images.length > 1
+  const multiPartPrefix = isMultiPart
+    ? `Ces ${images.length} images sont les différentes parties d'un même ticket de caisse, dans l'ordre du haut vers le bas. Analyse-les comme un seul ticket et extrais TOUS les articles de l'ensemble des images.\n\n`
+    : ''
+
+  const imageBlocks = images.map(img => ({
+    type: 'image' as const,
+    source: { type: 'base64' as const, media_type: img.mediaType, data: img.base64 },
+  }))
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -205,11 +214,8 @@ async function callClaude(
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: imageBase64 },
-            },
-            { type: 'text', text: prompt },
+            ...imageBlocks,
+            { type: 'text', text: multiPartPrefix + prompt },
           ],
         },
       ],
@@ -250,10 +256,21 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse
 
   try {
-    const { image_base64, media_type } = await request.json()
+    const body = await request.json()
 
-    if (!image_base64) {
+    // Support both single image (legacy) and multi-part arrays
+    const images: Array<{ base64: string; mediaType: string }> = Array.isArray(body.images)
+      ? body.images.map((img: { image_base64: string; media_type?: string }) => ({
+          base64: img.image_base64,
+          mediaType: img.media_type ?? 'image/jpeg',
+        }))
+      : [{ base64: body.image_base64, mediaType: body.media_type ?? 'image/jpeg' }]
+
+    if (images.length === 0 || !images[0].base64) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 })
+    }
+    if (images.length > 3) {
+      return NextResponse.json({ error: 'Maximum 3 images per receipt' }, { status: 400 })
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY
@@ -275,10 +292,8 @@ export async function POST(request: NextRequest) {
             .join('\n')}`
         : ''
 
-    const safeMediaType = (media_type as string) || 'image/jpeg'
-
     // ── First parse attempt ───────────────────────────────────────────────
-    let textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection + priceAnchorsSection, false))
+    let textContent = await callClaude(apiKey, images, buildPrompt(formatHintsSection + priceAnchorsSection, false))
 
     let cleaned = textContent.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     let parsed: ParsedReceipt = JSON.parse(cleaned)
@@ -296,7 +311,7 @@ export async function POST(request: NextRequest) {
     if (isParseQualityBad(parsed)) {
       console.log('[parse-receipt] Quality check failed, retrying with stricter prompt')
 
-      textContent = await callClaude(apiKey, image_base64, safeMediaType, buildPrompt(formatHintsSection + priceAnchorsSection, true))
+      textContent = await callClaude(apiKey, images, buildPrompt(formatHintsSection + priceAnchorsSection, true))
 
       cleaned = textContent.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
       const retryParsed: ParsedReceipt = JSON.parse(cleaned)
