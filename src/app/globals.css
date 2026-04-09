@@ -226,6 +226,22 @@ html {
   }
 }
 
+/* Cheapest-nearby pulsing ring on the map */
+.map-pulse-ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #7ed957;
+  box-shadow: 0 0 0 0 rgba(126, 217, 87, 0.5);
+  animation: map-pulse 2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes map-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(126, 217, 87, 0.5); }
+  70%  { box-shadow: 0 0 0 14px rgba(126, 217, 87, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(126, 217, 87, 0); }
+}
+
 /* Mapbox GL dark theme overrides */
 .mapboxgl-popup-content {
   background: transparent !important;
