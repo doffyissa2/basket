@@ -110,8 +110,8 @@ export default function ReceiptDetailPage() {
       '',
       'Via Basket → basketbeta.com',
     ].filter(Boolean).join('\n')
-    if (navigator.share) navigator.share({ text: lines, title: 'Mon ticket Basket' })
-    else navigator.clipboard?.writeText(lines)
+    if (navigator.share) navigator.share({ text: lines, title: 'Mon ticket Basket' }).catch(() => {})
+    else navigator.clipboard?.writeText(lines).catch(() => {})
   }
 
   if (loading) {

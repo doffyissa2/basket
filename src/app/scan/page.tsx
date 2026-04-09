@@ -581,7 +581,7 @@ export default function ScanPage() {
     const levelLine  = levelTitle && levelNum ? `\nNiveau ${levelNum} — ${levelTitle}` : ''
     const text = `🧺 Basket m'a trouvé ${totalSavings.toFixed(2)} € d'économies possibles !${levelLine}\n\nJ'ai scanné mon ticket ${parsedReceipt?.store_name || ''} et découvert que je pouvais payer moins ailleurs.\n\nEssaie aussi → basketbeta.com`
     if (method === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
-    if (method === 'copy') navigator.clipboard.writeText(text)
+    if (method === 'copy') navigator.clipboard.writeText(text).catch(() => {})
     if (method === 'sms') window.open(`sms:?body=${encodeURIComponent(text)}`, '_blank')
     // Award share XP (fire-and-forget, capped once per session by the server's dedup)
     if (accessToken) {

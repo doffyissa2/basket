@@ -64,8 +64,6 @@ const STORE_ACCENT = ['#7ed957', '#00D09C', '#F59E0B', '#a3f07a', '#60A5FA']
 
 export default function DashboardPage() {
   const [user,           setUser]           = useState<User | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_loading,       setLoading]        = useState(false)
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalSavings,   setTotalSavings]   = useState(0)
   const [totalSpent,     setTotalSpent]     = useState(0)
@@ -154,7 +152,6 @@ export default function DashboardPage() {
         }
       }
 
-      setLoading(false)
     }
     init()
   }, [])
@@ -218,7 +215,7 @@ export default function DashboardPage() {
               <p className="text-xs font-semibold text-white truncate">{username}</p>
               <p className="text-[10px] text-white/35 truncate">{user?.email}</p>
             </div>
-            <button onClick={() => { supabase.auth.signOut(); window.location.href = '/' }}
+            <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/' }}
               className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'rgba(255,255,255,0.07)' }}>
               <LogOut className="w-3.5 h-3.5 text-white/40" />

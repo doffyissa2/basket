@@ -308,8 +308,6 @@ export default function NewsletterSection() {
           </motion.div>
         </div>
 
-        {/* PWA install guide */}
-        <PWAGuide />
       </div>
     </section>
   )

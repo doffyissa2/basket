@@ -369,7 +369,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
         receipt_count:  Number(p.receipt_count),
         lat:            Number(p.lat),
         lon:            Number(p.lon),
-        top_items:      JSON.parse(p.top_items || '[]'),
+        top_items:      (() => { try { return JSON.parse(p.top_items || '[]') } catch { return [] } })(),
         has_local_data: p.has_local_data === true || p.has_local_data === 'true',
       }
       setSelectedPin(pin)

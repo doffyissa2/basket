@@ -76,6 +76,7 @@ export default function BasketIndexSection() {
   const [all, setAll]           = useState<ChainRanking[]>([])
   const [total, setTotal]       = useState(0)
   const [loading, setLoading]   = useState(true)
+  const [fetchError, setFetchError] = useState(false)
   const [category, setCategory] = useState('Tous')
   const [animated, setAnimated] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -90,7 +91,7 @@ export default function BasketIndexSection() {
         setTotal(d.total_samples ?? 0)
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => { setLoading(false); setFetchError(true) })
   }, [])
 
   useEffect(() => {
@@ -210,6 +211,8 @@ export default function BasketIndexSection() {
           [1,2,3,4,5,6,7,8].map(i => (
             <div key={i} className="h-11 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }} />
           ))
+        ) : fetchError ? (
+          <p className="font-mono text-sm text-paper/30 text-center py-12">Impossible de charger le classement. Réessayez dans quelques instants.</p>
         ) : rankings.length === 0 ? (
           <p className="font-mono text-sm text-paper/30 text-center py-12">Pas assez de données pour cette catégorie.</p>
         ) : rankings.map((r, i) => {
