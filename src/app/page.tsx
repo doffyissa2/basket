@@ -17,7 +17,7 @@ declare module 'react' {
 const FAQS = [
   {
     q: "Comment fonctionne Basket ?",
-    a: "Basket utilise l'intelligence artificielle pour lire vos tickets de caisse et extraire automatiquement chaque article et prix. Nous comparons ces prix avec notre base de plus de 40 000 références dans 15 enseignes françaises pour vous montrer où vous auriez payé moins cher.",
+    a: "Basket utilise l'intelligence artificielle pour lire vos tickets de caisse et extraire automatiquement chaque article et prix. Nous comparons ces prix avec notre base de plus de 9 000 références dans 15 enseignes françaises pour vous montrer où vous auriez payé moins cher.",
   },
   {
     q: "Est-ce vraiment gratuit ?",
@@ -286,7 +286,7 @@ export default function HomePage() {
         trigger: '#uptime-counter', start: 'top 85%',
         onEnter: () => {
           gsap.to(counterObj, {
-            val: 33673, duration: 2.5, ease: 'power4.out',
+            val: 3000, duration: 2.5, ease: 'power4.out',
             onUpdate: () => {
               const el = document.getElementById('uptime-counter')
               if (el) el.innerText = Math.round(counterObj.val).toLocaleString('fr-FR')
@@ -603,7 +603,7 @@ export default function HomePage() {
             <span className="font-mono text-lg text-signal mb-1 md:mb-[1vh] ml-2">produits</span>
           </div>
           <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
-            +40 000 prix<br />comparés en temps réel
+            +9 000 prix<br />comparés en temps réel
           </h3>
         </div>
 

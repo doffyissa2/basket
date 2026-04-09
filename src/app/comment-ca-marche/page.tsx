@@ -579,7 +579,7 @@ const STEPS: StepProps[] = [
     label: 'Comparer',
     title: 'Basket compare vos prix avec 15 enseignes',
     description:
-      "Chaque article est comparé en temps réel avec notre base de plus de 40 000 références dans 15 enseignes françaises près de chez vous : Lidl, Leclerc, Aldi, Carrefour, Super U et bien d'autres.",
+      "Chaque article est comparé en temps réel avec notre base de plus de 9 000 références dans 15 enseignes françaises près de chez vous : Lidl, Leclerc, Aldi, Carrefour, Super U et bien d'autres.",
     icon: <BarChart2 size={12} />,
     illustration: (active) => <IlluComparer active={active} />,
   },

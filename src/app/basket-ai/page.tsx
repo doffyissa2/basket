@@ -220,7 +220,7 @@ export default function BasketAIPage() {
       num: '03',
       icon: GitMerge,
       title: 'Notre algorithme retrouve le même produit dans 15 enseignes',
-      desc: 'La correspondance floue pg_trgm compare chaque article avec 40 000+ références, même quand les noms varient d\'un distributeur à l\'autre.',
+      desc: 'La correspondance floue pg_trgm compare chaque article avec 9 000+ références, même quand les noms varient d\'un distributeur à l\'autre.',
       visual: (
         <div className="relative flex items-center justify-center h-40">
           <div className="flex flex-col items-center gap-2">
@@ -815,7 +815,7 @@ export default function BasketAIPage() {
                 label: 'Correspondance produits',
                 by: 'Moteur Basket',
                 desc: 'Notre moteur de correspondance compare les noms de produits même quand ils diffèrent d\'une enseigne à l\'autre — "Barilla 500g" et "Pâtes Barilla n°5" sont reconnus comme identiques.',
-                tag: 'Correspondance floue · 40 000 produits',
+                tag: 'Correspondance floue · 9 000 produits',
                 color: 'text-blue-400',
                 border: 'border-blue-400/20',
                 bg: 'bg-blue-400/5',
@@ -825,7 +825,7 @@ export default function BasketAIPage() {
                 label: 'Données communautaires',
                 by: 'Réseau Basket',
                 desc: 'Les prix sont collectés et validés par notre communauté d\'utilisateurs et mis à jour en temps réel pour refléter les prix actuels en magasin à travers toute la France.',
-                tag: '+40 000 produits · 15 enseignes',
+                tag: '+9 000 produits · 15 enseignes',
                 color: 'text-orange-400',
                 border: 'border-orange-400/20',
                 bg: 'bg-orange-400/5',
