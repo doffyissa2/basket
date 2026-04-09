@@ -156,7 +156,7 @@ const ANDROID_STEPS = [
   },
 ]
 
-function PWAGuide() {
+export function PWAGuide() {
   const [platform, setPlatform] = useState<Platform>('ios')
   const [activeStep, setActiveStep] = useState(0)
   const steps = platform === 'ios' ? IOS_STEPS : ANDROID_STEPS
