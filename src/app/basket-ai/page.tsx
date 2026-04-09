@@ -788,13 +788,13 @@ export default function BasketAIPage() {
             animate={techInView ? { opacity: 1, y: 0 } : {}}
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           >
-            <span className="font-mono text-xs text-graphite/40 uppercase tracking-widest border border-graphite/15 px-4 py-1.5 rounded-full">Stack technique</span>
+            <span className="font-mono text-xs text-graphite/40 uppercase tracking-widest border border-graphite/15 px-4 py-1.5 rounded-full">Comment ça marche</span>
             <h2
               className="font-sans font-extrabold tracking-tighter text-graphite leading-none mt-6"
               style={{ fontSize: 'clamp(2.2rem, 5vw, 5rem)' }}
             >
-              Construit sur{' '}
-              <span className="text-signal">des bases solides.</span>
+              Construit pour{' '}
+              <span className="text-signal">vous faire économiser.</span>
             </h2>
           </motion.div>
 
@@ -802,9 +802,9 @@ export default function BasketAIPage() {
             {[
               {
                 icon: Cpu,
-                label: 'Claude Vision API',
-                by: 'Anthropic',
-                desc: 'Le modèle Vision de Claude analyse chaque ticket avec une précision de 97%. Il reconnaît les caractères OCR, les mises en page variables et les tickets abîmés.',
+                label: 'Lecture intelligente',
+                by: 'Basket Vision',
+                desc: 'Notre moteur d\'analyse lit chaque ticket avec une précision de 97%. Il reconnaît les caractères, les mises en page variables et les tickets abîmés ou froissés.',
                 tag: 'OCR + Compréhension sémantique',
                 color: 'text-signal',
                 border: 'border-signal/20',
@@ -812,10 +812,10 @@ export default function BasketAIPage() {
               },
               {
                 icon: Database,
-                label: 'pg_trgm',
-                by: 'PostgreSQL',
-                desc: 'L\'extension de correspondance floue de PostgreSQL compare les noms de produits même quand ils diffèrent légèrement d\'une enseigne à l\'autre — Barilla vs "Pâtes Barilla n°5".',
-                tag: 'Fuzzy matching · trigrammes',
+                label: 'Correspondance produits',
+                by: 'Moteur Basket',
+                desc: 'Notre moteur de correspondance compare les noms de produits même quand ils diffèrent d\'une enseigne à l\'autre — "Barilla 500g" et "Pâtes Barilla n°5" sont reconnus comme identiques.',
+                tag: 'Correspondance floue · 40 000 produits',
                 color: 'text-blue-400',
                 border: 'border-blue-400/20',
                 bg: 'bg-blue-400/5',
@@ -824,7 +824,7 @@ export default function BasketAIPage() {
                 icon: Layers,
                 label: 'Données communautaires',
                 by: 'Réseau Basket',
-                desc: 'Les prix sont collectés et validés par notre communauté d\'utilisateurs, enrichis par des scraping automatisés et mis à jour en temps réel pour refléter les prix actuels en magasin.',
+                desc: 'Les prix sont collectés et validés par notre communauté d\'utilisateurs et mis à jour en temps réel pour refléter les prix actuels en magasin à travers toute la France.',
                 tag: '+40 000 produits · 15 enseignes',
                 color: 'text-orange-400',
                 border: 'border-orange-400/20',
@@ -871,8 +871,8 @@ export default function BasketAIPage() {
             <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-0">
               {[
                 { label: 'Photo', icon: Camera, detail: 'Ticket JPG/PNG' },
-                { label: 'Claude Vision', icon: Cpu, detail: 'OCR + extraction' },
-                { label: 'pg_trgm', icon: Database, detail: 'Matching flou' },
+                { label: 'Analyse', icon: Cpu, detail: 'OCR + extraction' },
+                { label: 'Comparaison', icon: Database, detail: 'Matching produits' },
                 { label: 'Rapport', icon: BarChart2, detail: 'Économies affichées' },
               ].map((node, i, arr) => (
                 <div key={node.label} className="flex flex-col md:flex-row items-center">

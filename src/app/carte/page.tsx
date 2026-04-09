@@ -73,7 +73,7 @@ export default function CartePage() {
           <Map className="w-4 h-4" style={{ color: '#7ed957' }} />
           <h1 className="font-bold text-base text-white">Carte des prix</h1>
         </div>
-        <p className="text-[11px] text-white/30">Données OSM + Scraping</p>
+        <p className="text-[11px] text-white/30">Données cartographiques</p>
       </div>
 
       {/* Map fills remaining space */}
