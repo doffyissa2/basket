@@ -15,9 +15,14 @@ export interface ParsedItem {
 }
 
 export interface ParsedReceipt {
-  store_name: string
-  items:      ParsedItem[]
-  total:      number
+  store_name:      string
+  items:           ParsedItem[]
+  total:           number
+  // Enrichment fields returned by parse-receipt for archival
+  raw_ocr_text?:   string        // raw Claude JSON string, for reprocessing
+  store_address?:  string | null // nearest store address from store_locations
+  store_latitude?: number | null
+  store_longitude?: number | null
 }
 
 // ── Price comparison ──────────────────────────────────────────────────────────

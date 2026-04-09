@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap, Pencil, Check } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import LocationGateModal from '@/components/LocationGateModal'
@@ -250,6 +250,10 @@ export default function ScanPage() {
   const [levelUpResult, setLevelUpResult] = useState<XPAwardResult | null>(null)
   const gamificationAwarded = useRef(false)
 
+  // Inline item editing (Risk 2)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editDraft, setEditDraft] = useState({ name: '', price: '' })
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -374,6 +378,8 @@ export default function ScanPage() {
         },
         body: JSON.stringify({
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
+          latitude: userCoords?.lat ?? null,
+          longitude: userCoords?.lon ?? null,
         }),
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
@@ -431,15 +437,19 @@ export default function ScanPage() {
         const { data: receiptRow, error: receiptError } = await supabase
           .from('receipts')
           .insert({
-            user_id: user.id,
-            store_name: storeChain,
-            store_chain: storeChain,
-            total_amount: parsed.total,
-            receipt_date: receiptDate,
-            image_url: publicUrl,
-            postcode: postcode || null,
-            latitude: userCoords?.lat ?? null,
-            longitude: userCoords?.lon ?? null,
+            user_id:         user.id,
+            store_name:      storeChain,
+            store_chain:     storeChain,
+            total_amount:    parsed.total,
+            receipt_date:    receiptDate,
+            image_url:       publicUrl,
+            postcode:        postcode || null,
+            latitude:        userCoords?.lat ?? null,
+            longitude:       userCoords?.lon ?? null,
+            raw_ocr_text:    parsed.raw_ocr_text ?? null,
+            store_address:   parsed.store_address ?? null,
+            store_latitude:  parsed.store_latitude ?? null,
+            store_longitude: parsed.store_longitude ?? null,
           })
           .select().single()
         if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
@@ -536,6 +546,33 @@ export default function ScanPage() {
     )
   }
 
+  const saveEdit = (idx: number) => {
+    if (!parsedReceipt) return
+    const original = parsedReceipt.items[idx]
+    const correctedName = editDraft.name.trim() || original.name
+    const correctedPrice = parseFloat(editDraft.price) || original.price
+    setParsedReceipt({
+      ...parsedReceipt,
+      items: parsedReceipt.items.map((item, i) =>
+        i === idx ? { ...item, name: correctedName, price: correctedPrice } : item
+      ),
+    })
+    setEditingIdx(null)
+    if (receiptId && accessToken) {
+      void fetch('/api/correct-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          receipt_id: receiptId,
+          original_name: original.name,
+          corrected_name: correctedName,
+          original_price: original.price,
+          corrected_price: correctedPrice,
+        }),
+      })
+    }
+  }
+
   const handleShare = (method: 'whatsapp' | 'copy' | 'sms') => {
     const levelTitle = levelUpResult?.new_title ?? null
     const levelNum   = levelUpResult?.new_level ?? null
@@ -598,11 +635,23 @@ export default function ScanPage() {
               transition={{ duration: 0.35 }}
             >
               <h1 className="text-2xl font-extrabold mb-1 text-graphite">Scanner un ticket</h1>
-              <p className="text-graphite/50 text-sm mb-6">
+              <p className="text-graphite/50 text-sm mb-4">
                 {imagePreviews.length === 0
                   ? 'Ticket long ? Prenez jusqu\'à 3 photos du haut vers le bas.'
                   : `${imagePreviews.length}/3 photo${imagePreviews.length > 1 ? 's' : ''} — ${imagePreviews.length < 3 ? 'ajoutez la suite si le ticket est long' : 'maximum atteint'}`}
               </p>
+
+              {/* Privacy trust badge */}
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl mb-5" style={{ background: 'rgba(126,217,87,0.07)', border: '1px solid rgba(126,217,87,0.18)' }}>
+                <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 1.5L2 4v4c0 3.31 2.5 6.41 6 7.16C11.5 14.41 14 11.31 14 8V4L8 1.5z" stroke="#7ed957" strokeWidth="1.3" strokeLinejoin="round" fill="rgba(126,217,87,0.15)" />
+                  <path d="M5.5 8l1.75 1.75L10.5 6.5" stroke="#7ed957" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <p className="text-[11px] leading-relaxed text-graphite/55">
+                  <span className="font-semibold text-graphite/75">Nous ne vendons jamais vos données personnelles.</span>{' '}
+                  Seuls des prix agrégés et anonymisés contribuent à la base communautaire. Vos tickets restent privés.
+                </p>
+              </div>
 
               {/* Thumbnails of added photos */}
               {imagePreviews.length > 0 && (
@@ -850,61 +899,118 @@ export default function ScanPage() {
                 {parsedReceipt.items.map((item, idx) => {
                   const comparison = comparisons.find((c) => c.name.toLowerCase() === item.name.toLowerCase())
                   const hasSaving = comparison && comparison.savings > 0.01
+                  const isEditing = editingIdx === idx
 
                   return (
                     <div key={idx}>
-                      <motion.div
-                        initial={{ opacity: 0, x: -16 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.06, duration: 0.35 }}
-                        className="flex items-center justify-between rounded-xl px-4 py-3"
-                        style={{
-                          background: hasSaving ? 'rgba(0,208,156,0.06)' : 'rgba(17,17,17,0.04)',
-                          border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(17,17,17,0.06)',
-                          borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
-                        }}
-                      >
-                        <div className="flex-1 min-w-0 pr-3">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium text-graphite truncate">{item.name}</p>
-                            {step === 'comparison' && comparison && (
-                              <span
-                                className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
-                                style={{
-                                  background: comparison.is_local ? 'rgba(0,208,156,0.12)' : 'rgba(17,17,17,0.08)',
-                                  color: comparison.is_local ? '#00D09C' : 'rgba(17,17,17,0.5)',
-                                }}
-                              >
-                                {comparison.is_local ? 'Région' : 'National'}
-                              </span>
+                      {isEditing ? (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="rounded-xl px-4 py-3"
+                          style={{ background: 'rgba(126,217,87,0.06)', border: '1px solid rgba(126,217,87,0.25)' }}
+                        >
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-graphite/40 mb-2">Corriger l&apos;article</p>
+                          <input
+                            value={editDraft.name}
+                            onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))}
+                            placeholder={item.name}
+                            className="w-full rounded-lg px-3 py-2 text-sm font-medium text-graphite mb-2 outline-none"
+                            style={{ background: 'rgba(17,17,17,0.05)', border: '1px solid rgba(17,17,17,0.1)' }}
+                          />
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs text-graphite/40 flex-shrink-0">Prix :</span>
+                            <input
+                              value={editDraft.price}
+                              onChange={e => setEditDraft(d => ({ ...d, price: e.target.value }))}
+                              type="number" step="0.01" min="0"
+                              placeholder={String(item.price)}
+                              className="w-24 rounded-lg px-3 py-2 text-sm font-bold text-graphite outline-none"
+                              style={{ background: 'rgba(17,17,17,0.05)', border: '1px solid rgba(17,17,17,0.1)' }}
+                            />
+                            <span className="text-xs text-graphite/40">€</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit(idx)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                              style={{ background: '#111' }}
+                            >
+                              <Check className="w-3 h-3" />
+                              Valider
+                            </button>
+                            <button
+                              onClick={() => setEditingIdx(null)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold glass"
+                              style={{ color: 'rgba(17,17,17,0.5)' }}
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, x: -16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.06, duration: 0.35 }}
+                          className="flex items-center justify-between rounded-xl px-4 py-3"
+                          style={{
+                            background: hasSaving ? 'rgba(0,208,156,0.06)' : 'rgba(17,17,17,0.04)',
+                            border: hasSaving ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(17,17,17,0.06)',
+                            borderLeft: hasSaving ? '3px solid #00D09C' : undefined,
+                          }}
+                        >
+                          <div className="flex-1 min-w-0 pr-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-graphite truncate">{item.name}</p>
+                              {step === 'comparison' && comparison && (
+                                <span
+                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                  style={{
+                                    background: comparison.is_local ? 'rgba(0,208,156,0.12)' : 'rgba(17,17,17,0.08)',
+                                    color: comparison.is_local ? '#00D09C' : 'rgba(17,17,17,0.5)',
+                                  }}
+                                >
+                                  {comparison.is_local ? 'Région' : 'National'}
+                                </span>
+                              )}
+                            </div>
+                            {hasSaving && comparison && (
+                              <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
+                                Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                                {comparison.avg_normalized_price && (
+                                  <span className="text-graphite/35"> · {comparison.avg_normalized_price}</span>
+                                )}
+                              </p>
+                            )}
+                            {!hasSaving && step === 'comparison' && (
+                              <p className="text-xs mt-0.5 text-graphite/35 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" style={{ color: '#00D09C' }} />
+                                Bon prix
+                              </p>
                             )}
                           </div>
-                          {hasSaving && comparison && (
-                            <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
-                              Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
-                              {comparison.avg_normalized_price && (
-                                <span className="text-graphite/35"> · {comparison.avg_normalized_price}</span>
-                              )}
-                            </p>
-                          )}
-                          {!hasSaving && step === 'comparison' && (
-                            <p className="text-xs mt-0.5 text-graphite/35 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" style={{ color: '#00D09C' }} />
-                              Bon prix
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-graphite">{item.price.toFixed(2)} €</p>
-                          {comparison?.normalized_price && (
-                            <p className="text-[10px] text-graphite/35">{comparison.normalized_price}</p>
-                          )}
-                          {hasSaving && comparison && (
-                            <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
-                          )}
-                        </div>
-                      </motion.div>
-                      {step === 'comparison' && (
+                          <div className="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
+                            <p className="text-sm font-bold text-graphite">{item.price.toFixed(2)} €</p>
+                            {comparison?.normalized_price && (
+                              <p className="text-[10px] text-graphite/35">{comparison.normalized_price}</p>
+                            )}
+                            {hasSaving && comparison && (
+                              <p className="text-xs font-semibold" style={{ color: '#00D09C' }}>-{comparison.savings.toFixed(2)} €</p>
+                            )}
+                            {step === 'comparison' && (
+                              <button
+                                onClick={() => { setEditingIdx(idx); setEditDraft({ name: item.name, price: String(item.price) }) }}
+                                className="mt-0.5 w-5 h-5 flex items-center justify-center rounded transition-opacity opacity-25 hover:opacity-70"
+                                title="Corriger cet article"
+                              >
+                                <Pencil className="w-3 h-3 text-graphite" />
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                      {!isEditing && step === 'comparison' && (
                         <div className="flex gap-2 px-1 pt-1">
                           <button
                             onClick={() => addToList(item.name)}

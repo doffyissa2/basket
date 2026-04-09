@@ -248,6 +248,46 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
     }))
 }
 
+// ── Nearest store lookup ──────────────────────────────────────────────────────
+// Finds the closest store_locations row matching the chain within 15 km.
+// Uses the Haversine formula client-side on a bounded result set (faster than PostGIS RPC).
+async function findNearestStore(
+  supabase: SupabaseClient,
+  chain: string,
+  lat: number | null,
+  lon: number | null
+): Promise<{ address: string | null; lat: number | null; lon: number | null }> {
+  if (!lat || !lon) return { address: null, lat: null, lon: null }
+  try {
+    // Fetch candidate stores within a rough ~0.15° bounding box (~15 km)
+    const { data } = await supabase
+      .from('store_locations')
+      .select('name, address, latitude, longitude')
+      .ilike('chain', `%${chain.split(' ')[0]}%`)
+      .gte('latitude', lat - 0.15)
+      .lte('latitude', lat + 0.15)
+      .gte('longitude', lon - 0.20)
+      .lte('longitude', lon + 0.20)
+      .limit(20)
+
+    if (!data || data.length === 0) return { address: null, lat: null, lon: null }
+
+    // Pick closest by Haversine
+    let best = data[0]
+    let bestDist = Infinity
+    for (const row of data) {
+      const dLat = (row.latitude - lat) * (Math.PI / 180)
+      const dLon = (row.longitude - lon) * (Math.PI / 180)
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * Math.PI / 180) * Math.cos(row.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+      const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      if (dist < bestDist) { bestDist = dist; best = row }
+    }
+
+    if (bestDist > 5) return { address: null, lat: null, lon: null } // >5 km away — skip
+    return { address: best.address ?? best.name ?? null, lat: best.latitude, lon: best.longitude }
+  } catch { return { address: null, lat: null, lon: null } }
+}
+
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
@@ -257,6 +297,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+
+    // Optional caller-provided coords for store location lookup
+    const callerLat: number | null = typeof body.latitude === 'number' ? body.latitude : null
+    const callerLon: number | null = typeof body.longitude === 'number' ? body.longitude : null
 
     // Support both single image (legacy) and multi-part arrays
     const images: Array<{ base64: string; mediaType: string }> = Array.isArray(body.images)
@@ -343,7 +387,16 @@ export async function POST(request: NextRequest) {
       parsed.total = correctedTotal
     }
 
-    return NextResponse.json(parsed)
+    // 3. Find nearest matching store for accurate location data
+    const storeLocation = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
+
+    return NextResponse.json({
+      ...parsed,
+      raw_ocr_text:    textContent,
+      store_address:   storeLocation.address,
+      store_latitude:  storeLocation.lat,
+      store_longitude: storeLocation.lon,
+    })
   } catch (error) {
     console.error('Parse receipt error:', error)
     return NextResponse.json(

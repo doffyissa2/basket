@@ -55,6 +55,8 @@ const limiters = {
   contact: makeLimiter(5, 3600),      // 5 messages per hour per IP
   newsletter: makeLimiter(3, 3600),   // 3 attempts per hour per IP
   deleteAccount: makeLimiter(3, 3600), // 3 attempts per hour per user
+  // 60 item corrections/min per user (lightweight logging)
+  correctItem: makeLimiter(60, 60),
 } as const
 
 export type LimiterKey = keyof typeof limiters
