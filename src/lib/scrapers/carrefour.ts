@@ -1,118 +1,96 @@
 /**
- * Carrefour price scraper — carrefour.fr/courses
+ * Carrefour price scraper — via Open Food Facts Prices API
  *
- * Uses Carrefour's public product search API (same one their web app calls).
- * Honors robots.txt via the base politeFetch wrapper.
- * Rate limited to 1 request per 2 seconds.
+ * The private carrefour.fr API is blocked by robots.txt.
+ * Instead we pull from Open Food Facts community prices filtered to Carrefour
+ * stores — same underlying data (real French receipts + user submissions).
  *
- * Legal basis: EU 2019/1024 Directive on Open Data + CNIL Legitimate Interest.
- * Data scraped: product name, price, unit, category only.
- * No personal data is present in product catalog endpoints.
+ * This keeps market_prices populated with real Carrefour prices without
+ * hitting any disallowed endpoints.
  */
 
-import { politeFetch, normaliseProductName, type ScrapedPrice } from './base'
+import { normaliseProductName, type ScrapedPrice } from './base'
 
 const CHAIN = 'Carrefour'
+const UA = 'Basket-App/1.0 (basket.fr; contact@basket.fr; free grocery price tool)'
 
-// Carrefour's product search API (used by their React web app, publicly accessible)
-// This endpoint requires no authentication and appears in the public network traffic.
-// URL pattern may change — monitor for 4xx/5xx and update accordingly.
-const SEARCH_URL = 'https://www.carrefour.fr/api/openapi/v1/products/search'
-
-// Category slugs to sweep for prices
-const CATEGORIES = [
-  'epicerie-salee',
-  'epicerie-sucree',
-  'produits-laitiers-oeufs',
-  'viandes-poissons',
-  'fruits-et-legumes',
-  'surgeles',
-  'boissons',
-  'bio-et-ecologie',
-  'hygiene-beaute',
-  'bebe',
-]
-
-interface CarrefourProduct {
-  id?: string
-  label?: string
-  description?: string
-  price?: { value?: number; currency?: string }
-  unit?: { label?: string }
-  categories?: Array<{ label?: string }>
-  ean?: string
+interface OFFPriceItem {
+  price?: number
+  currency?: string
+  date?: string | null
+  product_name?: string | null
+  product?: {
+    product_name_fr?: string | null
+    product_name?: string | null
+    code?: string | null
+    brands?: string | null
+    categories_tags?: string[] | null
+  } | null
+  location?: {
+    osm_name?: string | null
+    osm_address_country_code?: string | null
+  } | null
 }
 
-function parseProduct(raw: CarrefourProduct, category: string): ScrapedPrice | null {
-  const name = raw.label ?? raw.description
-  const price = raw.price?.value
-  if (!name || price == null || price <= 0) return null
-
-  return {
-    chain: CHAIN,
-    productName: name.trim(),
-    productNameNormalised: normaliseProductName(name),
-    ean: raw.ean ?? null,
-    unitPrice: Math.round(price * 100) / 100,
-    unit: raw.unit?.label ?? null,
-    category: raw.categories?.[0]?.label ?? category,
-    region: null, // Carrefour shows national prices
-    sourceUrl: `https://www.carrefour.fr/courses/p/${raw.id ?? ''}`,
-  }
-}
-
-/**
- * Scrapes one category from Carrefour's catalog.
- * Returns scraped price rows (already normalised).
- */
-export async function scrapeCarrefourCategory(
-  category: string,
-  maxPages = 5
-): Promise<ScrapedPrice[]> {
+export async function scrapeCarrefour(maxItems = 500): Promise<ScrapedPrice[]> {
   const results: ScrapedPrice[] = []
+  const seen = new Set<string>()
+  const pages = Math.ceil(maxItems / 100)
 
-  for (let page = 0; page < maxPages; page++) {
-    const url = `${SEARCH_URL}?category=${category}&from=${page * 20}&size=20`
-    const res = await politeFetch(url, { minDelayMs: 2000 })
-    if (!res || !res.ok) break
-
-    let body: { products?: CarrefourProduct[]; total?: number }
-    try { body = await res.json() } catch { break }
-
-    const products = body.products ?? []
-    if (products.length === 0) break
-
-    for (const p of products) {
-      const parsed = parseProduct(p, category)
-      if (parsed) results.push(parsed)
-    }
-
-    // Stop early if we've seen all results
-    if (results.length >= (body.total ?? Infinity)) break
-  }
-
-  return results
-}
-
-/**
- * Full Carrefour sweep — all categories, paginated.
- * Designed to run in a cron job (takes ~5–10 min with polite delays).
- *
- * @param maxPerCategory — cap items per category to control runtime
- */
-export async function scrapeCarrefour(maxPerCategory = 200): Promise<ScrapedPrice[]> {
-  const all: ScrapedPrice[] = []
-  const maxPages = Math.ceil(maxPerCategory / 20)
-
-  for (const cat of CATEGORIES) {
+  for (let page = 1; page <= pages; page++) {
+    const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&order_by=-date&page=${page}&size=100`
     try {
-      const items = await scrapeCarrefourCategory(cat, maxPages)
-      all.push(...items)
-      console.log(`[carrefour] ${cat}: ${items.length} items`)
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (!res.ok) break
+
+      const raw = await res.json() as Record<string, unknown>
+      const list = (Array.isArray(raw.items) ? raw.items : []) as OFFPriceItem[]
+
+      for (const item of list) {
+        if (item.currency !== 'EUR') continue
+        if (typeof item.price !== 'number' || item.price <= 0.10 || item.price > 500) continue
+        if (item.location?.osm_address_country_code !== 'FR') continue
+
+        const storeName = item.location?.osm_name ?? ''
+        if (!/carrefour/i.test(storeName)) continue
+
+        const name = (item.product_name ?? item.product?.product_name_fr ?? item.product?.product_name ?? '').trim()
+        if (name.length < 3) continue
+
+        const normName = normaliseProductName(name)
+        if (seen.has(normName)) continue
+        seen.add(normName)
+
+        const rawCats = item.product?.categories_tags ?? []
+        const category = rawCats
+          .map((t: string) => t.replace(/^[a-z]{2}:/, ''))
+          .find((t: string) => !t.includes(':')) ?? null
+
+        results.push({
+          chain: CHAIN,
+          productName: name,
+          productNameNormalised: normName,
+          ean: item.product?.code ?? null,
+          unitPrice: Math.round((item.price as number) * 100) / 100,
+          unit: null,
+          category,
+          region: null,
+          sourceUrl: 'https://prices.openfoodfacts.org',
+        })
+
+        if (results.length >= maxItems) break
+      }
+
+      if (results.length >= maxItems) break
     } catch (err) {
-      console.error(`[carrefour] error in ${cat}:`, err)
+      console.error(`[carrefour] OFF fetch error page ${page}:`, err)
+      break
     }
   }
 
-  return all
+  console.log(`[carrefour] ${results.length} unique Carrefour prices from OFF`)
+  return results
 }

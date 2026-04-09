@@ -1,97 +1,93 @@
 /**
- * E.Leclerc Drive price scraper — leclercdrive.fr
+ * E.Leclerc price scraper — via Open Food Facts Prices API
  *
- * Leclerc operates hundreds of regional drives, each with its own site.
- * We scrape the national product index (available without choosing a drive).
- *
- * Rate limited to 1 req/2s. Honors robots.txt.
+ * The private leclercdrive.fr API is blocked by robots.txt.
+ * Instead we pull from Open Food Facts community prices filtered to Leclerc
+ * stores — same underlying data (real French receipts + user submissions).
  */
 
-import { politeFetch, normaliseProductName, type ScrapedPrice } from './base'
+import { normaliseProductName, type ScrapedPrice } from './base'
 
 const CHAIN = 'Leclerc'
+const UA = 'Basket-App/1.0 (basket.fr; contact@basket.fr; free grocery price tool)'
 
-// Leclerc's national product search (no drive selection required)
-// Found by inspecting public network traffic on leclercdrive.fr
-const SEARCH_URL = 'https://www.leclercdrive.fr/api/v1/catalog/search'
-
-const CATEGORIES = [
-  'epicerie',
-  'produits-frais',
-  'surgeles',
-  'boissons',
-  'fruits-legumes',
-  'viandes-poissons',
-  'bio',
-  'hygiene-beaute',
-]
-
-interface LeclercProduct {
-  reference?: string
-  libelle?: string
-  prix?: number
-  unite?: string
-  rayon?: string
-  codeEan?: string
+interface OFFPriceItem {
+  price?: number
+  currency?: string
+  date?: string | null
+  product_name?: string | null
+  product?: {
+    product_name_fr?: string | null
+    product_name?: string | null
+    code?: string | null
+    brands?: string | null
+    categories_tags?: string[] | null
+  } | null
+  location?: {
+    osm_name?: string | null
+    osm_address_country_code?: string | null
+  } | null
 }
 
-function parseProduct(raw: LeclercProduct, category: string): ScrapedPrice | null {
-  const name = raw.libelle
-  const price = raw.prix
-  if (!name || price == null || price <= 0) return null
-
-  return {
-    chain: CHAIN,
-    productName: name.trim(),
-    productNameNormalised: normaliseProductName(name),
-    ean: raw.codeEan ?? null,
-    unitPrice: Math.round(price * 100) / 100,
-    unit: raw.unite ?? null,
-    category: raw.rayon ?? category,
-    region: null,
-    sourceUrl: `https://www.leclercdrive.fr/produit/${raw.reference ?? ''}`,
-  }
-}
-
-export async function scrapeLeclercCategory(
-  category: string,
-  maxPages = 5
-): Promise<ScrapedPrice[]> {
+export async function scrapeLeclerc(maxItems = 500): Promise<ScrapedPrice[]> {
   const results: ScrapedPrice[] = []
+  const seen = new Set<string>()
+  const pages = Math.ceil(maxItems / 100)
 
-  for (let page = 1; page <= maxPages; page++) {
-    const url = `${SEARCH_URL}?categorie=${category}&page=${page}&taille=20`
-    const res = await politeFetch(url, { minDelayMs: 2000 })
-    if (!res || !res.ok) break
-
-    let body: { produits?: LeclercProduct[]; total?: number }
-    try { body = await res.json() } catch { break }
-
-    const products = body.produits ?? []
-    if (products.length === 0) break
-
-    for (const p of products) {
-      const parsed = parseProduct(p, category)
-      if (parsed) results.push(parsed)
-    }
-  }
-
-  return results
-}
-
-export async function scrapeLeclerc(maxPerCategory = 200): Promise<ScrapedPrice[]> {
-  const all: ScrapedPrice[] = []
-  const maxPages = Math.ceil(maxPerCategory / 20)
-
-  for (const cat of CATEGORIES) {
+  for (let page = 1; page <= pages; page++) {
+    const url = `https://prices.openfoodfacts.org/api/v1/prices?currency=EUR&order_by=-date&page=${page}&size=100`
     try {
-      const items = await scrapeLeclercCategory(cat, maxPages)
-      all.push(...items)
-      console.log(`[leclerc] ${cat}: ${items.length} items`)
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (!res.ok) break
+
+      const raw = await res.json() as Record<string, unknown>
+      const list = (Array.isArray(raw.items) ? raw.items : []) as OFFPriceItem[]
+
+      for (const item of list) {
+        if (item.currency !== 'EUR') continue
+        if (typeof item.price !== 'number' || item.price <= 0.10 || item.price > 500) continue
+        if (item.location?.osm_address_country_code !== 'FR') continue
+
+        const storeName = item.location?.osm_name ?? ''
+        if (!/leclerc/i.test(storeName)) continue
+
+        const name = (item.product_name ?? item.product?.product_name_fr ?? item.product?.product_name ?? '').trim()
+        if (name.length < 3) continue
+
+        const normName = normaliseProductName(name)
+        if (seen.has(normName)) continue
+        seen.add(normName)
+
+        const rawCats = item.product?.categories_tags ?? []
+        const category = rawCats
+          .map((t: string) => t.replace(/^[a-z]{2}:/, ''))
+          .find((t: string) => !t.includes(':')) ?? null
+
+        results.push({
+          chain: CHAIN,
+          productName: name,
+          productNameNormalised: normName,
+          ean: item.product?.code ?? null,
+          unitPrice: Math.round((item.price as number) * 100) / 100,
+          unit: null,
+          category,
+          region: null,
+          sourceUrl: 'https://prices.openfoodfacts.org',
+        })
+
+        if (results.length >= maxItems) break
+      }
+
+      if (results.length >= maxItems) break
     } catch (err) {
-      console.error(`[leclerc] error in ${cat}:`, err)
+      console.error(`[leclerc] OFF fetch error page ${page}:`, err)
+      break
     }
   }
 
-  return all
+  console.log(`[leclerc] ${results.length} unique Leclerc prices from OFF`)
+  return results
 }
