@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import NewsletterSection from '@/components/NewsletterSection'
+import BasketIndexSection from '@/components/BasketIndexSection'
 
 declare module 'react' {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -552,6 +553,31 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* ==================== PRIVACY TRUST STRIP ==================== */}
+      <section className="px-5 md:px-[5vw] pt-8 pb-0 relative z-10">
+        <div
+          className="max-w-4xl mx-auto rounded-2xl px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-8"
+          style={{ background: 'rgba(126,217,87,0.07)', border: '1px solid rgba(126,217,87,0.18)' }}
+        >
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(126,217,87,0.15)' }}>
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1.5L2 4v4c0 3.31 2.5 6.41 6 7.16C11.5 14.41 14 11.31 14 8V4L8 1.5z" stroke="#7ed957" strokeWidth="1.3" strokeLinejoin="round" fill="rgba(126,217,87,0.15)" />
+                <path d="M5.5 8l1.75 1.75L10.5 6.5" stroke="#7ed957" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <span className="font-mono text-xs font-bold uppercase tracking-wider" style={{ color: '#7ed957' }}>Données privées</span>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-8 font-mono text-xs text-graphite/55">
+            <span><span className="text-graphite/80 font-semibold">Nous ne vendons jamais vos données personnelles.</span> Vos tickets restent privés.</span>
+            <span className="hidden sm:block w-px h-4 bg-graphite/15 flex-shrink-0" />
+            <span>Seuls des prix <span className="text-graphite/75 font-semibold">agrégés et anonymisés</span> alimentent la base communautaire.</span>
+            <span className="hidden sm:block w-px h-4 bg-graphite/15 flex-shrink-0" />
+            <span>Supprimez vos données à tout moment.</span>
+          </div>
+        </div>
+      </section>
+
       {/* ==================== FEATURES ==================== */}
       <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-[2vw] relative z-10" id="features">
         {/* Card 1 — Basket AI */}
@@ -610,6 +636,47 @@ export default function HomePage() {
           <h2 className="font-sans text-4xl md:text-[6vw] leading-[0.9] font-extrabold text-signal contrast-2 split-target-2">
             Découvrez si votre voisin a payé son pain moins cher que vous.
           </h2>
+        </div>
+      </section>
+
+      {/* ==================== PWA / INSTALL GUIDE ==================== */}
+      <section className="py-16 md:py-[10vh] px-5 md:px-[5vw] relative z-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-graphite rounded-[2rem] md:rounded-[3rem] p-8 md:p-[4vw] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-20 pointer-events-none"
+              style={{ background: 'radial-gradient(circle, #7ed957 0%, transparent 70%)', transform: 'translate(30%, -30%)' }} />
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 bg-signal/15 border border-signal/30 rounded-full px-4 py-1.5 mb-6">
+                <div className="w-2 h-2 rounded-full bg-signal animate-pulse" />
+                <span className="font-mono text-xs text-signal font-semibold uppercase tracking-wider">Version Beta</span>
+              </div>
+              <h2 className="font-sans text-3xl md:text-[4vw] font-extrabold tracking-tighter text-paper leading-none mb-4">
+                Basket est en <span className="text-signal">phase beta.</span>
+              </h2>
+              <p className="font-mono text-sm text-paper/50 max-w-xl mb-8 leading-relaxed">
+                Nous travaillons activement à améliorer la reconnaissance de tickets, la base de données de prix et les recommandations personnalisées. Vos retours nous aident à construire le meilleur outil possible.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
+                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                  <div>
+                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
+                    <p className="font-sans text-sm font-bold text-paper">App Store</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
+                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M3.18 23.76c.3.17.65.19.96.07l12.45-6.99-2.78-2.78-10.63 9.7zm-1.11-18.9c-.06.2-.07.43-.07.67v17.94c0 .24.01.47.07.67l.07.06 10.04-10.04v-.22L2.14 4.79l-.07.07zM20.93 9.97l-2.78-1.56-3.12 3.12 3.12 3.12 2.81-1.58c.8-.45.8-1.19-.03-1.1zM4.14.24L16.59 7.23l-2.78 2.78L3.18.31C3.49.13 3.84.07 4.14.24z"/></svg>
+                  <div>
+                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
+                    <p className="font-sans text-sm font-bold text-paper">Google Play</p>
+                  </div>
+                </div>
+              </div>
+              <p className="font-mono text-xs text-paper/30">
+                En attendant, utilisez Basket directement depuis votre navigateur — ajoutez-le à votre écran d&apos;accueil pour une expérience native.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -762,6 +829,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ==================== BASKET INDEX ==================== */}
+      <BasketIndexSection />
 
       {/* ==================== FONCTIONNEMENT (Accordion) ==================== */}
       <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] relative z-10 bg-graphite rounded-[2rem] md:rounded-[3rem] mx-2 md:mx-[2vw] my-4 md:my-[5vh] text-paper overflow-hidden" id="parameters">
@@ -924,54 +994,6 @@ export default function HomePage() {
               <span className="font-sans font-bold text-lg text-graphite/40 group-hover:text-signal group-hover:scale-110 transition-all duration-500">{name}</span>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* ==================== BETA SECTION ==================== */}
-      <section className="py-16 md:py-[10vh] px-5 md:px-[5vw] relative z-10">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-graphite rounded-[2rem] md:rounded-[3rem] p-8 md:p-[4vw] relative overflow-hidden">
-            {/* Glow accent */}
-            <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-20 pointer-events-none"
-              style={{ background: 'radial-gradient(circle, #7ed957 0%, transparent 70%)', transform: 'translate(30%, -30%)' }} />
-
-            <div className="relative z-10">
-              {/* Beta badge */}
-              <div className="inline-flex items-center gap-2 bg-signal/15 border border-signal/30 rounded-full px-4 py-1.5 mb-6">
-                <div className="w-2 h-2 rounded-full bg-signal animate-pulse" />
-                <span className="font-mono text-xs text-signal font-semibold uppercase tracking-wider">Version Beta</span>
-              </div>
-
-              <h2 className="font-sans text-3xl md:text-[4vw] font-extrabold tracking-tighter text-paper leading-none mb-4">
-                Basket est en <span className="text-signal">phase beta.</span>
-              </h2>
-              <p className="font-mono text-sm text-paper/50 max-w-xl mb-8 leading-relaxed">
-                Nous travaillons activement à améliorer la reconnaissance de tickets, la base de données de prix et les recommandations personnalisées. Vos retours nous aident à construire le meilleur outil possible.
-              </p>
-
-              {/* App store badges */}
-              <div className="flex flex-col sm:flex-row gap-3 mb-8">
-                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
-                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                  <div>
-                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
-                    <p className="font-sans text-sm font-bold text-paper">App Store</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 bg-paper/5 border border-paper/10 rounded-2xl px-5 py-3 opacity-60">
-                  <svg className="w-6 h-6 text-paper flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M3.18 23.76c.3.17.65.19.96.07l12.45-6.99-2.78-2.78-10.63 9.7zm-1.11-18.9c-.06.2-.07.43-.07.67v17.94c0 .24.01.47.07.67l.07.06 10.04-10.04v-.22L2.14 4.79l-.07.07zM20.93 9.97l-2.78-1.56-3.12 3.12 3.12 3.12 2.81-1.58c.8-.45.8-1.19-.03-1.1zM4.14.24L16.59 7.23l-2.78 2.78L3.18.31C3.49.13 3.84.07 4.14.24z"/></svg>
-                  <div>
-                    <p className="font-mono text-[9px] text-paper/40 uppercase tracking-wider">Bientôt disponible</p>
-                    <p className="font-sans text-sm font-bold text-paper">Google Play</p>
-                  </div>
-                </div>
-              </div>
-
-              <p className="font-mono text-xs text-paper/30">
-                En attendant, utilisez Basket directement depuis votre navigateur — ajoutez-le à votre écran d&apos;accueil pour une expérience native.
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
