@@ -218,6 +218,36 @@ function compressImage(
   })
 }
 
+// ── Receipt image preprocessing ───────────────────────────────────────────────
+// Converts to grayscale, boosts contrast and brightness before JPEG compression.
+// Dramatically improves OCR on faded thermal receipts — runs before compressImage.
+function preprocessReceiptImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { resolve(file); return }
+      ctx.filter = 'contrast(1.4) grayscale(1) brightness(1.1)'
+      ctx.drawImage(img, 0, 0)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return }
+          resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+        },
+        'image/jpeg',
+        1.0 // full quality — compressImage handles final compression
+      )
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+    img.src = url
+  })
+}
+
 function readLocationCache(): { postcode: string; coords?: Coords } | null {
   try {
     const raw = localStorage.getItem('basket_postcode_cached')
@@ -251,9 +281,20 @@ export default function ScanPage() {
   const [levelUpResult, setLevelUpResult] = useState<XPAwardResult | null>(null)
   const gamificationAwarded = useRef(false)
 
-  // Inline item editing (Risk 2)
+  // Inline item editing
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [editDraft, setEditDraft] = useState({ name: '', price: '' })
+
+  // Scan quality + manual add-item
+  const [lowQualityWarning, setLowQualityWarning] = useState(false)
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [newItem, setNewItem] = useState({ name: '', price: '' })
+
+  // Micro-interaction states
+  const [imageFlash, setImageFlash] = useState(false)
+  const [scanProgress, setScanProgress] = useState(0)
+
+  const haptic = () => { if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10) }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -281,6 +322,18 @@ export default function ScanPage() {
     }
   }, [])
 
+  // Auto-open camera on mobile (skips the choose-screen friction)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768
+    if (!isMobile) return
+    const timer = setTimeout(() => {
+      cameraInputRef.current?.click()
+    }, 350) // short delay so the page renders first
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // only on initial mount
+
   // Cycle parse messages
   useEffect(() => {
     if (step !== 'parsing') return
@@ -293,6 +346,8 @@ export default function ScanPage() {
   const addImageFile = (file: File) => {
     if (imageFiles.length >= 3) return
     setError('')
+    setImageFlash(true)
+    setTimeout(() => setImageFlash(false), 600)
     const reader = new FileReader()
     reader.onloadend = () => {
       setImageFiles(prev => [...prev, file])
@@ -309,6 +364,14 @@ export default function ScanPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Format non supporté', { description: 'Veuillez sélectionner une image.' })
+      e.target.value = ''; return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Fichier trop volumineux', { description: 'Taille maximale : 10 Mo.' })
+      e.target.value = ''; return
+    }
     addImageFile(file)
     // Reset input so the same file can be re-selected
     e.target.value = ''
@@ -354,10 +417,21 @@ export default function ScanPage() {
 
   const handleScan = async () => {
     if (imageFiles.length === 0 || !user) return
+    haptic()
     setStep('parsing')
     setParseMessageIdx(0)
+    setScanProgress(0)
     setError('')
     gamificationAwarded.current = false
+
+    // Fake progress: 0→85% over ~18s, then jumps to 100 when done
+    let progressInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
+      setScanProgress(p => p < 85 ? p + (85 - p) * 0.06 : p)
+    }, 400)
+    const clearProgress = () => {
+      if (progressInterval) { clearInterval(progressInterval); progressInterval = null }
+      setScanProgress(100)
+    }
 
     try {
       // Upload first image to storage for archival (full quality)
@@ -368,8 +442,9 @@ export default function ScanPage() {
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
-      // Compress all images in parallel
-      const compressed = await Promise.all(imageFiles.map(f => compressImage(f, 1600, 0.92)))
+      // Preprocess (contrast/grayscale) then compress all images in parallel
+      const preprocessed = await Promise.all(imageFiles.map(f => preprocessReceiptImage(f)))
+      const compressed = await Promise.all(preprocessed.map(f => compressImage(f, 1600, 0.92)))
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
@@ -387,6 +462,12 @@ export default function ScanPage() {
 
       const parsed: ParsedReceipt = await parseResponse.json()
       setParsedReceipt(parsed)
+
+      // Set low-quality warning if few items or low avg confidence
+      const avgConf = parsed.items.length > 0
+        ? parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
+        : 1
+      setLowQualityWarning(parsed.items.length < 3 || avgConf < 0.5)
 
       const storeChain = normalizeStoreChain(parsed.store_name)
 
@@ -509,6 +590,7 @@ export default function ScanPage() {
         setComparisons(comparisonData.comparisons || [])
         setBestStore(comparisonData.best_store || null)
         if (comparisonData.data_as_of) setDataAsOf(comparisonData.data_as_of)
+        clearProgress()
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
@@ -516,8 +598,11 @@ export default function ScanPage() {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
         if (isNewScan) void awardScanXP(savings, storeChain)
+      } else {
+        clearProgress()
       }
     } catch (err) {
+      clearProgress()
       setError(err instanceof Error ? err.message : 'Une erreur est survenue')
       setStep('upload')
     }
@@ -661,8 +746,15 @@ export default function ScanPage() {
                   {imagePreviews.map((preview, idx) => (
                     <motion.div key={idx}
                       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                      className="relative rounded-2xl overflow-hidden flex items-center gap-3 p-3"
-                      style={{ background: 'rgba(17,17,17,0.04)', border: '1px solid rgba(17,17,17,0.08)' }}>
+                      className="relative rounded-2xl overflow-hidden flex items-center gap-3 p-3 transition-all"
+                      style={{
+                        background: 'rgba(17,17,17,0.04)',
+                        border: imageFlash && idx === imagePreviews.length - 1
+                          ? '1px solid #7ed957'
+                          : '1px solid rgba(17,17,17,0.08)',
+                        boxShadow: imageFlash && idx === imagePreviews.length - 1
+                          ? '0 0 12px rgba(126,217,87,0.25)' : 'none',
+                      }}>
                       <img src={preview} alt={PART_LABELS[idx]} className="w-14 h-14 object-cover rounded-xl flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-graphite">{PART_LABELS[idx]}</p>
@@ -716,9 +808,9 @@ export default function ScanPage() {
               {/* Analyse button — visible once at least 1 photo added */}
               {imagePreviews.length > 0 && (
                 <motion.button
-                  onClick={handleScan}
+                  onClick={() => { haptic(); handleScan() }}
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  className="w-full h-14 rounded-2xl font-bold text-white text-base mb-2"
+                  className="w-full h-14 rounded-2xl font-bold text-white text-base mb-2 overflow-hidden relative"
                   style={{ background: '#111111' }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                   Analyser {imagePreviews.length > 1 ? `les ${imagePreviews.length} photos` : 'ce ticket'}
@@ -808,7 +900,15 @@ export default function ScanPage() {
                 ))}
               </div>
 
-              <p className="text-graphite/35 text-xs">Cela prend généralement 10–20 secondes</p>
+              {/* Progress bar */}
+              <div className="w-48 h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'rgba(17,17,17,0.07)' }}>
+                <motion.div className="h-full rounded-full" style={{ background: '#7ed957' }}
+                  animate={{ width: `${scanProgress}%` }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }} />
+              </div>
+              <p className="text-graphite/35 text-xs">
+                {Math.round(scanProgress)} % · Cela prend généralement 10–20 secondes
+              </p>
             </motion.div>
           )}
 
@@ -854,9 +954,12 @@ export default function ScanPage() {
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: totalSavings > 0 ? '#00D09C' : 'rgba(17,17,17,0.4)' }}>
                     {totalSavings > 0 ? 'Économies possibles' : 'Prix analysés'}
                   </p>
-                  <p className="text-5xl font-extrabold mb-1" style={{ color: totalSavings > 0 ? '#00D09C' : '#111111', fontVariantNumeric: 'tabular-nums' }}>
+                  <motion.p className="text-5xl font-extrabold mb-1"
+                    style={{ color: totalSavings > 0 ? '#00D09C' : '#111111', fontVariantNumeric: 'tabular-nums' }}
+                    animate={totalSavings === 0 && step === 'comparison' ? { x: [0, -5, 5, -5, 5, 0] } : {}}
+                    transition={{ duration: 0.4, delay: 0.5 }}>
                     {totalSavings > 0 ? `${animatedSavings.toFixed(2)} €` : '—'}
-                  </p>
+                  </motion.p>
                   {totalSavings > 0 && (
                     <p className="text-sm mt-1 text-graphite/50">en achetant ailleurs cette semaine</p>
                   )}
@@ -898,6 +1001,18 @@ export default function ScanPage() {
 
               {/* Items */}
               <div className="space-y-2 mb-5">
+                {/* Low-quality photo warning */}
+                {step === 'comparison' && lowQualityWarning && (
+                  <div className="rounded-xl px-4 py-3 mb-2 flex items-start gap-2"
+                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                    <span className="text-amber-500 text-sm flex-shrink-0">📷</span>
+                    <p className="text-xs text-graphite/70 leading-relaxed">
+                      La qualité de la photo semble faible. Essayez de scanner à nouveau avec plus de lumière.{' '}
+                      <button onClick={() => setStep('upload')} className="underline font-semibold">Reprendre</button>
+                    </p>
+                  </div>
+                )}
+
                 {/* No data banner */}
                 {step === 'comparison' && comparisons.length > 0 && comparisons.every(c => c.sample_count === 0) && (
                   <div className="rounded-xl px-4 py-3 mb-2 flex items-start gap-2"
@@ -1054,6 +1169,65 @@ export default function ScanPage() {
                     </div>
                   )
                 })}
+
+                {/* Add missing item */}
+                {step === 'comparison' && (
+                  showAddItem ? (
+                    <div className="rounded-xl px-4 py-3 glass mt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-graphite/40 mb-2">Nouvel article</p>
+                      <input
+                        value={newItem.name}
+                        onChange={e => setNewItem(n => ({ ...n, name: e.target.value }))}
+                        placeholder="Nom de l'article"
+                        className="w-full rounded-lg px-3 py-2 text-sm mb-2 outline-none"
+                        style={{ background: 'rgba(17,17,17,0.05)', border: '1px solid rgba(17,17,17,0.1)' }}
+                      />
+                      <div className="flex gap-2 items-center mb-3">
+                        <input
+                          value={newItem.price}
+                          onChange={e => setNewItem(n => ({ ...n, price: e.target.value }))}
+                          type="number" step="0.01" min="0" placeholder="0.00"
+                          className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
+                          style={{ background: 'rgba(17,17,17,0.05)', border: '1px solid rgba(17,17,17,0.1)' }}
+                        />
+                        <span className="text-xs text-graphite/40">€</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            if (!newItem.name.trim()) return
+                            const price = parseFloat(newItem.price) || 0
+                            setParsedReceipt(r => r ? {
+                              ...r,
+                              items: [...r.items, { name: newItem.name.trim(), price, quantity: 1, is_promo: false, is_private_label: false }],
+                            } : r)
+                            setNewItem({ name: '', price: '' })
+                            setShowAddItem(false)
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                          style={{ background: '#111' }}
+                        >
+                          Ajouter
+                        </button>
+                        <button
+                          onClick={() => setShowAddItem(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold glass"
+                          style={{ color: 'rgba(17,17,17,0.5)' }}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowAddItem(true)}
+                      className="w-full py-2.5 rounded-xl text-xs font-semibold glass flex items-center justify-center gap-1.5 mt-2"
+                      style={{ color: 'rgba(17,17,17,0.45)' }}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Ajouter un article manquant
+                    </button>
+                  )
+                )}
               </div>
 
               {/* Price date disclaimer */}

@@ -332,6 +332,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
         lon:            pin.lon,
         top_items:      JSON.stringify(pin.top_items),
         has_local_data: pin.has_local_data,
+        source:         pin.source ?? null,
         color:          pinColor(pin.price_tier),
         radius:         pin.has_local_data ? Math.min(10 + Math.sqrt(pin.item_count) * 2, 22) : 7,
       },
@@ -371,6 +372,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
         lon:            Number(p.lon),
         top_items:      (() => { try { return JSON.parse(p.top_items || '[]') } catch { return [] } })(),
         has_local_data: p.has_local_data === true || p.has_local_data === 'true',
+        source:         p.source ?? null,
       }
       setSelectedPin(pin)
       // Track in recents
@@ -459,8 +461,8 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
           <Layer id="unclustered-point" type="circle" filter={['!', ['has', 'point_count']]} paint={{
             'circle-color': ['get', 'color'],
             'circle-radius': ['get', 'radius'],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': 'rgba(255,255,255,0.25)',
+            'circle-stroke-width': ['case', ['==', ['get', 'source'], 'user_scan'], 2.5, 2],
+            'circle-stroke-color': ['case', ['==', ['get', 'source'], 'user_scan'], '#F59E0B', 'rgba(255,255,255,0.25)'],
           }} />
         </Source>
 

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import PWASetup from '@/components/PWASetup'
+import ErrorBoundary from '@/components/ErrorBoundary'
+import OfflineBanner from '@/components/OfflineBanner'
 
 const BASE_URL = 'https://basketbeta.com'
 
@@ -72,7 +74,10 @@ export default function RootLayout({
         <meta name="format-detection" content="telephone=no" />
       </head>
       <body style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        {children}
+        <OfflineBanner />
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
         <PWASetup />
         <Toaster />
       </body>

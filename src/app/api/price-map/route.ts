@@ -31,6 +31,7 @@ export interface StorePin {
   city:           string | null
   postcode:       string | null
   has_local_data: boolean
+  source:         string | null
 }
 
 // Hardcoded tiers based on public knowledge — ensures ALL chains get a color
@@ -149,14 +150,14 @@ export async function GET(request: NextRequest) {
   // ── Fetch ALL store_locations — paginated ─────────────────────────────────
   const allStores: Array<{
     chain: string; name: string; latitude: number; longitude: number
-    address: string | null; city: string | null; postcode: string | null
+    address: string | null; city: string | null; postcode: string | null; source: string | null
   }> = []
 
   const PAGE = 1000   // PostgREST default max_rows; requesting >1000 silently caps at 1000
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from('store_locations')
-      .select('chain, name, latitude, longitude, address, city, postcode')
+      .select('chain, name, latitude, longitude, address, city, postcode, source')
       .range(offset, offset + PAGE - 1)
 
     if (error) { console.error('[price-map] store_locations error:', error.message); break }
@@ -238,6 +239,7 @@ export async function GET(request: NextRequest) {
       city:           store.city,
       postcode:       store.postcode,
       has_local_data: hasLocalData,
+      source:         store.source ?? null,
     })
   }
 

@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 import {
   Camera, BarChart2, ShoppingCart, Bell, Map as MapIcon,
   TrendingDown, LogOut, ChevronRight, MapPin, Receipt,
   Flame, Star, Trophy, Crown, Home, Sparkles, ShoppingBag,
-  ArrowRight, Zap,
+  ArrowRight, Zap, RefreshCw, Lightbulb, AlertCircle,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
@@ -15,6 +16,21 @@ import OnboardingFlow from '@/components/OnboardingFlow'
 import Link from 'next/link'
 import { EASE, useCountUp } from '@/lib/hooks'
 
+// ── Spring transition (iOS-like snappiness) ───────────────────────────────────
+const SPRING = { type: 'spring', stiffness: 400, damping: 30 } as const
+
+// ── Tips of the day (rotate by day-of-week) ───────────────────────────────────
+const TIPS = [
+  'Les marques distributeur (MDD) coûtent en moyenne 30 % moins cher que les grandes marques.',
+  'Les prix varient jusqu\'à 40 % entre enseignes pour un même produit.',
+  'Scanner chaque semaine vous aide à suivre les hausses de prix en temps réel.',
+  'Comparer 3 enseignes peut vous faire économiser jusqu\'à 15 € par semaine.',
+  'Les promotions de fin de mois sont souvent les meilleures de l\'année.',
+  'Acheter en grande quantité n\'est pas toujours plus économique — vérifiez le prix au kilo.',
+  'Les produits en fin de DLC font souvent l\'objet de réductions en fin de journée.',
+]
+
+// ── Level system ──────────────────────────────────────────────────────────────
 function getLevel(count: number) {
   if (count >= 100) return { label: 'Champion',    Icon: Crown,    color: '#F59E0B', bg: 'rgba(245,158,11,0.15)',   border: 'rgba(245,158,11,0.3)',   next: Infinity, progress: 100 }
   if (count >= 50)  return { label: 'Expert',      Icon: Trophy,   color: '#EF4444', bg: 'rgba(239,68,68,0.15)',    border: 'rgba(239,68,68,0.3)',    next: 100, progress: (count - 50) / 50 * 100 }
@@ -47,6 +63,36 @@ function computeStreak(rs: { created_at: string }[]) {
   return streak
 }
 
+function formatLastUpdated(d: Date): string {
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000)
+  if (mins < 1) return 'il y a quelques secondes'
+  if (mins === 1) return 'il y a 1 min'
+  if (mins < 60) return `il y a ${mins} min`
+  const hrs = Math.floor(mins / 60)
+  return `il y a ${hrs} h`
+}
+
+// ── Skeleton shimmer row ──────────────────────────────────────────────────────
+function SkeletonRow({ delay = 0 }: { delay?: number }) {
+  return (
+    <div className="flex items-center gap-4 px-5 py-3.5"
+      style={{ borderBottom: '1px solid rgba(17,17,17,0.05)' }}>
+      <div className="w-9 h-9 rounded-xl flex-shrink-0 animate-pulse"
+        style={{ background: 'rgba(17,17,17,0.07)' }} />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 rounded-full animate-pulse"
+          style={{ background: 'rgba(17,17,17,0.07)', width: `${45 + (delay * 37) % 30}%` }} />
+        <div className="h-2.5 rounded-full animate-pulse"
+          style={{ background: 'rgba(17,17,17,0.05)', width: `${25 + (delay * 19) % 15}%` }} />
+      </div>
+      <div className="flex flex-col items-end gap-1.5">
+        <div className="h-3 w-12 rounded-full animate-pulse" style={{ background: 'rgba(17,17,17,0.07)' }} />
+        <div className="h-2.5 w-9 rounded-full animate-pulse" style={{ background: 'rgba(17,17,17,0.05)' }} />
+      </div>
+    </div>
+  )
+}
+
 interface RecentReceipt {
   id: string; store_name: string | null; total_amount: number | null
   receipt_date: string | null; created_at: string; savings_amount: number | null
@@ -73,17 +119,24 @@ export default function DashboardPage() {
   const [unreadCount,    setUnreadCount]    = useState(0)
   const [areaInsight,    setAreaInsight]    = useState<AreaInsight | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [loading,        setLoading]        = useState(true)
+  const [refreshing,     setRefreshing]     = useState(false)
+  const [loadError,      setLoadError]      = useState(false)
+  const [lastUpdated,    setLastUpdated]    = useState<Date | null>(null)
+  const [lastUpdatedStr, setLastUpdatedStr] = useState('')
 
   const savingsVal = useCountUp(totalSavings)
   const spentVal   = useCountUp(totalSpent)
   const monthVal   = useCountUp(monthSpent)
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
-      setUser(user)
+  // Pull-to-refresh
+  const touchStartY = useRef(0)
+  const pulling = useRef(false)
 
+  const todayTip = TIPS[new Date().getDay() % TIPS.length]
+
+  const fetchData = useCallback(async (currentUser: User) => {
+    try {
       const [
         { data: receipts, error: receiptsErr },
         { count: rCount },
@@ -93,19 +146,19 @@ export default function DashboardPage() {
       ] = await Promise.all([
         supabase.from('receipts')
           .select('id, store_name, total_amount, receipt_date, created_at, savings_amount')
-          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
-        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+          .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10),
+        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id).eq('read', false),
-        supabase.from('profiles').select('postcode, onboarded, total_savings').eq('id', user.id).single(),
+          .eq('user_id', currentUser.id).eq('read', false),
+        supabase.from('profiles').select('postcode, onboarded, total_savings').eq('id', currentUser.id).single(),
         supabase.from('receipts')
-          .select('created_at, total_amount, receipt_date').eq('user_id', user.id),
+          .select('created_at, total_amount, receipt_date').eq('user_id', currentUser.id),
       ])
 
       if (receiptsErr) {
         const { data: fb } = await supabase.from('receipts')
           .select('id, store_name, total_amount, receipt_date, created_at')
-          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(10)
+          .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10)
         if (fb) setRecentReceipts(fb as RecentReceipt[])
       } else if (receipts) {
         setRecentReceipts(receipts)
@@ -114,8 +167,6 @@ export default function DashboardPage() {
       if (rCount)  setReceiptsCount(rCount)
       if (unread)  setUnreadCount(unread)
       if (!profile?.onboarded) setShowOnboarding(true)
-
-      // total_savings comes from the profile (maintained by the award system)
       if (profile?.total_savings) setTotalSavings(Number(profile.total_savings))
 
       if (all) {
@@ -132,44 +183,116 @@ export default function DashboardPage() {
       const pc = profile?.postcode
       if (pc && pc.length >= 2) {
         const dept = pc.slice(0, 2)
-        const { data: pd } = await supabase.from('price_items')
-          .select('store_chain, unit_price').like('postcode', `${dept}%`)
-          .not('store_chain', 'is', null).limit(500)
-        if (pd && pd.length > 0) {
-          const cm = new Map<string, number[]>()
-          for (const row of pd) {
-            if (!row.store_chain) continue
-            if (!cm.has(row.store_chain)) cm.set(row.store_chain, [])
-            cm.get(row.store_chain)!.push(row.unit_price)
+        try {
+          const { data: pd } = await supabase.from('price_items')
+            .select('store_chain, unit_price').like('postcode', `${dept}%`)
+            .not('store_chain', 'is', null).limit(500)
+          if (pd && pd.length > 0) {
+            const cm = new Map<string, number[]>()
+            for (const row of pd) {
+              if (!row.store_chain) continue
+              if (!cm.has(row.store_chain)) cm.set(row.store_chain, [])
+              cm.get(row.store_chain)!.push(row.unit_price)
+            }
+            let best = '', bestAvg = Infinity
+            for (const [chain, prices] of cm.entries()) {
+              if (prices.length < 3) continue
+              const avg = prices.reduce((s, p) => s + p, 0) / prices.length
+              if (avg < bestAvg) { bestAvg = avg; best = chain }
+            }
+            if (best) setAreaInsight({ cheapestChain: best, postcode: pc })
           }
-          let best = '', bestAvg = Infinity
-          for (const [chain, prices] of cm.entries()) {
-            if (prices.length < 3) continue
-            const avg = prices.reduce((s, p) => s + p, 0) / prices.length
-            if (avg < bestAvg) { bestAvg = avg; best = chain }
-          }
-          if (best) setAreaInsight({ cheapestChain: best, postcode: pc })
-        }
+        } catch { /* non-critical */ }
       }
 
+      setLoadError(false)
+      setLastUpdated(new Date())
+    } catch {
+      setLoadError(true)
+      toast.error('Erreur de chargement', {
+        description: 'Impossible de charger vos données.',
+        action: { label: 'Réessayer', onClick: () => fetchData(currentUser) },
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { window.location.href = '/login'; return }
+        setUser(user)
+        await fetchData(user)
+      } catch {
+        toast.error('Erreur de connexion', { description: 'Veuillez vous reconnecter.' })
+      } finally {
+        setLoading(false)
+      }
     }
     init()
-  }, [])
+  }, [fetchData])
+
+  // Update "last updated" string every 30s
+  useEffect(() => {
+    if (!lastUpdated) return
+    setLastUpdatedStr(formatLastUpdated(lastUpdated))
+    const interval = setInterval(() => setLastUpdatedStr(formatLastUpdated(lastUpdated)), 30000)
+    return () => clearInterval(interval)
+  }, [lastUpdated])
+
+  // Pull-to-refresh
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      pulling.current = window.scrollY === 0
+    }
+    const handleTouchEnd = async (e: TouchEvent) => {
+      if (!pulling.current || !user) return
+      const delta = e.changedTouches[0].clientY - touchStartY.current
+      if (delta > 70) {
+        setRefreshing(true)
+        await fetchData(user)
+        setRefreshing(false)
+      }
+      pulling.current = false
+    }
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [user, fetchData])
 
   const level       = getLevel(receiptsCount)
   const nextLabel   = NEXT_LEVEL[level.label]
   const savingsRate = totalSpent > 0 ? (totalSavings / (totalSpent + totalSavings) * 100) : 0
   const username    = user?.email?.split('@')[0] ?? ''
 
-  // No blocking spinner — render immediately with skeleton content
-
   return (
     <>
       {showOnboarding && <OnboardingFlow />}
 
+      {/* Pull-to-refresh spinner */}
+      <AnimatePresence>
+        {refreshing && (
+          <motion.div
+            initial={{ opacity: 0, y: -40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -40 }}
+            transition={SPRING}
+            className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 pointer-events-none"
+            style={{ zIndex: 100 }}>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold"
+              style={{ background: '#7ed957', color: '#111' }}>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              Actualisation…
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="min-h-[100dvh] bg-paper text-graphite flex">
 
-        {/* Desktop sidebar */}
+        {/* ── Desktop sidebar ────────────────────────────────────────────────── */}
         <aside className="hidden md:flex flex-col w-64 flex-shrink-0 h-screen sticky top-0"
           style={{ background: '#111', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="px-6 py-5 flex items-center gap-3"
@@ -178,15 +301,29 @@ export default function DashboardPage() {
             <span className="font-extrabold text-white text-lg tracking-tight">Basket</span>
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
-            {NAV.map((item) => (
-              <Link key={item.id} href={item.href}
-                className="flex items-center gap-3 px-3 py-3 rounded-xl transition-all"
-                style={item.fab ? { background: '#7ed957', color: '#111' } : { color: 'rgba(255,255,255,0.4)' }}>
-                <item.Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="text-sm font-semibold">{item.label}</span>
-                {item.fab && <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-70" />}
-              </Link>
-            ))}
+            {NAV.map((item) => {
+              const isActive = item.id === 'home'
+              return (
+                <motion.div key={item.id} whileHover={{ x: 2 }} transition={SPRING}>
+                  <Link href={item.href}
+                    className="flex items-center gap-3 px-3 py-3 rounded-xl transition-colors"
+                    style={
+                      item.fab
+                        ? { background: '#7ed957', color: '#111' }
+                        : isActive
+                          ? { background: 'rgba(126,217,87,0.12)', color: '#7ed957' }
+                          : { color: 'rgba(255,255,255,0.4)' }
+                    }>
+                    <item.Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm font-semibold">{item.label}</span>
+                    {item.fab && <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-70" />}
+                    {isActive && !item.fab && (
+                      <div className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#7ed957' }} />
+                    )}
+                  </Link>
+                </motion.div>
+              )
+            })}
           </nav>
           <div className="mx-3 mb-3 rounded-2xl p-4"
             style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${level.border}` }}>
@@ -215,15 +352,16 @@ export default function DashboardPage() {
               <p className="text-xs font-semibold text-white truncate">{username}</p>
               <p className="text-[10px] text-white/35 truncate">{user?.email}</p>
             </div>
-            <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/' }}
+            <motion.button whileTap={{ scale: 0.9 }} transition={SPRING}
+              onClick={async () => { await supabase.auth.signOut(); window.location.href = '/' }}
               className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'rgba(255,255,255,0.07)' }}>
               <LogOut className="w-3.5 h-3.5 text-white/40" />
-            </button>
+            </motion.button>
           </div>
         </aside>
 
-        {/* Main content */}
+        {/* ── Main content ──────────────────────────────────────────────────── */}
         <main className="flex-1 min-w-0 pb-28 md:pb-12">
           {/* Mobile header */}
           <div className="md:hidden flex items-center justify-between px-5 pt-14 pb-4">
@@ -242,17 +380,33 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="max-w-2xl mx-auto px-4 md:px-8 md:pt-8 space-y-4">
+          <div className="max-w-[800px] mx-auto px-4 md:px-10 md:pt-8 space-y-4">
 
-            {/* Hero */}
+            {/* ── Error banner ────────────────────────────────────────────── */}
+            <AnimatePresence>
+              {loadError && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  transition={SPRING}
+                  className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <p className="text-sm text-red-400 flex-1">Erreur de chargement des données.</p>
+                  <button onClick={() => user && fetchData(user)}
+                    className="text-xs font-bold text-red-400 underline">Réessayer</button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── Hero card ────────────────────────────────────────────────── */}
             <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: EASE }}
-              className="relative overflow-hidden rounded-3xl p-6 md:p-8"
+              whileTap={{ scale: 0.98 }}
+              className="relative overflow-hidden rounded-3xl p-6 md:p-8 cursor-default"
               style={{ background: '#111' }}>
               <div className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.10) 0%, transparent 70%)' }} />
+                style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.12) 0%, transparent 70%)' }} />
               <div className="absolute top-0 left-0 right-0 h-px"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(126,217,87,0.3), transparent)' }} />
+                style={{ background: 'linear-gradient(90deg, transparent, rgba(126,217,87,0.4), transparent)' }} />
 
               <div className="flex items-center justify-between mb-6">
                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
@@ -273,18 +427,27 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <p className="text-sm font-medium mb-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="text-sm font-medium mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
                 Bonjour, {username} 👋
               </p>
-              <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, ease: EASE }}
-                className="font-extrabold mb-1 leading-none"
-                style={{ fontSize: 'clamp(2.5rem,6vw,3.5rem)', color: '#7ed957', fontVariantNumeric: 'tabular-nums' }}>
-                €{savingsVal.toFixed(2)}
-              </motion.p>
-              <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                économisés · €{spentVal.toFixed(2)} dépensés au total
-              </p>
+
+              {/* Prominent savings number */}
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, ease: EASE }}>
+                <p className="font-black leading-none mb-1"
+                  style={{
+                    fontSize: 'clamp(3rem,8vw,4.5rem)',
+                    color: '#7ed957',
+                    fontVariantNumeric: 'tabular-nums',
+                    textShadow: '0 0 40px rgba(126,217,87,0.35)',
+                    letterSpacing: '-0.02em',
+                  }}>
+                  €{savingsVal.toFixed(2)}
+                </p>
+                <p className="text-sm mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                  économisés · <span style={{ color: 'rgba(255,255,255,0.25)' }}>€{spentVal.toFixed(2)} dépensés</span>
+                </p>
+              </motion.div>
 
               {savingsRate > 0 && (
                 <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
@@ -293,20 +456,20 @@ export default function DashboardPage() {
                   style={{ background: 'rgba(0,208,156,0.12)', border: '1px solid rgba(0,208,156,0.2)' }}>
                   <TrendingDown className="w-3 h-3" style={{ color: '#00D09C' }} />
                   <span className="text-xs font-bold" style={{ color: '#00D09C' }}>
-                    Taux d'économie : {savingsRate.toFixed(1)}%
+                    Taux d'économie : {savingsRate.toFixed(1)} %
                   </span>
                 </motion.span>
               )}
 
               {level.next !== Infinity && (
-                <div>
+                <div className={savingsRate > 0 ? '' : 'mt-4'}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider"
                       style={{ color: 'rgba(255,255,255,0.2)' }}>
                       {level.next - receiptsCount} ticket{level.next - receiptsCount !== 1 ? 's' : ''} vers {nextLabel}
                     </span>
                     <span className="text-[10px] font-bold" style={{ color: level.color }}>
-                      {Math.round(level.progress)}%
+                      {Math.round(level.progress)} %
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
@@ -316,18 +479,33 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+
+              {/* Last updated timestamp (desktop) */}
+              {lastUpdatedStr && (
+                <p className="hidden md:block text-[10px] mt-4" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                  Dernière mise à jour : {lastUpdatedStr}
+                </p>
+              )}
             </motion.div>
 
-            {/* Quick stats */}
+            {/* Last updated (mobile, below hero) */}
+            {lastUpdatedStr && (
+              <p className="md:hidden text-[10px] text-center" style={{ color: 'rgba(17,17,17,0.3)' }}>
+                Mise à jour {lastUpdatedStr}
+              </p>
+            )}
+
+            {/* ── Quick stats ──────────────────────────────────────────────── */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Tickets',   val: receiptsCount,  unit: '',  Icon: Receipt,      color: '#7ed957' },
-                { label: 'Ce mois',   val: monthVal,       unit: '€', Icon: ShoppingBag,  color: '#fff' },
-                { label: 'Économisé', val: savingsVal,     unit: '€', Icon: TrendingDown, color: '#00D09C' },
+                { label: 'Tickets',   val: receiptsCount, unit: '',  Icon: Receipt,      color: '#7ed957' },
+                { label: 'Ce mois',   val: monthVal,      unit: '€', Icon: ShoppingBag,  color: '#fff' },
+                { label: 'Économisé', val: savingsVal,    unit: '€', Icon: TrendingDown, color: '#00D09C' },
               ].map((s, i) => (
                 <motion.div key={s.label}
                   initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.18 + i * 0.07, ease: EASE }}
+                  whileTap={{ scale: 0.97 }}
                   className="rounded-2xl p-3 md:p-4"
                   style={{ background: '#1A1A1A', borderLeft: `3px solid ${s.color}` }}>
                   <s.Icon className="w-3.5 h-3.5 mb-2" style={{ color: s.color, opacity: 0.5 }} />
@@ -341,7 +519,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Recent receipts */}
+            {/* ── Recent receipts ──────────────────────────────────────────── */}
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35, ease: EASE }}
               className="rounded-3xl overflow-hidden bg-white"
@@ -365,7 +543,14 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              {recentReceipts.length === 0 ? (
+              {/* Loading skeleton */}
+              {loading ? (
+                <>
+                  <SkeletonRow delay={0} />
+                  <SkeletonRow delay={1} />
+                  <SkeletonRow delay={2} />
+                </>
+              ) : recentReceipts.length === 0 ? (
                 <div className="py-14 flex flex-col items-center text-center px-8">
                   <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4"
                     style={{ background: 'rgba(126,217,87,0.08)', border: '1px solid rgba(126,217,87,0.15)' }}>
@@ -375,11 +560,18 @@ export default function DashboardPage() {
                   <p className="text-sm text-graphite/40 mb-5 max-w-xs">
                     Scannez votre premier ticket et découvrez combien vous économisez réellement.
                   </p>
-                  <Link href="/scan"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white"
-                    style={{ background: '#111', textDecoration: 'none' }}>
-                    <Camera className="w-4 h-4" /> Scanner maintenant
-                  </Link>
+                  {/* Pulsing CTA for empty state */}
+                  <motion.div
+                    animate={{ scale: [1, 1.04, 1] }}
+                    transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}>
+                    <motion.div whileTap={{ scale: 0.95 }} transition={SPRING}>
+                      <Link href="/scan"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white"
+                        style={{ background: '#111', textDecoration: 'none' }}>
+                        <Camera className="w-4 h-4" /> Scanner maintenant
+                      </Link>
+                    </motion.div>
+                  </motion.div>
                 </div>
               ) : (
                 <AnimatePresence>
@@ -391,9 +583,10 @@ export default function DashboardPage() {
                     return (
                       <motion.div key={r.id}
                         initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.4 + i * 0.04, ease: EASE }}>
+                        transition={{ delay: 0.4 + i * 0.04, ease: EASE }}
+                        whileTap={{ scale: 0.98, backgroundColor: 'rgba(0,0,0,0.02)' }}>
                         <Link href={`/receipt/${r.id}`}
-                          className="flex items-center gap-4 px-5 py-3.5 hover:bg-black/[0.02] active:bg-black/[0.04] transition-colors"
+                          className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-black/[0.02]"
                           style={{
                             borderBottom: i < recentReceipts.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none',
                             textDecoration: 'none', display: 'flex',
@@ -427,10 +620,11 @@ export default function DashboardPage() {
               )}
             </motion.div>
 
-            {/* Area insight */}
+            {/* ── Area insight ─────────────────────────────────────────────── */}
             {areaInsight && (
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, ease: EASE }}
+                whileTap={{ scale: 0.98 }}
                 className="rounded-2xl p-4 flex items-center gap-4"
                 style={{ background: 'rgba(126,217,87,0.06)', border: '1px solid rgba(126,217,87,0.18)', borderLeft: '3px solid #7ed957' }}>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -452,42 +646,64 @@ export default function DashboardPage() {
               </motion.div>
             )}
 
-            {/* Quick actions */}
+            {/* ── Quick actions ─────────────────────────────────────────────── */}
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.55, ease: EASE }}
               className="grid grid-cols-2 gap-3">
-              <Link href="/bilan"
-                className="rounded-2xl p-5 flex flex-col gap-3 hover:opacity-90 active:scale-[0.98] transition-all"
-                style={{ background: '#111', textDecoration: 'none' }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(126,217,87,0.15)' }}>
-                  <BarChart2 className="w-5 h-5" style={{ color: '#7ed957' }} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-white">Mon bilan</p>
-                  <p className="text-xs text-white/40 mt-0.5">Semaine en cours</p>
-                </div>
-              </Link>
-              <Link href="/liste"
-                className="rounded-2xl p-5 flex flex-col gap-3 glass hover:bg-black/[0.03] active:scale-[0.98] transition-all"
-                style={{ textDecoration: 'none' }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(17,17,17,0.07)' }}>
-                  <ShoppingCart className="w-5 h-5 text-graphite/60" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-graphite">Ma liste</p>
-                  <p className="text-xs text-graphite/40 mt-0.5">Meilleur magasin</p>
-                </div>
-              </Link>
+              <motion.div whileTap={{ scale: 0.97 }} transition={SPRING}>
+                <Link href="/bilan"
+                  className="rounded-2xl p-5 flex flex-col gap-3 hover:opacity-90 transition-all block"
+                  style={{ background: '#111', textDecoration: 'none' }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: 'rgba(126,217,87,0.15)' }}>
+                    <BarChart2 className="w-5 h-5" style={{ color: '#7ed957' }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Mon bilan</p>
+                    <p className="text-xs text-white/40 mt-0.5">Mois en cours</p>
+                  </div>
+                </Link>
+              </motion.div>
+              <motion.div whileTap={{ scale: 0.97 }} transition={SPRING}>
+                <Link href="/liste"
+                  className="rounded-2xl p-5 flex flex-col gap-3 glass hover:bg-black/[0.03] transition-all block"
+                  style={{ textDecoration: 'none' }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: 'rgba(17,17,17,0.07)' }}>
+                    <ShoppingCart className="w-5 h-5 text-graphite/60" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-graphite">Ma liste</p>
+                    <p className="text-xs text-graphite/40 mt-0.5">Meilleur magasin</p>
+                  </div>
+                </Link>
+              </motion.div>
             </motion.div>
 
-            {/* Scan CTA */}
+            {/* ── Astuce du jour ────────────────────────────────────────────── */}
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.58, ease: EASE }}
+              whileTap={{ scale: 0.98 }}
+              className="rounded-2xl p-4 flex items-start gap-3"
+              style={{ background: 'rgba(126,217,87,0.05)', border: '1px solid rgba(126,217,87,0.14)' }}>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: 'rgba(126,217,87,0.12)' }}>
+                <Lightbulb className="w-4 h-4" style={{ color: '#7ed957' }} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                  style={{ color: '#7ed957' }}>Astuce du jour</p>
+                <p className="text-sm text-graphite/70 leading-relaxed">{todayTip}</p>
+              </div>
+            </motion.div>
+
+            {/* ── Scan CTA ──────────────────────────────────────────────────── */}
             {receiptsCount < 5 && (
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.62, ease: EASE }}>
+                transition={{ delay: 0.62, ease: EASE }}
+                whileTap={{ scale: 0.97 }} style={{ cursor: 'pointer' }}>
                 <Link href="/scan"
-                  className="flex items-center gap-4 rounded-2xl p-5 hover:opacity-90 active:scale-[0.99] transition-all"
+                  className="flex items-center gap-4 rounded-2xl p-5 hover:opacity-90 transition-all"
                   style={{ background: '#111', textDecoration: 'none' }}>
                   <div className="relative w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: 'rgba(126,217,87,0.15)' }}>

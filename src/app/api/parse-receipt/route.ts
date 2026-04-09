@@ -188,7 +188,8 @@ Format attendu :
 async function callClaude(
   apiKey: string,
   images: Array<{ base64: string; mediaType: string }>,
-  prompt: string
+  prompt: string,
+  model = 'claude-sonnet-4-20250514'
 ): Promise<string> {
   const isMultiPart = images.length > 1
   const multiPartPrefix = isMultiPart
@@ -208,7 +209,7 @@ async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: 4096,
       messages: [
         {
@@ -229,6 +230,21 @@ async function callClaude(
 
   const data = await response.json()
   return data.content?.[0]?.text ?? ''
+}
+
+// ── Build Haiku verification prompt ──────────────────────────────────────────
+function buildVerifyPrompt(pass1: ParsedReceipt): string {
+  return `Voici les résultats d'une première analyse d'un ticket de caisse :
+
+${JSON.stringify({ store: pass1.store_name, items: pass1.items, total: pass1.total }, null, 2)}
+
+Vérifie les points suivants sur l'image et corrige si nécessaire :
+1. Les noms des articles sont-ils lisibles et corrects ?
+2. Les prix correspondent-ils à ce qui est visible sur le ticket ?
+3. Manque-t-il des articles ?
+4. Y a-t-il des lignes en trop (TVA, sous-total, mode de paiement) ?
+
+Réponds UNIQUEMENT avec du JSON valide dans le même format que ci-dessus (clés : store, items, total).`
 }
 
 // ── Normalise raw Claude output ───────────────────────────────────────────────
@@ -336,6 +352,17 @@ export async function POST(request: NextRequest) {
             .join('\n')}`
         : ''
 
+    // ── Pre-fetch OCR corrections (defensive — table may not exist yet) ──────
+    let corrections: { original_text: string; corrected_text: string }[] = []
+    try {
+      const { data: corrData } = await supabase
+        .from('ocr_corrections')
+        .select('original_text, corrected_text')
+        .gte('correction_count', 3)
+        .limit(200)
+      corrections = corrData ?? []
+    } catch { /* table doesn't exist yet — skip */ }
+
     // ── First parse attempt ───────────────────────────────────────────────
     let textContent = await callClaude(apiKey, images, buildPrompt(formatHintsSection + priceAnchorsSection, false))
 
@@ -374,11 +401,62 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Pass 2: Haiku verification for low-confidence results ─────────────
+    // Triggered when: fewer than 3 items, total mismatch >15%, or avg confidence <0.5.
+    // Uses an 8-second timeout so it never blocks the response if Haiku is slow.
+    {
+      const avgConf = parsed.items.length > 0
+        ? parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
+        : 0
+      const itemsTotal = parsed.items.reduce((s, i) => s + i.price * i.quantity, 0)
+      const totalMismatch = parsed.total > 0 ? Math.abs(itemsTotal - parsed.total) / parsed.total : 0
+      const needsVerify = parsed.items.length < 3 || totalMismatch > 0.15 || avgConf < 0.5
+
+      if (needsVerify) {
+        console.log('[parse-receipt] Low-quality result — verifying with Haiku')
+        try {
+          const verifyText = await Promise.race([
+            callClaude(apiKey, images, buildVerifyPrompt(parsed), 'claude-haiku-4-5-20251001'),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 8000)
+            ),
+          ])
+          const verifyCleaned = verifyText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+          // Haiku returns { store, items, total } — remap to ParsedReceipt shape
+          const verifyRaw = JSON.parse(verifyCleaned)
+          const verifyParsed: ParsedReceipt = {
+            store_name: verifyRaw.store ?? parsed.store_name,
+            items: Array.isArray(verifyRaw.items) ? verifyRaw.items : parsed.items,
+            total: Number(verifyRaw.total) || parsed.total,
+          }
+          verifyParsed.items = normaliseItems(verifyParsed.items)
+          if (verifyParsed.items.length >= parsed.items.length) {
+            verifyParsed.total = verifyParsed.total || verifyParsed.items.reduce(
+              (s, i) => s + i.price * i.quantity, 0
+            )
+            parsed = verifyParsed
+          }
+        } catch {
+          // Timeout or parse error — keep Pass 1 result
+        }
+      }
+    }
+
     // ── Post-parse intelligence ───────────────────────────────────────────
     // 1. Normalize store chain name using our OSM chain map
     parsed.store_name = normalizeStoreChain(parsed.store_name)
 
-    // 2. Validate/correct item prices against community_prices data
+    // 2. Apply learned OCR corrections (items corrected ≥3 times by users)
+    if (corrections.length > 0) {
+      parsed.items = parsed.items.map(item => {
+        const match = corrections.find(
+          c => c.original_text.toLowerCase() === item.name.toLowerCase()
+        )
+        return match ? { ...item, name: match.corrected_text } : item
+      })
+    }
+
+    // 3. Validate/correct item prices against community_prices data
     parsed.items = await validateItemPrices(parsed.items, supabase)
 
     // Recompute total after any price corrections
@@ -387,24 +465,41 @@ export async function POST(request: NextRequest) {
       parsed.total = correctedTotal
     }
 
-    // 3. Find nearest matching store for accurate location data
+    // 4. Find nearest matching store for accurate location data
     const storeLocation = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
 
-    // 4. If no existing store found but user shared their GPS coords, add the scanned
+    // 5. If no existing store found but user shared their GPS coords, add the scanned
     //    location to store_locations so it appears on the map for all users.
     if (!storeLocation.lat && callerLat && callerLon && parsed.store_name) {
       const pseudoId = `basket_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${callerLat.toFixed(3)}_${callerLon.toFixed(3)}`
+
+      // Try Nominatim reverse geocode for a proper address (non-critical)
+      let resolvedAddress: string | null = null
+      try {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${callerLat}&lon=${callerLon}&format=json`,
+          { headers: { 'User-Agent': 'basket-app/1.0' } }
+        )
+        if (nomRes.ok) {
+          const nom = await nomRes.json()
+          resolvedAddress = nom.display_name ?? null
+        }
+      } catch { /* non-critical */ }
+
       await supabase.from('store_locations').upsert({
         osm_id:    pseudoId,
         chain:     parsed.store_name,
         name:      parsed.store_name,
         latitude:  callerLat,
         longitude: callerLon,
-        address:   null,
+        address:   resolvedAddress,
         source:    'user_scan',
-      }, { onConflict: 'osm_id', ignoreDuplicates: true })
+        accuracy:  'user_gps',
+        scan_count: 1,
+      }, { onConflict: 'osm_id', ignoreDuplicates: false })
       storeLocation.lat = callerLat
       storeLocation.lon = callerLon
+      if (resolvedAddress) storeLocation.address = resolvedAddress
     }
 
     return NextResponse.json({

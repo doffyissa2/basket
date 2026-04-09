@@ -41,6 +41,28 @@ export async function POST(request: NextRequest) {
       console.warn('[correct-item] insert error (non-critical):', error.message)
     }
 
+    // ── Also persist to ocr_corrections for future auto-apply ────────────────
+    // Only when the name actually changed; count increments on repeated corrections.
+    if (corrected_name && corrected_name !== original_name) {
+      try {
+        const { data: receiptRow } = await supabase
+          .from('receipts')
+          .select('store_name')
+          .eq('id', receipt_id)
+          .single()
+        const storeChain = receiptRow?.store_name ?? null
+
+        await supabase.from('ocr_corrections').upsert({
+          original_text: String(original_name).trim().slice(0, 500),
+          corrected_text: String(corrected_name).trim().slice(0, 500),
+          store_chain: storeChain,
+          correction_count: 1,
+        }, { onConflict: 'original_text,store_chain', ignoreDuplicates: false })
+      } catch {
+        // Table may not exist yet — non-critical
+      }
+    }
+
     return NextResponse.json({ logged: true })
   } catch (err) {
     console.error('[correct-item] error:', err)

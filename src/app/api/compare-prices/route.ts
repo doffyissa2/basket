@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { extractWeight, computeNormalizedPrice, tokenize } from '@/lib/normalize'
+import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
@@ -33,6 +33,7 @@ interface ComparisonResult {
   avg_normalized_price: string | null
   is_local: boolean
   sample_count: number
+  no_data: boolean
   trend: PriceTrendRow[]
 }
 
@@ -57,24 +58,15 @@ export async function POST(request: NextRequest) {
     const supabase = getServiceClient()
     const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
-    // Fetch candidate names once (shared across all item matches)
-    const { data: candidates } = await supabase
-      .from('product_price_stats')
-      .select('item_name_normalised')
-      .limit(3000)
-    const candidateNames = [
-      ...new Set((candidates ?? []).map((c: { item_name_normalised: string }) => c.item_name_normalised)),
-    ] as string[]
-
     // ── Match cache: item_key → matched_name (avoid duplicate RPC calls) ────
     const matchCache = new Map<string, string | null>()
 
     // ── Helper: match a single item name to canonical product name ───────────
+    // Uses pg_trgm-powered match_product RPC which searches the entire product table.
     async function resolveMatch(rawName: string): Promise<string | null> {
       const key = rawName.toLowerCase().trim()
       if (matchCache.has(key)) return matchCache.get(key)!
 
-      // Step 1: Try DB-native RPC fuzzy match (pg_trgm powered)
       const { data: rpcResult, error: rpcError } = await supabase.rpc('match_product', {
         search_name: key,
       })
@@ -82,69 +74,6 @@ export async function POST(request: NextRequest) {
         const matched = rpcResult[0].matched_name as string
         matchCache.set(key, matched)
         return matched
-      }
-
-      // Step 2: Word-overlap fallback (fast, no API call)
-      // tokenize() strips stopwords and accents, so "Cristaline 1,5L" → ["cristaline","1","5l"]
-      const queryTokens = tokenize(key)
-      if (queryTokens.length > 0 && candidateNames.length > 0) {
-        let bestKey: string | null = null
-        let bestScore = 0
-        for (const candidate of candidateNames) {
-          const candidateTokens = tokenize(candidate)
-          const overlap = queryTokens.filter((t) => candidateTokens.includes(t)).length
-          const score = overlap / Math.max(queryTokens.length, candidateTokens.length)
-          if (score > bestScore && score >= 0.38) {
-            bestScore = score
-            bestKey = candidate
-          }
-        }
-        if (bestKey) {
-          matchCache.set(key, bestKey)
-          return bestKey
-        }
-      }
-
-      // Step 3: Claude Haiku fallback — only if word-overlap fails
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      if (!apiKey || candidateNames.length === 0) {
-        matchCache.set(key, null)
-        return null
-      }
-
-      try {
-        const matchResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 256,
-            messages: [
-              {
-                role: 'user',
-                content: `Quel nom de produit dans la liste correspond le mieux à "${rawName}" ?
-Réponds avec le nom EXACT de la liste, ou "null" si aucun ne correspond vraiment.
-
-Liste :
-${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
-              },
-            ],
-          }),
-        })
-
-        if (matchResponse.ok) {
-          const matchData = await matchResponse.json()
-          const answer = (matchData.content?.[0]?.text ?? '').trim()
-          const resolved = answer === 'null' || answer === '' ? null : answer
-          matchCache.set(key, resolved)
-          return resolved
-        }
-      } catch (e) {
-        console.error('[compare-prices] Claude fallback error:', e)
       }
 
       matchCache.set(key, null)
@@ -216,6 +145,7 @@ ${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
             avg_normalized_price: null,
             is_local: false,
             sample_count: 0,
+            no_data: true,
             trend: [],
           }
         }
@@ -244,6 +174,7 @@ ${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
             avg_normalized_price: null,
             is_local: false,
             sample_count: 0,
+            no_data: true,
             trend,
           }
         }
@@ -294,6 +225,7 @@ ${candidateNames.slice(0, 80).map((p) => `- ${p}`).join('\n')}`,
           avg_normalized_price: isSane ? avgNormalized?.label ?? null : null,
           is_local: useLocal,
           sample_count: totalSampleCount,
+          no_data: false,
           trend,
         }
       })
