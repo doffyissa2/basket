@@ -14,7 +14,7 @@ import type { StorePin } from '@/app/api/price-map/route'
 function pinColor(tier: StorePin['price_tier']): string {
   if (tier === 'cheap') return '#7ed957'
   if (tier === 'mid') return '#F59E0B'
-  return '#EF4444'
+  return '#9CA3AF'
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -25,7 +25,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-const TIER_LABELS: Record<string, string> = { cheap: 'Moins cher', mid: 'Moyen', expensive: 'Cher' }
+const TIER_LABELS: Record<string, string> = { cheap: 'Données locales', mid: 'Données nationales', expensive: 'Peu de données' }
 const MAX_RECENTS = 8
 const MAX_SAVED   = 50
 
@@ -116,7 +116,7 @@ function StoreSheet({
           </button>
         </div>
 
-        {/* Price badge */}
+        {/* Data quality badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
@@ -124,26 +124,15 @@ function StoreSheet({
           }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: pinColor(pin.price_tier) }} />
             <span style={{ color: '#9CA3AF', fontSize: 12 }}>
-              {pin.has_local_data ? 'Prix local moyen' : 'Prix national moyen'}
-            </span>
-            <span style={{ fontWeight: 800, fontSize: 15, color: pinColor(pin.price_tier) }}>
-              {pin.avg_price != null ? `${pin.avg_price.toFixed(2)} €` : '—'}
-            </span>
-            <span style={{
-              fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 99,
-              background: pin.price_tier === 'cheap' ? 'rgba(126,217,87,0.15)'
-                : pin.price_tier === 'mid' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-              color: pinColor(pin.price_tier), textTransform: 'uppercase',
-            }}>
               {TIER_LABELS[pin.price_tier]}
             </span>
+            {pin.item_count > 0 && (
+              <span style={{ color: '#6B7280', fontSize: 11 }}>
+                · {pin.item_count} article{pin.item_count > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
         </div>
-
-        {/* Price date note */}
-        <p style={{ fontFamily: 'monospace', fontSize: 10, color: '#4B5563', marginBottom: 10 }}>
-          Prix à titre indicatif · Données Basket, mises à jour régulièrement · Peuvent varier en magasin.
-        </p>
 
         {/* Top items */}
         {pin.top_items.length > 0 ? (

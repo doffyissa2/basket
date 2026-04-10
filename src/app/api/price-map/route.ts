@@ -5,11 +5,15 @@
  *
  * Strategy:
  *  1. ALL store_locations are returned (4k+ pins) — paginated, never filtered out
- *  2. Chain tier assigned by KNOWN_TIER table first (reliable), then DB data
- *  3. Chain avg_price from market_prices (grouped in JS from raw rows)
- *     OR community_prices (fallback for chains not in market_prices)
+ *  2. Tier = data confidence, not price rank:
+ *       'cheap'     → has ≥3 local community_prices within 2 km (green)
+ *       'mid'       → has national chain data (≥5 rows)             (orange)
+ *       'expensive' → little or no data                              (gray)
+ *  3. avg_price shown ONLY when has_local_data=true (local avg is meaningful)
+ *     For national-only stores avg_price=null — raw chain avg across all
+ *     product types is not comparable across chains (Biocoop vs Leclerc).
  *  4. Per-store top_items from community_prices rows with lat/lon within 2 km
- *  5. Stores with no DB price data still show — with tier from KNOWN_TIER
+ *  5. item_count always shown — it communicates data confidence
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -34,23 +38,6 @@ export interface StorePin {
   source:         string | null
 }
 
-// Hardcoded tiers based on public knowledge — ensures ALL chains get a color
-// even if our DB sync hasn't populated data for them yet.
-const KNOWN_TIER: Record<string, 'cheap' | 'mid' | 'expensive'> = {
-  'Aldi':        'cheap',
-  'Lidl':        'cheap',
-  'Netto':       'cheap',
-  'Leclerc':     'cheap',
-  'Intermarché': 'mid',
-  'Carrefour':   'mid',
-  'Auchan':      'mid',
-  'Super U':     'mid',
-  'Casino':      'mid',
-  'Franprix':    'mid',
-  'Picard':      'mid',
-  'Monoprix':    'expensive',
-  'Biocoop':     'expensive',
-}
 
 function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000
@@ -206,8 +193,8 @@ export async function GET(request: NextRequest) {
         .slice(0, 3)
       hasLocalData = true
     } else if (stat) {
-      // Chain national average — no store-specific items
-      avgPrice     = Math.round(stat.avg * 100) / 100
+      // Chain national average — not comparable across store types, so null
+      avgPrice     = null
       itemCount    = stat.count
       topItems     = []
       hasLocalData = false
@@ -219,8 +206,11 @@ export async function GET(request: NextRequest) {
       hasLocalData = false
     }
 
-    // Tier: use DB-derived chain ranking if available, otherwise hardcoded
-    const tier = KNOWN_TIER[store.chain] ?? 'mid'
+    // Tier = data confidence, not price ranking
+    const tier: 'cheap' | 'mid' | 'expensive' =
+      hasLocalData                ? 'cheap'      // green: real local data (≥3 nearby scans)
+      : (stat && stat.count >= 5) ? 'mid'        // orange: national data available
+      :                             'expensive'  // gray: sparse/no data
 
     pins.push({
       store_chain:    store.chain,
