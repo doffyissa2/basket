@@ -585,9 +585,13 @@ out center 1;`
           source: 'receipt_ocr', accuracy: 'address',
         }, { onConflict: 'osm_id', ignoreDuplicates: false })
       } else {
-        // Strategy 2: Nominatim address search (fallback when Overpass finds nothing)
+        // Strategy 2: Nominatim — search by store name + postcode, not the zone address.
+        // "Intermarché 76230" finds the POI directly; the zone name confuses Nominatim.
+        const nominatimQuery = receiptPostcode
+          ? `${parsed.store_name} ${receiptPostcode}`
+          : claudeAddress
         const geoData = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(nominatimQuery)}&format=json&limit=1&countrycodes=fr`,
           { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
         ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
 
@@ -597,7 +601,7 @@ out center 1;`
           const geocodedLon = parseFloat(geo.lon)
           storeLocation.lat = geocodedLat
           storeLocation.lon = geocodedLon
-          console.log(`[parse-receipt] Nominatim fallback: "${claudeAddress}" → ${geocodedLat},${geocodedLon}`)
+          console.log(`[parse-receipt] Nominatim fallback: "${nominatimQuery}" → ${geocodedLat},${geocodedLon}`)
           void supabase.from('store_locations').upsert({
             osm_id: `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`,
             chain: parsed.store_name, name: parsed.store_name,
@@ -608,10 +612,14 @@ out center 1;`
       }
     }
 
-    // b) GPS-based fallback: nearest matching store in DB (only when no receipt address)
+    // b) GPS-based fallback for lat/lon only — never overwrite a receipt-extracted address
     if (!storeLocation.lat) {
       const gpsBased = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
-      if (gpsBased.lat) storeLocation = { ...storeLocation, ...gpsBased }
+      if (gpsBased.lat) {
+        storeLocation.lat = gpsBased.lat
+        storeLocation.lon = gpsBased.lon
+        if (!storeLocation.address) storeLocation.address = gpsBased.address
+      }
     }
 
     // c) Last resort: user GPS only + fire-and-forget GPS-accuracy upsert
