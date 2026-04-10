@@ -181,12 +181,28 @@ function ConfettiParticles() {
 interface Coords { lat: number; lon: number }
 
 // ── Client-side image compression ─────────────────────────────────────────────
-// Resizes to max 1280px and recompresses as JPEG 0.83 before sending to Claude.
-// Reduces token cost ~60–80% on phone photos while preserving OCR readability.
+// Resizes to max 1200px and recompresses as JPEG 0.85 before sending to Claude.
+// Falls back to raw base64 (no canvas) for formats the browser can't decode (e.g. HEIC on Chrome).
+const CLAUDE_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+
+function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]
+      if (!base64) { reject(new Error('FileReader produced no data')); return }
+      resolve({ base64, mediaType: 'image/jpeg' })
+    }
+    reader.onerror = () => reject(new Error('FileReader error'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function compressImage(
   file: File,
-  maxPx = 1280,
-  quality = 0.83
+  maxPx = 1200,
+  quality = 0.85
 ): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -214,7 +230,15 @@ function compressImage(
         quality
       )
     }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')) }
+    img.onerror = () => {
+      // Browser can't decode this format (e.g. HEIC on Chrome) — send raw bytes
+      URL.revokeObjectURL(url)
+      if (!CLAUDE_ACCEPTED_TYPES.includes(file.type)) {
+        reject(new Error('Format non supporté. Utilisez JPEG, PNG ou WebP.'))
+        return
+      }
+      readFileAsBase64(file).then(resolve).catch(reject)
+    }
     img.src = url
   })
 }
@@ -454,17 +478,20 @@ export default function ScanPage() {
     }
 
     try {
-      // Upload first image to storage for archival (full quality)
+      // Upload + preprocess run in parallel (upload doesn't depend on preprocessing)
       const primaryFile = imageFiles[0]
       const fileName = `${user.id}/${Date.now()}-${primaryFile.name}`
-      const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, primaryFile)
-      if (uploadError) throw new Error('Erreur upload: ' + uploadError.message)
+
+      const [uploadResult, preprocessed] = await Promise.all([
+        supabase.storage.from('receipts').upload(fileName, primaryFile),
+        Promise.all(imageFiles.map(f => preprocessReceiptImage(f))),
+      ])
+      if (uploadResult.error) throw new Error('Erreur upload: ' + uploadResult.error.message)
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
 
-      // Preprocess (contrast/grayscale) then compress all images in parallel
-      const preprocessed = await Promise.all(imageFiles.map(f => preprocessReceiptImage(f)))
-      const compressed = await Promise.all(preprocessed.map(f => compressImage(f, 1600, 0.92)))
+      // Compress all preprocessed images in parallel
+      const compressed = await Promise.all(preprocessed.map(f => compressImage(f)))
 
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
@@ -557,27 +584,30 @@ export default function ScanPage() {
         savedReceiptId = receiptRow.id
         setReceiptId(savedReceiptId)
 
-        // ── Atomic: rollback receipt if price_items insert fails ───────────
-        const { error: itemsError } = await supabase.from('price_items').insert(
-          parsed.items.map((item) => ({
-            receipt_id: receiptRow.id,
-            user_id: user.id,
-            item_name: item.name,
-            item_name_normalised: normalizeProductName(item.name),
-            quantity: item.quantity,
-            unit_price: item.price,
-            total_price: item.price * item.quantity,
-            store_chain: storeChain,
-            postcode: postcode || null,
-            latitude: userCoords?.lat ?? null,
-            longitude: userCoords?.lon ?? null,
-            is_promo: item.is_promo ?? false,
-            is_private_label: item.is_private_label ?? false,
-          }))
-        )
-        if (itemsError) {
-          await supabase.from('receipts').delete().eq('id', receiptRow.id)
-          throw new Error('Erreur sauvegarde articles')
+        // ── Insert price_items (filter out zero/invalid prices to avoid DB constraint violations) ──
+        const validItems = parsed.items.filter(item => item.price > 0 && item.name.trim().length > 0)
+        if (validItems.length > 0) {
+          const { error: itemsError } = await supabase.from('price_items').insert(
+            validItems.map((item) => ({
+              receipt_id: receiptRow.id,
+              user_id: user.id,
+              item_name: item.name,
+              item_name_normalised: normalizeProductName(item.name),
+              quantity: item.quantity,
+              unit_price: item.price,
+              total_price: item.price * item.quantity,
+              store_chain: storeChain,
+              postcode: postcode || null,
+              latitude: userCoords?.lat ?? null,
+              longitude: userCoords?.lon ?? null,
+              is_promo: item.is_promo ?? false,
+              is_private_label: item.is_private_label ?? false,
+            }))
+          )
+          if (itemsError) {
+            // Non-critical: receipt was saved — don't block the user, just log
+            console.error('[scan] price_items insert error:', itemsError.message)
+          }
         }
 
         // ── Fire-and-forget: keep pricing engine current after every scan ──
@@ -948,7 +978,7 @@ export default function ScanPage() {
                   transition={{ duration: 0.4, ease: 'easeOut' }} />
               </div>
               <p className="text-graphite/35 text-xs">
-                {Math.round(scanProgress)} % · Cela prend généralement 10–20 secondes
+                {Math.round(scanProgress)} % · Cela prend généralement 5–10 secondes
               </p>
             </motion.div>
           )}

@@ -26,7 +26,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.iconify.design",
-      "worker-src blob:",
+      "worker-src blob: 'self'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org https://*.cartocdn.com https://*.basemaps.cartocdn.com https://*.mapbox.com",
