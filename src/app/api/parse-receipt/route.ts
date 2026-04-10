@@ -530,29 +530,81 @@ export async function POST(request: NextRequest) {
 
     if (claudeAddress) {
       // a) Receipt address is authoritative — always use it for display.
-      // The text is printed on the ticket by the store itself; no LLM verification needed.
       storeLocation.address = claudeAddress
 
-      // Forward geocode to get lat/lon for the map pin.
-      const geoData = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
-        { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
-      ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
+      // Extract postcode from address text (e.g. "Zone du Gros Chêne, 76230 Isneauville" → "76230")
+      const postcodeMatch = claudeAddress.match(/\b(\d{5})\b/)
+      const receiptPostcode = postcodeMatch?.[1] ?? null
 
-      const geo = Array.isArray(geoData) ? (geoData[0] as { lat: string; lon: string } | undefined) : undefined
-      if (geo) {
-        const geocodedLat = parseFloat(geo.lat)
-        const geocodedLon = parseFloat(geo.lon)
-        storeLocation.lat = geocodedLat
-        storeLocation.lon = geocodedLon
-        console.log(`[parse-receipt] Receipt address geocoded: "${claudeAddress}" → ${geocodedLat},${geocodedLon}`)
-        // Upsert to store_locations (fire-and-forget — don't block response)
-        const osm_id = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`
+      // Strategy 1: Overpass API — find the exact OSM building by store chain + postcode.
+      // Far more accurate than Nominatim address search for commercial zone names.
+      let overpassLat: number | null = null
+      let overpassLon: number | null = null
+      let overpassOsmId: string | null = null
+
+      if (receiptPostcode) {
+        try {
+          // Match any node/way tagged as a supermarket/convenience whose name contains
+          // the first word of the store chain (e.g. "Intermarché") in this postcode.
+          const chainWord = parsed.store_name.split(/[\s\-]/)[0].replace(/[^a-zA-ZÀ-ÿ]/g, '')
+          const overpassQuery = `[out:json][timeout:6];
+(
+  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
+  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
+  node["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
+  way["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
+);
+out center 1;`
+
+          const ovRes = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `data=${encodeURIComponent(overpassQuery)}`,
+            signal: AbortSignal.timeout(8000),
+          })
+          if (ovRes.ok) {
+            const ovData = await ovRes.json() as { elements?: Array<{ type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }
+            const el = ovData.elements?.[0]
+            if (el) {
+              overpassLat = el.lat ?? el.center?.lat ?? null
+              overpassLon = el.lon ?? el.center?.lon ?? null
+              overpassOsmId = `${el.type}/${el.id}`
+            }
+          }
+        } catch { /* Overpass timeout — fall through to Nominatim */ }
+      }
+
+      if (overpassLat && overpassLon) {
+        storeLocation.lat = overpassLat
+        storeLocation.lon = overpassLon
+        console.log(`[parse-receipt] Overpass exact pin: "${parsed.store_name}" ${receiptPostcode} → ${overpassLat},${overpassLon} (${overpassOsmId})`)
         void supabase.from('store_locations').upsert({
-          osm_id, chain: parsed.store_name, name: parsed.store_name,
-          address: claudeAddress, latitude: geocodedLat, longitude: geocodedLon,
+          osm_id: overpassOsmId ?? `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${overpassLat.toFixed(4)}_${overpassLon.toFixed(4)}`,
+          chain: parsed.store_name, name: parsed.store_name,
+          address: claudeAddress, latitude: overpassLat, longitude: overpassLon,
           source: 'receipt_ocr', accuracy: 'address',
         }, { onConflict: 'osm_id', ignoreDuplicates: false })
+      } else {
+        // Strategy 2: Nominatim address search (fallback when Overpass finds nothing)
+        const geoData = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
+          { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
+        ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
+
+        const geo = Array.isArray(geoData) ? (geoData[0] as { lat: string; lon: string } | undefined) : undefined
+        if (geo) {
+          const geocodedLat = parseFloat(geo.lat)
+          const geocodedLon = parseFloat(geo.lon)
+          storeLocation.lat = geocodedLat
+          storeLocation.lon = geocodedLon
+          console.log(`[parse-receipt] Nominatim fallback: "${claudeAddress}" → ${geocodedLat},${geocodedLon}`)
+          void supabase.from('store_locations').upsert({
+            osm_id: `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`,
+            chain: parsed.store_name, name: parsed.store_name,
+            address: claudeAddress, latitude: geocodedLat, longitude: geocodedLon,
+            source: 'receipt_ocr', accuracy: 'address',
+          }, { onConflict: 'osm_id', ignoreDuplicates: false })
+        }
       }
     }
 
