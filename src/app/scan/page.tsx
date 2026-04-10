@@ -431,6 +431,7 @@ export default function ScanPage() {
         resolve()
       }
       img.onerror = () => { URL.revokeObjectURL(url); resolve() }
+      img.src = url
     })
     addImageFile(file)
     // Reset input so the same file can be re-selected
