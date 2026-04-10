@@ -131,7 +131,7 @@ export default function DashboardPage() {
         supabase.from('notifications').select('id', { count: 'exact', head: true })
           .eq('user_id', userId).eq('read', false),
         supabase.from('receipts')
-          .select('created_at, total_amount, receipt_date').eq('user_id', userId),
+          .select('created_at, total_amount, receipt_date').eq('user_id', userId).limit(10000),
       ])
 
       if (receiptsErr) {

@@ -231,6 +231,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
               .select('id, item_name, item_name_normalised, estimated_price, store_chain, quantity, is_bought, added_at')
               .eq('user_id', userId)
               .order('added_at', { ascending: false })
+              .limit(500)
           : Promise.resolve({ data: [], error: null }),
       ])
 
@@ -341,6 +342,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
                 .select('id, item_name, item_name_normalised, estimated_price, store_chain, quantity, is_bought, added_at')
                 .eq('user_id', userId)
                 .order('added_at', { ascending: false })
+                .limit(500)
               setShoppingListItems((data ?? []) as ShoppingListItem[])
               break
             }

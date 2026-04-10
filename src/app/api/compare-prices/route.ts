@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const { items, store_chain } = body
-    const { postcode, dept } = ctx
+    const { dept } = ctx
 
     if (!items || !Array.isArray(items)) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })

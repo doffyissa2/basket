@@ -11,6 +11,7 @@ import BottomNav from '@/components/BottomNav'
 import type { BestStoreResult } from '@/types/api'
 import { useUserContext } from '@/lib/user-context'
 import { emit } from '@/lib/events'
+import { normalizeProductName } from '@/lib/normalize'
 
 interface ListItem {
   id: string
@@ -106,7 +107,7 @@ export default function ListePage() {
 
     const { data } = await supabase
       .from('shopping_list_items')
-      .insert({ user_id: user.id, item_name: n, item_name_normalised: n.toLowerCase().trim() })
+      .insert({ user_id: user.id, item_name: n, item_name_normalised: normalizeProductName(n) })
       .select('id, item_name, checked, best_store, best_price')
       .single()
 
@@ -206,7 +207,7 @@ export default function ListePage() {
       .insert(toAdd.map((r) => ({
         user_id: user!.id,
         item_name: r.item_name,
-        item_name_normalised: r.item_name.toLowerCase().trim(),
+        item_name_normalised: normalizeProductName(r.item_name),
       })))
       .select('id, item_name, checked, best_store, best_price')
 
@@ -247,19 +248,23 @@ export default function ListePage() {
         setRecommendation(rec)
       }
 
-      // Update per-item best store in local state + DB
+      // Update per-item best store in local state + DB (parallel)
+      const dbUpdates: PromiseLike<unknown>[] = []
       for (const pi of data.per_item) {
         const item = unchecked.find((i) => i.item_name === pi.name)
         if (item && pi.best_store) {
           setItems((prev) => prev.map((i) =>
             i.id === item.id ? { ...i, best_store: pi.best_store, best_price: pi.best_price } : i
           ))
-          await supabase
-            .from('shopping_list_items')
-            .update({ best_store: pi.best_store, best_price: pi.best_price })
-            .eq('id', item.id)
+          dbUpdates.push(
+            supabase
+              .from('shopping_list_items')
+              .update({ best_store: pi.best_store, best_price: pi.best_price })
+              .eq('id', item.id)
+          )
         }
       }
+      await Promise.all(dbUpdates)
     }
     setComputing(false)
   }, [items, postcode, accessToken])

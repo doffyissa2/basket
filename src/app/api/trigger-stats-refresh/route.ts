@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
+import { normalizeProductName } from '@/lib/normalize'
 
 /**
  * POST /api/trigger-stats-refresh
@@ -14,16 +15,6 @@ import { getServiceClient } from '@/lib/supabase-service'
  *  2. Rebuild product_price_stats so compare-prices reflects the fresh data
  *  3. Rebuild price_weekly for trend charts
  */
-
-function normaliseProductName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 
 function dedupKey(
   normName: string,
@@ -83,7 +74,7 @@ export async function POST(request: NextRequest) {
 
         const rows: CommunityRow[] = []
         for (const pi of recentItems) {
-          const normName = (pi.item_name_normalised as string) || normaliseProductName(pi.item_name as string)
+          const normName = (pi.item_name_normalised as string) || normalizeProductName(pi.item_name as string)
           const chain = (pi.store_chain as string) ?? ''
           const sourceDate = (pi.created_at as string)?.split('T')[0] ?? ''
           const dept = (pi.postcode as string) ? (pi.postcode as string).slice(0, 2) : null
@@ -112,8 +103,7 @@ export async function POST(request: NextRequest) {
         if (rows.length > 0) {
           const { error } = await supabase
             .from('community_prices')
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .upsert(rows as any[], { onConflict: 'dedup_key', ignoreDuplicates: true })
+            .upsert(rows, { onConflict: 'dedup_key', ignoreDuplicates: true })
           if (error) console.error('[trigger-stats-refresh] community upsert error:', error.message)
         }
       }

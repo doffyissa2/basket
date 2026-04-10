@@ -100,9 +100,9 @@ export async function POST(request: NextRequest) {
 
   // ── Reason: scan_receipt ──────────────────────────────────────────────────
   if (reason === 'scan_receipt') {
-    const savings    = context.savings   ?? 0
-    const store      = context.store     ?? ''
-    const postcode   = context.postcode  ?? ''
+    const savings    = Math.max(0, Math.min(context.savings ?? 0, 10000))
+    const store      = String(context.store ?? '').slice(0, 100)
+    const postcode   = String(context.postcode ?? '').slice(0, 10)
 
     const { new_streak, is_first_of_week } = computeStreak(
       profile.last_scan_date as string | null,

@@ -106,6 +106,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
             </motion.button>
 
             <button
+              type="button"
               onClick={() => setStatus('manual')}
               className="text-sm font-medium py-2 transition-colors"
               style={{ color: 'rgba(17,17,17,0.5)' }}
@@ -157,6 +158,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
               pattern="\d{5}"
               maxLength={5}
               placeholder="75001"
+              aria-label="Code postal"
               value={manualPostcode}
               onChange={(e) => {
                 setManualPostcode(e.target.value.replace(/\D/g, ''))
@@ -195,6 +197,7 @@ export default function LocationGateModal({ userId, onComplete }: LocationGateMo
             </motion.button>
 
             <button
+              type="button"
               onClick={() => setStatus('initial')}
               className="text-sm py-3 mt-1 transition-colors"
               style={{ color: 'rgba(17,17,17,0.4)' }}

@@ -4,17 +4,8 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
+import { normalizeProductName } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
-
-function normaliseProductName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 
 // ── Fetch price anchors from community_prices ─────────────────────────────────
 // Returns a formatted section to inject into the Claude prompt so it can
@@ -82,8 +73,8 @@ async function validateItemPrices(
     return items.map(item => {
       if (item.price <= 0 || item.price > 500) return item
 
-      const norm = normaliseProductName(item.name)
-      const normWords = norm.split(' ').filter(w => w.length > 3)
+      const norm = normalizeProductName(item.name)
+      const normWords = norm.split(' ').filter((w: string) => w.length > 3)
       if (normWords.length === 0) return item
 
       // Find best-matching key by word overlap
@@ -91,7 +82,7 @@ async function validateItemPrices(
       let bestScore = 0
       for (const key of keys) {
         const keyWords = key.split(' ')
-        const overlap = normWords.filter(w => keyWords.includes(w)).length
+        const overlap = normWords.filter((w: string) => keyWords.includes(w)).length
         const score = overlap / Math.max(normWords.length, keyWords.length)
         if (score > bestScore && score >= 0.45) { bestScore = score; bestKey = key }
       }
@@ -331,6 +322,17 @@ export async function POST(request: NextRequest) {
     }
     if (images.length > 3) {
       return NextResponse.json({ error: 'Maximum 3 images per receipt' }, { status: 400 })
+    }
+
+    const MAX_BASE64_BYTES = 12 * 1024 * 1024 // ~9 MB file → ~12 MB base64
+    const ALLOWED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    for (const img of images) {
+      if (img.base64.length > MAX_BASE64_BYTES) {
+        return NextResponse.json({ error: 'Image trop grande (max 9 Mo)' }, { status: 413 })
+      }
+      if (!ALLOWED_MEDIA_TYPES.includes(img.mediaType)) {
+        return NextResponse.json({ error: 'Format non supporté' }, { status: 400 })
+      }
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY

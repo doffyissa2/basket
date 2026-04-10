@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 import {
   calculateLevel, getLevelProgress, getWeeklyChallenges,
   getISOWeekString, getBadge, LEVELS,
@@ -10,6 +11,9 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
   const { userId } = authResult
+
+  const rlResponse = await checkRateLimit(request, 'gamification', userId)
+  if (rlResponse) return rlResponse
 
   const supabase = getServiceClient()
 

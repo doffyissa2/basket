@@ -12,7 +12,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual, createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(createHash('sha256').update(a).digest())
+  const bufB = Buffer.from(createHash('sha256').update(b).digest())
+  return timingSafeEqual(bufA, bufB)
+}
 
 const UA = 'Basket-App/1.0 (basket.fr; contact@basket.fr; free grocery price tool)'
 
@@ -93,7 +100,8 @@ async function fetchPage(page: number): Promise<OFFItem[]> {
 function authorizeCron(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return false
-  return req.headers.get('authorization') === `Bearer ${secret}`
+  const provided = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+  return safeCompare(provided, secret)
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────

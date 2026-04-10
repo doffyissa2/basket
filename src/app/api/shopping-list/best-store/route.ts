@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { getRequestContextWithBody } from '@/lib/request-context'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { getServiceClient } from '@/lib/supabase-service'
 
 interface StatRow {
   item_name_normalised: string
@@ -31,10 +31,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Too many items (max 50)' }, { status: 400 })
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabase = getServiceClient()
 
     // ── 1. Match all items via match_product RPC (full catalogue, pg_trgm) ──
     // Fire all RPC calls concurrently — no sequential N+1

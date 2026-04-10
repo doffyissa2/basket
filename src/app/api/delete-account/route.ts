@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
 
 export async function DELETE(request: NextRequest) {
@@ -7,24 +8,34 @@ export async function DELETE(request: NextRequest) {
   if (authResult instanceof NextResponse) return authResult
   const { userId } = authResult
 
+  // Rate limit: 3 attempts per hour per user (prevents automated abuse)
+  const rlResponse = await checkRateLimit(request, 'deleteAccount', userId)
+  if (rlResponse) return rlResponse
+
   const supabase = getServiceClient()
+
+  // Fetch email BEFORE deleting anything (profile will be gone after)
+  const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
+  const email = authUser?.email ?? null
 
   // Delete all user data in order (children before parents)
   const deletions = await Promise.allSettled([
     supabase.from('price_items').delete().eq('user_id', userId),
+    supabase.from('price_watches').delete().eq('user_id', userId),
     supabase.from('notifications').delete().eq('user_id', userId),
   ])
 
   // Receipts after price_items (FK dependency)
   await supabase.from('receipts').delete().eq('user_id', userId)
 
-  // Shopping list items
+  // Shopping list items — try both direct user_id (current schema) and
+  // legacy list_id (older schema) so neither schema leaves orphans
+  await supabase.from('shopping_list_items').delete().eq('user_id', userId)
   const { data: listRow } = await supabase
     .from('shopping_lists')
     .select('id')
     .eq('user_id', userId)
     .single()
-
   if (listRow) {
     await supabase.from('shopping_list_items').delete().eq('list_id', listRow.id)
     await supabase.from('shopping_lists').delete().eq('id', listRow.id)
@@ -33,18 +44,9 @@ export async function DELETE(request: NextRequest) {
   // Profile
   await supabase.from('profiles').delete().eq('id', userId)
 
-  // Newsletter unsubscribe if they signed up
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('email:id')
-    .eq('id', userId)
-    .single()
-  if (profile) {
-    // best-effort — ignore errors
-    const { data: { user } } = await supabase.auth.admin.getUserById(userId)
-    if (user?.email) {
-      await supabase.from('newsletter_subscribers').delete().eq('email', user.email)
-    }
+  // Newsletter unsubscribe — use email fetched before any deletions
+  if (email) {
+    await supabase.from('newsletter_subscribers').delete().eq('email', email)
   }
 
   // Finally delete the auth user (must be last — invalidates session)

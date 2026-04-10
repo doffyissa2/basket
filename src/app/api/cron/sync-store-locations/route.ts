@@ -12,7 +12,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual, createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(createHash('sha256').update(a).digest())
+  const bufB = Buffer.from(createHash('sha256').update(b).digest())
+  return timingSafeEqual(bufA, bufB)
+}
 
 const UA = 'Basket-App/1.0 (basket.fr; open-source grocery price tracker)'
 
@@ -99,7 +106,8 @@ async function overpassPost(query: string): Promise<{ elements: OsmElement[]; mi
 function authorizeCron(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) { console.error("[cron] CRON_SECRET not set — rejecting request"); return false }
-  return req.headers.get('authorization') === `Bearer ${secret}`
+  const provided = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+  return safeCompare(provided, secret)
 }
 
 export async function GET(request: NextRequest) {

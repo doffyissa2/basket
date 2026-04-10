@@ -27,14 +27,14 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient()
 
-    const { error } = await supabase.from('item_corrections').insert({
+    const { error } = await supabase.from('item_corrections').upsert({
       user_id: authResult.userId,
       receipt_id,
       original_name: String(original_name).trim().slice(0, 500),
       corrected_name: String(corrected_name ?? original_name).trim().slice(0, 500),
       original_price: typeof original_price === 'number' ? original_price : null,
       corrected_price: typeof corrected_price === 'number' ? corrected_price : null,
-    })
+    }, { onConflict: 'user_id,receipt_id,original_name', ignoreDuplicates: false })
 
     if (error) {
       // Table may not exist yet — log and return success anyway (non-critical)

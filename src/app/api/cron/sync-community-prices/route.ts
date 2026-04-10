@@ -11,7 +11,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual, createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { normalizeProductName } from '@/lib/normalize'
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(createHash('sha256').update(a).digest())
+  const bufB = Buffer.from(createHash('sha256').update(b).digest())
+  return timingSafeEqual(bufA, bufB)
+}
 
 const UA = 'Basket-App/1.0 (basket.fr; contact@basket.fr; free grocery price tool)'
 
@@ -42,15 +50,6 @@ function normalizeChain(raw: string | null): string | null {
   return raw.trim() || null
 }
 
-function normaliseProductName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 
 // ── Open Food Facts Prices API ───────────────────────────────────────────────
 // Community-submitted real prices from French stores. No auth, no IP block.
@@ -140,7 +139,8 @@ async function fetchOFFPrices(page = 1): Promise<OFFPriceItem[]> {
 function authorizeCron(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) { console.error("[cron] CRON_SECRET not set — rejecting request"); return false }
-  return req.headers.get('authorization') === `Bearer ${secret}`
+  const provided = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+  return safeCompare(provided, secret)
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
 
     for (const items of offPages) {
       for (const item of items) {
-        const normName   = normaliseProductName(item.name)
+        const normName   = normalizeProductName(item.name)
         const chain      = normalizeChain(item.store) ?? ''
         const sourceDate = item.date?.split('T')[0] ?? ''
         const dept       = item.postcode ? item.postcode.slice(0, 2) : null
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
     const rows: CommunityPriceRow[] = []
 
     for (const pi of recentItems ?? []) {
-      const normName   = (pi.item_name_normalised as string) || normaliseProductName(pi.item_name as string)
+      const normName   = (pi.item_name_normalised as string) || normalizeProductName(pi.item_name as string)
       const chain      = (pi.store_chain as string) ?? ''
       const sourceDate = (pi.created_at as string)?.split('T')[0] ?? ''
       const dept       = (pi.postcode as string) ? (pi.postcode as string).slice(0, 2) : null

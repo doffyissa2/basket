@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual, createHash } from 'crypto'
 import { getServiceClient } from '@/lib/supabase-service'
+
+// ── Timing-safe string comparison (guards against timing oracle attacks) ───
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(createHash('sha256').update(a).digest())
+  const bufB = Buffer.from(createHash('sha256').update(b).digest())
+  return timingSafeEqual(bufA, bufB)
+}
 
 /**
  * POST /api/rebuild-stats
@@ -7,6 +15,7 @@ import { getServiceClient } from '@/lib/supabase-service'
  * Protected endpoint — caller must supply the correct secret via Authorization header:
  *   Authorization: Bearer YOUR_SECRET
  * Intended to be called by a Supabase scheduled Edge Function or external cron.
+ * Only POST is accepted — GET is NOT aliased to avoid triggering rebuilds via browser.
  *
  * Steps:
  *  1. Rebuild product_price_stats via RPC
@@ -27,8 +36,8 @@ export async function POST(request: NextRequest) {
   }
 
   const authorized =
-    (vercelSecret && providedKey === vercelSecret) ||
-    (manualSecret && providedKey === manualSecret)
+    (vercelSecret && safeCompare(providedKey, vercelSecret)) ||
+    (manualSecret && safeCompare(providedKey, manualSecret))
 
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -89,5 +98,5 @@ export async function POST(request: NextRequest) {
   )
 }
 
-// Vercel cron jobs trigger GET — delegate to POST
-export const GET = POST
+// GET intentionally NOT exported — rebuild-stats must be called via POST only.
+// Vercel cron jobs should be configured to use POST method.

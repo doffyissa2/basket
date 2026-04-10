@@ -57,6 +57,14 @@ const limiters = {
   deleteAccount: makeLimiter(3, 3600), // 3 attempts per hour per user
   // 60 item corrections/min per user (lightweight logging)
   correctItem: makeLimiter(60, 60),
+  // Shopping list autocomplete — 60/min (fast, lightweight)
+  shoppingListSuggest: makeLimiter(60, 60),
+  // Store rankings — public endpoint, 10/min per IP
+  storeRankings: makeLimiter(10, 60),
+  // Gamification GET — 30/min per user
+  gamification: makeLimiter(30, 60),
+  // Leaderboard — 30/min per user
+  leaderboard: makeLimiter(30, 60),
 } as const
 
 export type LimiterKey = keyof typeof limiters

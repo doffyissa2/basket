@@ -501,7 +501,7 @@ export default function ScanPage() {
             lat: userCoords?.lat ?? null,
             lon: userCoords?.lon ?? null,
           }),
-        })
+        }).catch(() => {})
       }
 
       // ── Fire-and-forget: learn receipt format for this store ──────────────
@@ -513,7 +513,7 @@ export default function ScanPage() {
             store_chain: storeChain,
             sample_items: parsed.items.slice(0, 15).map((i) => i.name),
           }),
-        })
+        }).catch(() => {})
       }
       const receiptDate = new Date().toISOString().split('T')[0]
 
@@ -585,7 +585,7 @@ export default function ScanPage() {
           void fetch('/api/trigger-stats-refresh', {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
-          })
+          }).catch(() => {})
         }
       }
 
@@ -666,7 +666,7 @@ export default function ScanPage() {
       {
         user_id: user.id,
         item_name: itemName,
-        item_name_normalised: itemName.toLowerCase().trim(),
+        item_name_normalised: normalizeProductName(itemName),
         last_seen_price: price,
         last_seen_store: parsedReceipt?.store_name ?? null,
       },
@@ -697,7 +697,7 @@ export default function ScanPage() {
           original_price: original.price,
           corrected_price: correctedPrice,
         }),
-      })
+      }).catch(() => {})
     }
   }
 
@@ -715,7 +715,7 @@ export default function ScanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ reason: 'share_result' }),
-      })
+      }).catch(() => {})
     }
   }
 

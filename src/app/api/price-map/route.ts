@@ -13,9 +13,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { getServiceClient } from '@/lib/supabase-service'
 
 export interface StorePin {
   store_chain:    string
@@ -70,10 +70,7 @@ export async function GET(request: NextRequest) {
   const rlResponse = await checkRateLimit(request, 'priceMap', authResult.userId)
   if (rlResponse) return rlResponse
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  const supabase = getServiceClient()
 
   // ── Fetch all data in parallel ────────────────────────────────────────────
   const [mpResult, cpResult] = await Promise.all([

@@ -8,8 +8,9 @@
  * Result is HTTP-cached for 1 hour at the edge (Cache-Control).
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export interface CategoryStat { avg: number; count: number }
 export interface ChainRanking {
@@ -50,7 +51,10 @@ function addRow(map: Map<string, ChainData>, chain: string, item: string, price:
 
 function avg(arr: number[]) { return arr.reduce((a, b) => a + b, 0) / arr.length }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rlResponse = await checkRateLimit(request, 'storeRankings')
+  if (rlResponse) return rlResponse
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

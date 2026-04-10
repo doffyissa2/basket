@@ -299,6 +299,11 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
     mapRef.current.flyTo({ center: [userCoords.lon, userCoords.lat], zoom: 12, duration: 1500 })
   }, [userCoords])
 
+  // Map cleanup on unmount
+  useEffect(() => {
+    return () => { try { mapRef.current?.getMap().remove() } catch { /* ignore */ } }
+  }, [])
+
   // 3D buildings toggle
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return
