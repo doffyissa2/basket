@@ -4,9 +4,10 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap, Pencil, Check } from 'lucide-react'
-import type { User } from '@supabase/supabase-js'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap, Pencil, Check, ShoppingCart } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
+import { useUserContext } from '@/lib/user-context'
+import { emit } from '@/lib/events'
 import LocationGateModal from '@/components/LocationGateModal'
 import { normalizeStoreChain, isKnownStore } from '@/lib/store-chains'
 import { normalizeProductName } from '@/lib/normalize'
@@ -248,20 +249,13 @@ function preprocessReceiptImage(file: File): Promise<File> {
   })
 }
 
-function readLocationCache(): { postcode: string; coords?: Coords } | null {
-  try {
-    const raw = localStorage.getItem('basket_postcode_cached')
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (parsed.postcode && Date.now() < parsed.expires) return parsed
-  } catch { /* ignore */ }
-  return null
-}
-
 const PART_LABELS = ['Haut du ticket', 'Milieu', 'Bas du ticket']
 
 export default function ScanPage() {
-  const [user, setUser] = useState<User | null>(null)
+  const ctx = useUserContext()
+  const { user, session, location, profile, shoppingListItems } = ctx
+  const accessToken = session?.access_token ?? null
+
   const [step, setStep] = useState<'upload' | 'parsing' | 'results' | 'comparison'>('upload')
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -275,11 +269,16 @@ export default function ScanPage() {
   const [error, setError] = useState('')
   const [parseMessageIdx, setParseMessageIdx] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
   // Gamification
   const [xpFloat,       setXpFloat]       = useState<number | null>(null)
   const [levelUpResult, setLevelUpResult] = useState<XPAwardResult | null>(null)
   const gamificationAwarded = useRef(false)
+
+  // Add to list bottom sheet
+  const [showAddToListSheet, setShowAddToListSheet] = useState(false)
+  const [selectedForList, setSelectedForList] = useState<Set<string>>(new Set())
+  const [addingToList, setAddingToList] = useState(false)
+  const addToListShownRef = useRef(false)
 
   // Inline item editing
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
@@ -304,23 +303,26 @@ export default function ScanPage() {
   const [userCoords, setUserCoords] = useState<Coords | null>(null)
   const [locationReady, setLocationReady] = useState(() => {
     if (typeof window === 'undefined') return false
-    return readLocationCache() !== null
+    try {
+      const raw = localStorage.getItem('basket_postcode_cached')
+      if (!raw) return false
+      const parsed = JSON.parse(raw)
+      return !!(parsed.postcode && Date.now() < parsed.expires)
+    } catch { return false }
   })
 
+  // Redirect if not authenticated
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { window.location.href = '/login'; return }
-      setUser(session.user)
-      setAccessToken(session.access_token)
+    if (!ctx.loading && !user) window.location.href = '/login'
+  }, [ctx.loading, user])
+
+  // Seed postcode/coords from context location
+  useEffect(() => {
+    if (location) {
+      setPostcode(location.postcode ?? profile?.postcode ?? null)
+      if (location.lat && location.lon) setUserCoords({ lat: location.lat, lon: location.lon })
     }
-    init()
-    const cached = readLocationCache()
-    if (cached) {
-      setPostcode(cached.postcode)
-      if (cached.coords) setUserCoords(cached.coords)
-    }
-  }, [])
+  }, [location, profile])
 
   // Auto-open camera on mobile (skips the choose-screen friction)
   useEffect(() => {
@@ -333,6 +335,24 @@ export default function ScanPage() {
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // only on initial mount
+
+  // Auto-show "add to list" sheet 1.5s after comparison step
+  useEffect(() => {
+    if (step !== 'comparison' || addToListShownRef.current) return
+    const timer = setTimeout(() => {
+      const unlistedItems = parsedReceipt?.items.filter(item =>
+        !shoppingListItems.some(li =>
+          li.item_name_normalised === normalizeProductName(item.name) ||
+          li.item_name.toLowerCase().trim() === item.name.toLowerCase().trim()
+        )
+      ) ?? []
+      if (unlistedItems.length > 0) {
+        setShowAddToListSheet(true)
+        addToListShownRef.current = true
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [step, parsedReceipt, shoppingListItems])
 
   // Cycle parse messages
   useEffect(() => {
@@ -596,6 +616,8 @@ export default function ScanPage() {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
         if (isNewScan) void awardScanXP(savings, storeChain)
+        emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
+        void ctx.refresh(['recentStores', 'profile'])
       } else {
         clearProgress()
       }
@@ -612,9 +634,30 @@ export default function ScanPage() {
   const addToList = async (itemName: string) => {
     if (!user) return
     await supabase.from('shopping_list_items').upsert(
-      { user_id: user.id, item_name: itemName, item_name_normalised: itemName.toLowerCase().trim() },
+      { user_id: user.id, item_name: itemName, item_name_normalised: normalizeProductName(itemName) },
       { onConflict: 'user_id,item_name_normalised' }
     )
+    emit('list:updated', { count: shoppingListItems.length + 1 })
+    void ctx.refresh(['shoppingList'])
+  }
+
+  const confirmAddToListSheet = async () => {
+    if (!user || selectedForList.size === 0) { setShowAddToListSheet(false); return }
+    setAddingToList(true)
+    await supabase.from('shopping_list_items').upsert(
+      Array.from(selectedForList).map(name => ({
+        user_id: user.id,
+        item_name: name,
+        item_name_normalised: normalizeProductName(name),
+      })),
+      { onConflict: 'user_id,item_name_normalised' }
+    )
+    emit('list:updated', { count: shoppingListItems.length + selectedForList.size })
+    void ctx.refresh(['shoppingList'])
+    setShowAddToListSheet(false)
+    setSelectedForList(new Set())
+    setAddingToList(false)
+    toast.success(`${selectedForList.size} article${selectedForList.size > 1 ? 's' : ''} ajouté${selectedForList.size > 1 ? 's' : ''} à votre liste`)
   }
 
   const watchItem = async (itemName: string, price: number) => {
@@ -1028,6 +1071,10 @@ export default function ScanPage() {
                   const isEditing = editingIdx === idx
                   const lowConfidence = (item.confidence ?? 1) < 0.7
                   const veryLowConfidence = (item.confidence ?? 1) < 0.5
+                  const isOnList = shoppingListItems.some(li =>
+                    li.item_name_normalised === normalizeProductName(item.name) ||
+                    li.item_name.toLowerCase().trim() === item.name.toLowerCase().trim()
+                  )
 
                   return (
                     <div key={idx}>
@@ -1095,6 +1142,12 @@ export default function ScanPage() {
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
                                   style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
                                   ⚠ à vérifier
+                                </span>
+                              )}
+                              {isOnList && step === 'comparison' && (
+                                <span className="flex-shrink-0"
+                                  style={{ background: 'rgba(126,217,87,0.15)', color: '#7ed957', fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>
+                                  ✓ Sur votre liste
                                 </span>
                               )}
                               {step === 'comparison' && comparison && (
@@ -1318,6 +1371,96 @@ export default function ScanPage() {
       <AnimatePresence>
         {levelUpResult && (
           <LevelUpModal result={levelUpResult} onClose={() => setLevelUpResult(null)} />
+        )}
+      </AnimatePresence>
+
+      {/* "Ajouter à ma liste" bottom sheet */}
+      <AnimatePresence>
+        {showAddToListSheet && parsedReceipt && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-40"
+              style={{ background: 'rgba(10,10,10,0.5)', backdropFilter: 'blur(4px)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddToListSheet(false)}
+            />
+            <motion.div
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl px-5 pt-5 pb-10"
+              style={{ background: '#fafaf8', maxHeight: '70dvh', overflowY: 'auto' }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="font-extrabold text-base text-graphite">Ajouter à ma liste</p>
+                  <p className="text-xs text-graphite/50 mt-0.5">Articles non encore sur votre liste</p>
+                </div>
+                <button onClick={() => setShowAddToListSheet(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(17,17,17,0.06)' }}>
+                  <X className="w-4 h-4 text-graphite/50" />
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-5">
+                {parsedReceipt.items
+                  .filter(item => !shoppingListItems.some(li =>
+                    li.item_name_normalised === normalizeProductName(item.name) ||
+                    li.item_name.toLowerCase().trim() === item.name.toLowerCase().trim()
+                  ))
+                  .map((item, idx) => {
+                    const selected = selectedForList.has(item.name)
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSelectedForList(prev => {
+                            const next = new Set(prev)
+                            if (next.has(item.name)) next.delete(item.name)
+                            else next.add(item.name)
+                            return next
+                          })
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                        style={{
+                          background: selected ? 'rgba(126,217,87,0.1)' : 'rgba(17,17,17,0.04)',
+                          border: selected ? '1px solid rgba(126,217,87,0.35)' : '1px solid rgba(17,17,17,0.07)',
+                        }}
+                      >
+                        <div className="w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center"
+                          style={{ background: selected ? '#7ed957' : 'rgba(17,17,17,0.08)' }}>
+                          {selected && <Check className="w-3 h-3 text-graphite" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-graphite truncate">{item.name}</p>
+                        </div>
+                        <p className="text-sm font-bold text-graphite/50 flex-shrink-0">{item.price.toFixed(2)} €</p>
+                      </button>
+                    )
+                  })}
+              </div>
+
+              <motion.button
+                onClick={confirmAddToListSheet}
+                disabled={selectedForList.size === 0 || addingToList}
+                className="w-full h-12 rounded-2xl font-bold text-sm flex items-center justify-center gap-2"
+                style={{
+                  background: selectedForList.size > 0 ? '#111' : 'rgba(17,17,17,0.08)',
+                  color: selectedForList.size > 0 ? '#fff' : 'rgba(17,17,17,0.3)',
+                }}
+                whileTap={selectedForList.size > 0 ? { scale: 0.97 } : {}}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                {selectedForList.size === 0
+                  ? 'Sélectionnez des articles'
+                  : `Ajouter ${selectedForList.size} article${selectedForList.size > 1 ? 's' : ''}`}
+              </motion.button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

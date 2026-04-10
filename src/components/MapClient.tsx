@@ -51,10 +51,11 @@ function saveRecents(pins: StorePin[]) {
 // ── Store bottom-sheet ────────────────────────────────────────────────────────
 
 function StoreSheet({
-  pin, saved, onClose, onSave, onNavigate,
+  pin, saved, visited, onClose, onSave, onNavigate,
 }: {
   pin: StorePin
   saved: boolean
+  visited: boolean
   onClose: () => void
   onSave: () => void
   onNavigate: () => void
@@ -86,9 +87,20 @@ function StoreSheet({
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 800, fontSize: 17, color: '#fff', margin: '0 0 3px', lineHeight: 1.25 }}>
-              {pin.store_name}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+              <p style={{ fontWeight: 800, fontSize: 17, color: '#fff', margin: 0, lineHeight: 1.25 }}>
+                {pin.store_name}
+              </p>
+              {visited && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                  background: 'rgba(126,217,87,0.15)', color: '#7ed957',
+                  border: '1px solid rgba(126,217,87,0.25)',
+                }}>
+                  ✓ Déjà visité
+                </span>
+              )}
+            </div>
             {fullAddress && (
               <p style={{ fontSize: 12, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>{fullAddress}</p>
             )}
@@ -243,11 +255,12 @@ function StoreListPanel({
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface MapClientProps {
-  userCoords?: { lat: number; lon: number } | null
-  accessToken?: string | null
+  userCoords?:    { lat: number; lon: number } | null
+  accessToken?:   string | null
+  visitedChains?: string[]   // store_chain values from user's receipt history
 }
 
-export default function MapClient({ userCoords, accessToken }: MapClientProps) {
+export default function MapClient({ userCoords, accessToken, visitedChains = [] }: MapClientProps) {
   const mapRef        = useRef<MapRef>(null)
   const [pins, setPins] = useState<StorePin[]>([])
   const [loading, setLoading]       = useState(true)
@@ -656,6 +669,7 @@ export default function MapClient({ userCoords, accessToken }: MapClientProps) {
             key="sheet"
             pin={selectedPin}
             saved={isSaved}
+            visited={visitedChains.includes(selectedPin.store_chain)}
             onClose={() => setSelectedPin(null)}
             onSave={toggleSave}
             onNavigate={navigateTo}

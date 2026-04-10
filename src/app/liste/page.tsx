@@ -7,9 +7,10 @@ import {
   Plus, X, Check, ShoppingCart, ArrowLeft, Loader2, Store,
   Receipt, Minus, ChevronRight, Share2, Sparkles,
 } from 'lucide-react'
-import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
 import type { BestStoreResult } from '@/types/api'
+import { useUserContext } from '@/lib/user-context'
+import { emit } from '@/lib/events'
 
 interface ListItem {
   id: string
@@ -27,14 +28,16 @@ interface Suggestion {
 }
 
 export default function ListePage() {
-  const [user, setUser] = useState<User | null>(null)
+  const ctx = useUserContext()
+  const { user, session, profile, location, loading: ctxLoading } = ctx
+  const accessToken = session?.access_token ?? null
+  const postcode    = location?.postcode ?? profile?.postcode ?? null
+
   const [items, setItems] = useState<ListItem[]>([])
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(true)
   const [computing, setComputing] = useState(false)
   const [result, setResult] = useState<BestStoreResult | null>(null)
-  const [postcode, setPostcode] = useState<string | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
   const [showComparison, setShowComparison] = useState(false)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -42,27 +45,24 @@ export default function ListePage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestRef = useRef<HTMLDivElement>(null)
 
+  // Redirect if not authenticated once context resolves
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { window.location.href = '/login'; return }
-      setUser(session.user)
-      setAccessToken(session.access_token)
+    if (!ctxLoading && !user) window.location.href = '/login'
+  }, [ctxLoading, user])
 
-      const [{ data: listData }, { data: profile }] = await Promise.all([
-        supabase.from('shopping_list_items')
-          .select('id, item_name, checked, best_store, best_price')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: true }),
-        supabase.from('profiles').select('postcode').eq('id', session.user.id).single(),
-      ])
-
-      if (listData) setItems(listData.map((i) => ({ ...i, qty: 1 })))
-      if (profile?.postcode) setPostcode(profile.postcode)
-      setLoading(false)
-    }
-    init()
-  }, [])
+  // Load list items once we have a user
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('shopping_list_items')
+      .select('id, item_name, checked, best_store, best_price')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (data) setItems(data.map((i) => ({ ...i, qty: 1 })))
+        setLoading(false)
+      })
+  }, [user])
 
   // Auto-suggest as user types (300ms debounce)
   useEffect(() => {
@@ -111,7 +111,11 @@ export default function ListePage() {
       .single()
 
     if (data) {
-      setItems((prev) => [...prev, { ...data, qty: 1 }])
+      setItems((prev) => {
+        const next = [...prev, { ...data, qty: 1 }]
+        emit('list:updated', { count: next.length })
+        return next
+      })
       setResult(null)
       setRecommendation(null)
 
@@ -149,7 +153,11 @@ export default function ListePage() {
   }
 
   const deleteItem = async (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id))
+    setItems((prev) => {
+      const next = prev.filter((i) => i.id !== id)
+      emit('list:updated', { count: next.length })
+      return next
+    })
     await supabase.from('shopping_list_items').delete().eq('id', id)
     setResult(null)
     setRecommendation(null)
@@ -164,7 +172,11 @@ export default function ListePage() {
   const clearChecked = async () => {
     const checkedIds = items.filter((i) => i.checked).map((i) => i.id)
     if (checkedIds.length === 0) return
-    setItems((prev) => prev.filter((i) => !i.checked))
+    setItems((prev) => {
+      const next = prev.filter((i) => !i.checked)
+      emit('list:updated', { count: next.length })
+      return next
+    })
     await supabase.from('shopping_list_items').delete().in('id', checkedIds)
   }
 

@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { supabase } from '@/lib/supabase'
 import BottomNav from '@/components/BottomNav'
+import { useUserContext } from '@/lib/user-context'
 
 const MapWithNoSSR = dynamic(() => import('@/components/MapClient'), {
   ssr: false,
@@ -15,33 +15,14 @@ const MapWithNoSSR = dynamic(() => import('@/components/MapClient'), {
   ),
 })
 
-interface Coords { lat: number; lon: number }
-
-function getCachedCoords(): Coords | null {
-  try {
-    const raw = localStorage.getItem('basket_postcode_cached')
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (parsed.coords && Date.now() < parsed.expires) return parsed.coords
-  } catch { /* ignore */ }
-  return null
-}
-
 export default function CartePage() {
-  const [authed, setAuthed] = useState(false)
-  const [userCoords, setUserCoords] = useState<Coords | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const { user, session, location, recentStores, loading: ctxLoading } = useUserContext()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { window.location.href = '/login'; return }
-      setAccessToken(session.access_token)
-      setAuthed(true)
-    })
-    setUserCoords(getCachedCoords())
-  }, [])
+    if (!ctxLoading && !user) window.location.href = '/login'
+  }, [ctxLoading, user])
 
-  if (!authed) {
+  if (ctxLoading || !user) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center" style={{ background: '#111' }}>
         <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
@@ -50,10 +31,18 @@ export default function CartePage() {
     )
   }
 
+  const userCoords = location?.lat && location?.lon
+    ? { lat: location.lat, lon: location.lon }
+    : null
+
   return (
     <div style={{ height: '100dvh', background: '#111', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <MapWithNoSSR userCoords={userCoords} accessToken={accessToken} />
+        <MapWithNoSSR
+          userCoords={userCoords}
+          accessToken={session?.access_token ?? null}
+          visitedChains={recentStores}
+        />
       </div>
       <BottomNav active="carte" />
     </div>

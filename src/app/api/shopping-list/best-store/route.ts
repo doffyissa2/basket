@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { requireAuth } from '@/lib/auth'
+import { getRequestContextWithBody } from '@/lib/request-context'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 interface StatRow {
@@ -12,14 +12,16 @@ interface StatRow {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
-  if (authResult instanceof NextResponse) return authResult
+  const body = await request.json()
+  const ctx = await getRequestContextWithBody(request, body)
+  if (ctx instanceof NextResponse) return ctx
 
-  const rlResponse = await checkRateLimit(request, 'shoppingListBestStore', authResult.userId)
+  const rlResponse = await checkRateLimit(request, 'shoppingListBestStore', ctx.userId)
   if (rlResponse) return rlResponse
 
   try {
-    const { items, postcode } = await request.json()
+    const { items } = body
+    const { dept } = ctx
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })
@@ -33,8 +35,6 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
-
-    const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
     // ── 1. Match all items via match_product RPC (full catalogue, pg_trgm) ──
     // Fire all RPC calls concurrently — no sequential N+1

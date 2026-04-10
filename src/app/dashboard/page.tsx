@@ -10,8 +10,8 @@ import {
   Flame, Star, Trophy, Crown, Home, Sparkles, ShoppingBag,
   ArrowRight, Zap, RefreshCw, Lightbulb, AlertCircle,
 } from 'lucide-react'
-import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
+import { useUserContext } from '@/lib/user-context'
 import OnboardingFlow from '@/components/OnboardingFlow'
 import Link from 'next/link'
 import { EASE, useCountUp } from '@/lib/hooks'
@@ -43,25 +43,6 @@ const NEXT_LEVEL: Record<string, string> = {
   Débutant: 'Explorateur', Explorateur: 'Économe', Économe: 'Expert', Expert: 'Champion',
 }
 
-function isoWeek(d: Date) {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7))
-  const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
-  return `${t.getUTCFullYear()}-${Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7)}`
-}
-function computeStreak(rs: { created_at: string }[]) {
-  if (!rs.length) return 0
-  const weeks = new Set(rs.map(r => isoWeek(new Date(r.created_at))))
-  const sorted = [...weeks].sort().reverse()
-  let cur = isoWeek(new Date()), streak = 0
-  for (const w of sorted) {
-    if (w !== cur) break
-    streak++
-    const [y, n] = w.split('-').map(Number)
-    cur = n === 1 ? `${y - 1}-52` : `${y}-${n - 1}`
-  }
-  return streak
-}
 
 function formatLastUpdated(d: Date): string {
   const mins = Math.floor((Date.now() - d.getTime()) / 60000)
@@ -109,13 +90,13 @@ const NAV = [
 const STORE_ACCENT = ['#7ed957', '#00D09C', '#F59E0B', '#a3f07a', '#60A5FA']
 
 export default function DashboardPage() {
-  const [user,           setUser]           = useState<User | null>(null)
+  const { user, profile, streak: ctxStreak, loading: ctxLoading } = useUserContext()
+
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalSavings,   setTotalSavings]   = useState(0)
   const [totalSpent,     setTotalSpent]     = useState(0)
   const [receiptsCount,  setReceiptsCount]  = useState(0)
   const [monthSpent,     setMonthSpent]     = useState(0)
-  const [streak,         setStreak]         = useState(0)
   const [unreadCount,    setUnreadCount]    = useState(0)
   const [areaInsight,    setAreaInsight]    = useState<AreaInsight | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -135,30 +116,28 @@ export default function DashboardPage() {
 
   const todayTip = TIPS[new Date().getDay() % TIPS.length]
 
-  const fetchData = useCallback(async (currentUser: User) => {
+  const fetchData = useCallback(async (userId: string, postcode: string | null) => {
     try {
       const [
         { data: receipts, error: receiptsErr },
         { count: rCount },
         { count: unread },
-        { data: profile },
         { data: all },
       ] = await Promise.all([
         supabase.from('receipts')
           .select('id, store_chain, total_amount, receipt_date, created_at, savings_amount')
-          .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10),
-        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+          .eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
+        supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', userId),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
-          .eq('user_id', currentUser.id).eq('read', false),
-        supabase.from('profiles').select('postcode, onboarded, total_savings').eq('id', currentUser.id).single(),
+          .eq('user_id', userId).eq('read', false),
         supabase.from('receipts')
-          .select('created_at, total_amount, receipt_date').eq('user_id', currentUser.id),
+          .select('created_at, total_amount, receipt_date').eq('user_id', userId),
       ])
 
       if (receiptsErr) {
         const { data: fb } = await supabase.from('receipts')
           .select('id, store_chain, total_amount, receipt_date, created_at')
-          .eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10)
+          .eq('user_id', userId).order('created_at', { ascending: false }).limit(10)
         if (fb) setRecentReceipts(fb as RecentReceipt[])
       } else if (receipts) {
         setRecentReceipts(receipts)
@@ -166,12 +145,9 @@ export default function DashboardPage() {
 
       if (rCount)  setReceiptsCount(rCount)
       if (unread)  setUnreadCount(unread)
-      if (!profile?.onboarded) setShowOnboarding(true)
-      if (profile?.total_savings) setTotalSavings(Number(profile.total_savings))
 
       if (all) {
         setTotalSpent(all.reduce((s, r) => s + (r.total_amount || 0), 0))
-        setStreak(computeStreak(all))
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
           .toISOString().split('T')[0]
         setMonthSpent(
@@ -180,7 +156,7 @@ export default function DashboardPage() {
         )
       }
 
-      const pc = profile?.postcode
+      const pc = postcode
       if (pc && pc.length >= 2) {
         const dept = pc.slice(0, 2)
         try {
@@ -211,26 +187,24 @@ export default function DashboardPage() {
       setLoadError(true)
       toast.error('Erreur de chargement', {
         description: 'Impossible de charger vos données.',
-        action: { label: 'Réessayer', onClick: () => fetchData(currentUser) },
+        action: { label: 'Réessayer', onClick: () => fetchData(userId, postcode) },
       })
     }
   }, [])
 
+  // Redirect if not authenticated
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { window.location.href = '/login'; return }
-        setUser(user)
-        await fetchData(user)
-      } catch {
-        toast.error('Erreur de connexion', { description: 'Veuillez vous reconnecter.' })
-      } finally {
-        setLoading(false)
-      }
-    }
-    init()
-  }, [fetchData])
+    if (!ctxLoading && !user) window.location.href = '/login'
+  }, [ctxLoading, user])
+
+  // Load receipt data once user is available from context
+  useEffect(() => {
+    if (!user) return
+    const postcode = profile?.postcode ?? null
+    if (profile?.total_savings) setTotalSavings(Number(profile.total_savings))
+    if (profile && !profile.onboarded) setShowOnboarding(true)
+    fetchData(user.id, postcode).finally(() => setLoading(false))
+  }, [user, profile, fetchData])
 
   // Update "last updated" string every 30s
   useEffect(() => {
@@ -251,7 +225,7 @@ export default function DashboardPage() {
       const delta = e.changedTouches[0].clientY - touchStartY.current
       if (delta > 70) {
         setRefreshing(true)
-        await fetchData(user)
+        await fetchData(user.id, profile?.postcode ?? null)
         setRefreshing(false)
       }
       pulling.current = false
@@ -391,7 +365,7 @@ export default function DashboardPage() {
                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                   <p className="text-sm text-red-400 flex-1">Erreur de chargement des données.</p>
-                  <button onClick={() => user && fetchData(user)}
+                  <button onClick={() => user && fetchData(user.id, profile?.postcode ?? null)}
                     className="text-xs font-bold text-red-400 underline">Réessayer</button>
                 </motion.div>
               )}
@@ -416,13 +390,13 @@ export default function DashboardPage() {
                   <level.Icon className="w-3.5 h-3.5" style={{ color: level.color }} />
                   <span className="text-xs font-bold" style={{ color: level.color }}>{level.label}</span>
                 </motion.div>
-                {streak > 1 && (
+                {(ctxStreak ?? 0) > 1 && (
                   <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.25, ease: EASE }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
                     style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
                     <Flame className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-xs font-bold text-amber-400">{streak} semaines 🔥</span>
+                    <span className="text-xs font-bold text-amber-400">{ctxStreak} semaines 🔥</span>
                   </motion.div>
                 )}
               </div>

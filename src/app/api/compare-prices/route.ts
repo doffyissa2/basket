@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { extractWeight, computeNormalizedPrice } from '@/lib/normalize'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { requireAuth } from '@/lib/auth'
+import { getRequestContextWithBody } from '@/lib/request-context'
 import { getServiceClient } from '@/lib/supabase-service'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -38,14 +38,16 @@ interface ComparisonResult {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
-  if (authResult instanceof NextResponse) return authResult
+  const body = await request.json()
+  const ctx = await getRequestContextWithBody(request, body)
+  if (ctx instanceof NextResponse) return ctx
 
-  const rateLimitResponse = await checkRateLimit(request, 'comparePrices', authResult.userId)
+  const rateLimitResponse = await checkRateLimit(request, 'comparePrices', ctx.userId)
   if (rateLimitResponse) return rateLimitResponse
 
   try {
-    const { items, postcode, store_chain } = await request.json()
+    const { items, store_chain } = body
+    const { postcode, dept } = ctx
 
     if (!items || !Array.isArray(items)) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 })
@@ -56,7 +58,6 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceClient()
-    const dept = postcode && postcode.length >= 2 ? postcode.slice(0, 2) : null
 
     // ── Match cache: item_key → matched_name (avoid duplicate RPC calls) ────
     const matchCache = new Map<string, string | null>()

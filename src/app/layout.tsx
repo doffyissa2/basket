@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import PWASetup from '@/components/PWASetup'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import OfflineBanner from '@/components/OfflineBanner'
+import { UserContextProvider } from '@/lib/user-context'
 
 const BASE_URL = 'https://basketbeta.com'
 
@@ -76,7 +77,9 @@ export default function RootLayout({
       <body style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <OfflineBanner />
         <ErrorBoundary>
-          {children}
+          <UserContextProvider>
+            {children}
+          </UserContextProvider>
         </ErrorBoundary>
         <PWASetup />
         <Toaster />

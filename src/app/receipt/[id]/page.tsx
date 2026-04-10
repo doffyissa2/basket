@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import { EASE } from '@/lib/hooks'
+import { useUserContext } from '@/lib/user-context'
 
 interface ReceiptDetail {
   id: string; store_chain: string | null; total_amount: number | null
@@ -48,6 +49,8 @@ export default function ReceiptDetailPage() {
   const router = useRouter()
   const id = (params?.id as string) ?? ''
 
+  const { user, session, profile, recentStores, loading: ctxLoading } = useUserContext()
+
   const [receipt,     setReceipt]     = useState<ReceiptDetail | null>(null)
   const [items,       setItems]       = useState<PriceItem[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -58,12 +61,13 @@ export default function ReceiptDetailPage() {
   const [cmpLoading,  setCmpLoading]  = useState(false)
 
   useEffect(() => {
-    if (!id) return
+    if (!ctxLoading && !user) { window.location.href = '/login'; return }
+  }, [ctxLoading, user])
+
+  useEffect(() => {
+    if (!id || ctxLoading || !user) return
     const init = async () => {
       setLoading(true); setNotFound(false)
-      const { data: { user }, error: authErr } = await supabase.auth.getUser()
-      if (authErr) console.error('[receipt] auth error:', authErr)
-      if (!user) { window.location.href = '/login'; return }
 
       const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }, { data: savingsRow }] = await Promise.all([
         supabase.from('receipts')
@@ -94,34 +98,30 @@ export default function ReceiptDetailPage() {
         setTimeout(() => setConfetti(false), 2200)
       }
 
-      // Fetch price comparison in background so users can see cheaper alternatives
-      if (itemsData && itemsData.length > 0) {
+      // Fetch price comparison using session + postcode from context (no extra queries)
+      if (itemsData && itemsData.length > 0 && session) {
         setCmpLoading(true)
         try {
-          const { data: { session } } = await supabase.auth.getSession()
-          const { data: profile } = await supabase.from('profiles').select('postcode').eq('id', user.id).single()
-          if (session) {
-            const res = await fetch('/api/compare-prices', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-              body: JSON.stringify({
-                items:       itemsData.map(i => ({ name: i.item_name, price: i.unit_price })),
-                store_chain: receiptData.store_chain,
-                postcode:    profile?.postcode ?? null,
-              }),
-            })
-            if (res.ok) {
-              const cmp = await res.json()
-              setComparisons(cmp.comparisons ?? [])
-              setBestStore(cmp.best_store ?? null)
-            }
+          const res = await fetch('/api/compare-prices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({
+              items:       itemsData.map(i => ({ name: i.item_name, price: i.unit_price })),
+              store_chain: receiptData.store_chain,
+              postcode:    profile?.postcode ?? null,
+            }),
+          })
+          if (res.ok) {
+            const cmp = await res.json()
+            setComparisons(cmp.comparisons ?? [])
+            setBestStore(cmp.best_store ?? null)
           }
         } catch { /* non-critical, ignore */ }
         setCmpLoading(false)
       }
     }
     init()
-  }, [id])
+  }, [id, ctxLoading, user, session, profile])
 
   // Not found → toast + redirect
   useEffect(() => {
@@ -372,6 +372,25 @@ export default function ReceiptDetailPage() {
                 <span style={{ color: '#00D09C' }}>€{bestStore.total_savings.toFixed(2)}</span>
                 {' '}sur {bestStore.items_cheaper} articles
               </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Store history badge */}
+        {receipt?.store_chain && recentStores.includes(receipt.store_chain) && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25, ease: EASE }}
+            className="rounded-2xl p-4 flex items-center gap-4"
+            style={{ background: 'white', border: '1px solid rgba(17,17,17,0.07)', borderLeft: '3px solid rgba(126,217,87,0.5)' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(126,217,87,0.1)' }}>
+              <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-graphite">
+                Votre historique chez <strong>{receipt.store_chain}</strong>
+              </p>
+              <p className="text-xs mt-0.5 text-graphite/50">Vous avez déjà scanné chez ce magasin</p>
             </div>
           </motion.div>
         )}
