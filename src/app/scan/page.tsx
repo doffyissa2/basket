@@ -573,10 +573,39 @@ export default function ScanPage() {
       let savedReceiptId: string
       const isNewScan = !(existing && existing.length > 0)
 
+      // Pre-filter items — used in both branches
+      const validItems = parsed.items.filter(item => item.price > 0 && item.name.trim().length > 0)
+      const itemRows = (receiptId: string) => validItems.map((item) => ({
+        receipt_id: receiptId,
+        user_id: user.id,
+        item_name: item.name,
+        item_name_normalised: normalizeProductName(item.name),
+        quantity: item.quantity,
+        unit_price: item.price,
+        total_price: item.price * item.quantity,
+        store_chain: storeChain,
+        postcode: postcode || null,
+        latitude: userCoords?.lat ?? null,
+        longitude: userCoords?.lon ?? null,
+        is_promo: item.is_promo ?? false,
+        is_private_label: item.is_private_label ?? false,
+      }))
+
       if (!isNewScan) {
-        // Duplicate: reuse existing receipt id, skip DB writes
+        // Duplicate receipt — reuse existing id but backfill items if the prior scan had none
         savedReceiptId = existing![0].id
         setReceiptId(savedReceiptId)
+
+        if (validItems.length > 0) {
+          const { count } = await supabase
+            .from('price_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('receipt_id', savedReceiptId)
+          if ((count ?? 0) === 0) {
+            const { error: backfillError } = await supabase.from('price_items').insert(itemRows(savedReceiptId))
+            if (backfillError) console.error('[scan] price_items backfill error:', backfillError.message)
+          }
+        }
       } else {
         // New receipt: insert receipt row
         const { data: receiptRow, error: receiptError } = await supabase
@@ -600,26 +629,9 @@ export default function ScanPage() {
         savedReceiptId = receiptRow.id
         setReceiptId(savedReceiptId)
 
-        // ── Insert price_items (filter out zero/invalid prices to avoid DB constraint violations) ──
-        const validItems = parsed.items.filter(item => item.price > 0 && item.name.trim().length > 0)
+        // ── Insert price_items ────────────────────────────────────────────────
         if (validItems.length > 0) {
-          const { error: itemsError } = await supabase.from('price_items').insert(
-            validItems.map((item) => ({
-              receipt_id: receiptRow.id,
-              user_id: user.id,
-              item_name: item.name,
-              item_name_normalised: normalizeProductName(item.name),
-              quantity: item.quantity,
-              unit_price: item.price,
-              total_price: item.price * item.quantity,
-              store_chain: storeChain,
-              postcode: postcode || null,
-              latitude: userCoords?.lat ?? null,
-              longitude: userCoords?.lon ?? null,
-              is_promo: item.is_promo ?? false,
-              is_private_label: item.is_private_label ?? false,
-            }))
-          )
+          const { error: itemsError } = await supabase.from('price_items').insert(itemRows(savedReceiptId))
           if (itemsError) {
             // Non-critical: receipt was saved — don't block the user, just log
             console.error('[scan] price_items insert error:', itemsError.message)

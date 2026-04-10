@@ -529,27 +529,22 @@ export async function POST(request: NextRequest) {
         : null
 
     if (claudeAddress) {
-      // a) Forward geocode + Haiku verify in parallel
-      const [geoData, verifyResult] = await Promise.all([
-        fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
-          { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
-        ).then(r => r.json() as Promise<unknown[]>).catch(() => []),
-        callClaude(
-          apiKey, [],
-          `Is "${claudeAddress}" a valid French postal address that could be a ${parsed.store_name} store location? Reply ONLY with valid JSON (no markdown): {"valid": true, "confidence": 0.95}`,
-          'claude-haiku-4-5-20251001'
-        ).then(t => {
-          const c = t.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-          return JSON.parse(c) as { valid: boolean; confidence: number }
-        }).catch(() => ({ valid: false, confidence: 0 })),
-      ])
+      // a) Receipt address is authoritative — always use it for display.
+      // The text is printed on the ticket by the store itself; no LLM verification needed.
+      storeLocation.address = claudeAddress
+
+      // Forward geocode to get lat/lon for the map pin.
+      const geoData = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
+        { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
+      ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
 
       const geo = Array.isArray(geoData) ? (geoData[0] as { lat: string; lon: string } | undefined) : undefined
-      if (geo && verifyResult.valid && verifyResult.confidence > 0.7) {
+      if (geo) {
         const geocodedLat = parseFloat(geo.lat)
         const geocodedLon = parseFloat(geo.lon)
-        storeLocation = { address: claudeAddress, lat: geocodedLat, lon: geocodedLon }
+        storeLocation.lat = geocodedLat
+        storeLocation.lon = geocodedLon
         console.log(`[parse-receipt] Receipt address geocoded: "${claudeAddress}" → ${geocodedLat},${geocodedLon}`)
         // Upsert to store_locations (fire-and-forget — don't block response)
         const osm_id = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`
@@ -561,10 +556,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // b) GPS-based fallback: nearest matching store in DB
+    // b) GPS-based fallback: nearest matching store in DB (only when no receipt address)
     if (!storeLocation.lat) {
       const gpsBased = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
-      if (gpsBased.lat) storeLocation = gpsBased
+      if (gpsBased.lat) storeLocation = { ...storeLocation, ...gpsBased }
     }
 
     // c) Last resort: user GPS only + fire-and-forget GPS-accuracy upsert
