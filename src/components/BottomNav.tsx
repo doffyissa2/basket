@@ -57,8 +57,8 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
     >
       <LayoutGroup>
         <div
-          className="flex items-end justify-around px-2"
-          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', paddingTop: '8px' }}
+          className="flex items-center justify-around px-2"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 6px)', paddingTop: '6px', height: 'var(--nav-h, 56px)' }}
         >
           {TABS.map((tab) => {
             const isActive     = active === tab.id
@@ -66,28 +66,28 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
 
             if (tab.isFab) {
               return (
-                <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center" style={{ marginBottom: '12px' }}>
+                <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5">
                   <motion.div
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
                     className="flex items-center justify-center rounded-full"
                     style={{
-                      width:      52,
-                      height:     52,
+                      width:      44,
+                      height:     44,
                       background: '#111111',
-                      boxShadow:  '0 4px 20px rgba(17,17,17,0.25)',
+                      boxShadow:  '0 4px 16px rgba(17,17,17,0.3)',
                     }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   >
-                    <tab.icon className="w-6 h-6 text-white" />
+                    <tab.icon className="w-5 h-5 text-white" />
                   </motion.div>
-                  <span className="text-[10px] mt-1 font-medium text-graphite/60">{tab.label}</span>
+                  <span className="text-[9px] font-medium text-graphite/60">{tab.label}</span>
                 </Link>
               )
             }
 
             return (
-              <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-1 py-1 relative min-w-[52px]">
+              <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5 py-1 relative min-w-[48px]">
                 <motion.div
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -126,11 +126,11 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                   )}
 
                   <tab.icon
-                    className="w-5 h-5 transition-colors"
+                    className="w-[18px] h-[18px] transition-colors"
                     style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.35)' }}
                   />
                   <span
-                    className="text-[10px] font-semibold transition-colors"
+                    className="text-[9px] font-semibold transition-colors"
                     style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.35)' }}
                   >
                     {tab.label}

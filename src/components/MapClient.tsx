@@ -69,12 +69,14 @@ function StoreSheet({
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 30,
+        position: 'absolute',
+        bottom: 'calc(var(--nav-h, 56px) + env(safe-area-inset-bottom, 0px))',
+        left: 0, right: 0, zIndex: 30,
         background: '#1a1a1a',
         borderRadius: '20px 20px 0 0',
-        padding: '0 0 env(safe-area-inset-bottom)',
         boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
-        maxHeight: '55vh', overflow: 'hidden',
+        maxHeight: 'calc(60vh - var(--nav-h, 56px))',
+        overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}
     >
@@ -464,7 +466,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
         onLoad={() => setMapLoaded(true)}
         interactiveLayerIds={['clusters', 'unclustered-point']}
       >
-        <NavigationControl position="bottom-right" showCompass={false} />
+        <NavigationControl position="top-right" showCompass={false} />
 
         <Source id="stores" type="geojson" data={geojson} cluster clusterMaxZoom={13} clusterRadius={45}>
           <Layer id="clusters" type="circle" filter={['has', 'point_count']} paint={{
@@ -601,7 +603,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
       </div>
 
       {/* ── Floating right buttons ─────────────────────────────────────────── */}
-      <div style={{ position: 'absolute', bottom: 100, right: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ position: 'absolute', bottom: 'calc(var(--nav-h, 56px) + env(safe-area-inset-bottom, 0px) + 10px)', right: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {userCoords && (
           <button type="button" onClick={flyToUser} title="Ma position"
             style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#1a1a1a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
@@ -620,7 +622,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
             style={{
-              position: 'absolute', bottom: 100, left: 12, right: 52, zIndex: 10,
+              position: 'absolute', bottom: 'calc(var(--nav-h, 56px) + env(safe-area-inset-bottom, 0px) + 10px)', left: 12, right: 52, zIndex: 10,
               background: 'rgba(26,26,26,0.95)', borderRadius: 12, padding: '10px 14px',
               boxShadow: '0 4px 20px rgba(0,0,0,0.4)', border: '1px solid rgba(126,217,87,0.2)',
             }}>
