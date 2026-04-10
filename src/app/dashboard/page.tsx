@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { Suspense, useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import {
   Camera, BarChart2, ShoppingCart, Bell, Map as MapIcon,
   TrendingDown, LogOut, ChevronRight, MapPin, Receipt,
   Flame, Star, Trophy, Crown, Home, Sparkles, ShoppingBag,
-  ArrowRight, Zap, RefreshCw, Lightbulb, AlertCircle,
+  ArrowRight, Zap, RefreshCw, Lightbulb, AlertCircle, X,
 } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import { useUserContext } from '@/lib/user-context'
@@ -89,8 +90,11 @@ const NAV = [
 ]
 const STORE_ACCENT = ['#7ed957', '#00D09C', '#F59E0B', '#a3f07a', '#60A5FA']
 
-export default function DashboardPage() {
+function DashboardPage() {
   const { user, profile, streak: ctxStreak, loading: ctxLoading } = useUserContext()
+  const searchParams = useSearchParams()
+  const router       = useRouter()
+  const storeFilter  = searchParams.get('store')
 
   const [recentReceipts, setRecentReceipts] = useState<RecentReceipt[]>([])
   const [totalSavings,   setTotalSavings]   = useState(0)
@@ -116,17 +120,21 @@ export default function DashboardPage() {
 
   const todayTip = TIPS[new Date().getDay() % TIPS.length]
 
-  const fetchData = useCallback(async (userId: string, postcode: string | null) => {
+  const fetchData = useCallback(async (userId: string, postcode: string | null, storeChainFilter?: string | null) => {
     try {
+      let receiptsQ = supabase.from('receipts')
+        .select('id, store_chain, total_amount, receipt_date, created_at, savings_amount')
+        .eq('user_id', userId).order('created_at', { ascending: false })
+      if (storeChainFilter) receiptsQ = receiptsQ.eq('store_chain', storeChainFilter).limit(50)
+      else                  receiptsQ = receiptsQ.limit(10)
+
       const [
         { data: receipts, error: receiptsErr },
         { count: rCount },
         { count: unread },
         { data: all },
       ] = await Promise.all([
-        supabase.from('receipts')
-          .select('id, store_chain, total_amount, receipt_date, created_at, savings_amount')
-          .eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
+        receiptsQ,
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', userId),
         supabase.from('notifications').select('id', { count: 'exact', head: true })
           .eq('user_id', userId).eq('read', false),
@@ -197,14 +205,14 @@ export default function DashboardPage() {
     if (!ctxLoading && !user) window.location.href = '/login'
   }, [ctxLoading, user])
 
-  // Load receipt data once user is available from context
+  // Load receipt data once user is available from context, and re-load when store filter changes
   useEffect(() => {
     if (!user) return
     const postcode = profile?.postcode ?? null
     if (profile?.total_savings) setTotalSavings(Number(profile.total_savings))
     if (profile && !profile.onboarded) setShowOnboarding(true)
-    fetchData(user.id, postcode).finally(() => setLoading(false))
-  }, [user, profile, fetchData])
+    fetchData(user.id, postcode, storeFilter).finally(() => setLoading(false))
+  }, [user, profile, fetchData, storeFilter])
 
   // Update "last updated" string every 30s
   useEffect(() => {
@@ -225,7 +233,7 @@ export default function DashboardPage() {
       const delta = e.changedTouches[0].clientY - touchStartY.current
       if (delta > 70) {
         setRefreshing(true)
-        await fetchData(user.id, profile?.postcode ?? null)
+        await fetchData(user.id, profile?.postcode ?? null, storeFilter)
         setRefreshing(false)
       }
       pulling.current = false
@@ -365,7 +373,7 @@ export default function DashboardPage() {
                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                   <p className="text-sm text-red-400 flex-1">Erreur de chargement des données.</p>
-                  <button onClick={() => user && fetchData(user.id, profile?.postcode ?? null)}
+                  <button onClick={() => user && fetchData(user.id, profile?.postcode ?? null, storeFilter)}
                     className="text-xs font-bold text-red-400 underline">Réessayer</button>
                 </motion.div>
               )}
@@ -502,19 +510,30 @@ export default function DashboardPage() {
                 style={{ borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-graphite/40" />
-                  <p className="text-sm font-bold text-graphite">Mes tickets</p>
-                  {receiptsCount > 0 && (
+                  <p className="text-sm font-bold text-graphite">
+                    {storeFilter ? `Chez ${storeFilter}` : 'Mes tickets'}
+                  </p>
+                  {storeFilter ? (
+                    <button
+                      onClick={() => router.push('/dashboard')}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: 'rgba(17,17,17,0.07)', color: 'rgba(17,17,17,0.5)' }}>
+                      <X className="w-2.5 h-2.5" /> Effacer
+                    </button>
+                  ) : receiptsCount > 0 ? (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                       style={{ background: 'rgba(17,17,17,0.06)', color: 'rgba(17,17,17,0.4)' }}>
                       {receiptsCount}
                     </span>
-                  )}
+                  ) : null}
                 </div>
-                <Link href="/bilan"
-                  className="text-xs font-semibold flex items-center gap-1 hover:opacity-70 transition-opacity"
-                  style={{ color: '#7ed957', textDecoration: 'none' }}>
-                  Bilan <ArrowRight className="w-3 h-3" />
-                </Link>
+                {!storeFilter && (
+                  <Link href="/bilan"
+                    className="text-xs font-semibold flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    style={{ color: '#7ed957', textDecoration: 'none' }}>
+                    Bilan <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
               </div>
 
               {/* Loading skeleton */}
@@ -702,5 +721,13 @@ export default function DashboardPage() {
 
       <BottomNav active="home" />
     </>
+  )
+}
+
+export default function DashboardPageWrapper() {
+  return (
+    <Suspense>
+      <DashboardPage />
+    </Suspense>
   )
 }
