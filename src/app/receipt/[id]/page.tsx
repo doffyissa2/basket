@@ -78,7 +78,7 @@ export default function ReceiptDetailPage() {
           .maybeSingle(),
         supabase.from('price_items')
           .select('item_name, unit_price, quantity')
-          .eq('receipt_id', id).order('unit_price', { ascending: false }).limit(100),
+          .eq('receipt_id', id).eq('user_id', user.id).order('unit_price', { ascending: false }).limit(100),
         // Separate query so a missing savings_amount column doesn't break the main fetch
         supabase.from('receipts')
           .select('savings_amount')
@@ -385,22 +385,24 @@ export default function ReceiptDetailPage() {
           </motion.div>
         )}
 
-        {/* Store history badge */}
+        {/* Store history badge — tappable, goes to dashboard filtered by store */}
         {receipt?.store_chain && recentStores.includes(receipt.store_chain) && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, ease: EASE }}
-            className="rounded-2xl p-4 flex items-center gap-4"
-            style={{ background: 'white', border: '1px solid rgba(17,17,17,0.07)', borderLeft: '3px solid rgba(126,217,87,0.5)' }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(126,217,87,0.1)' }}>
-              <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-graphite">
-                Votre historique chez <strong>{receipt.store_chain}</strong>
-              </p>
-              <p className="text-xs mt-0.5 text-graphite/50">Vous avez déjà scanné chez ce magasin</p>
-            </div>
+            transition={{ delay: 0.25, ease: EASE }}>
+            <Link href={`/dashboard?store=${encodeURIComponent(receipt.store_chain)}`}
+              className="flex items-center gap-4 rounded-2xl p-4 active:scale-[0.99] transition-all"
+              style={{ background: 'white', border: '1px solid rgba(17,17,17,0.07)', borderLeft: '3px solid rgba(126,217,87,0.5)', textDecoration: 'none', display: 'flex' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(126,217,87,0.1)' }}>
+                <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-graphite">
+                  Votre historique chez <strong>{receipt.store_chain}</strong>
+                </p>
+                <p className="text-xs mt-0.5 text-graphite/50">Voir tous vos tickets ici →</p>
+              </div>
+            </Link>
           </motion.div>
         )}
 

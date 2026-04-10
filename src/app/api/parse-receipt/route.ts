@@ -532,27 +532,33 @@ export async function POST(request: NextRequest) {
       // a) Receipt address is authoritative — always use it for display.
       storeLocation.address = claudeAddress
 
-      // Extract postcode from address text (e.g. "Zone du Gros Chêne, 76230 Isneauville" → "76230")
-      const postcodeMatch = claudeAddress.match(/\b(\d{5})\b/)
+      // Extract postcode + city from address text
+      // e.g. "Zone du Gros Chêne, 76230 Isneauville" → postcode="76230", city="Isneauville"
+      const postcodeMatch = claudeAddress.match(/\b(\d{5})\s+([A-ZÀ-ÿa-z\-]+(?:\s+[A-ZÀ-ÿa-z\-]+)*)/i)
       const receiptPostcode = postcodeMatch?.[1] ?? null
+      const receiptCity     = postcodeMatch?.[2]?.trim() ?? null
 
-      // Strategy 1: Overpass API — find the exact OSM building by store chain + postcode.
-      // Far more accurate than Nominatim address search for commercial zone names.
+      // Strategy 1: Overpass API — find the exact OSM building by chain name + postcode or city.
+      // Two attempts: strict (postcode tag) then loose (addr:city tag) — many OSM stores
+      // have city tagged but not postcode, so both are needed.
       let overpassLat: number | null = null
       let overpassLon: number | null = null
       let overpassOsmId: string | null = null
 
-      if (receiptPostcode) {
+      if (receiptPostcode || receiptCity) {
         try {
-          // Match any node/way tagged as a supermarket/convenience whose name contains
-          // the first word of the store chain (e.g. "Intermarché") in this postcode.
           const chainWord = parsed.store_name.split(/[\s\-]/)[0].replace(/[^a-zA-ZÀ-ÿ]/g, '')
-          const overpassQuery = `[out:json][timeout:6];
+          // Build filter: try postcode AND city tag variants
+          const pcFilter  = receiptPostcode ? `["addr:postcode"="${receiptPostcode}"]` : ''
+          const cityFilter = receiptCity    ? `["addr:city"~"${receiptCity}","i"]`       : ''
+          const overpassQuery = `[out:json][timeout:8];
 (
-  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
-  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
-  node["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
-  way["name"~"${chainWord}","i"]["addr:postcode"="${receiptPostcode}"];
+  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${pcFilter};
+  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${pcFilter};
+  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${cityFilter};
+  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${cityFilter};
+  node["name"~"${chainWord}","i"]${pcFilter};
+  way["name"~"${chainWord}","i"]${pcFilter};
 );
 out center 1;`
 
@@ -585,11 +591,13 @@ out center 1;`
           source: 'receipt_ocr', accuracy: 'address',
         }, { onConflict: 'osm_id', ignoreDuplicates: false })
       } else {
-        // Strategy 2: Nominatim — search by store name + postcode, not the zone address.
-        // "Intermarché 76230" finds the POI directly; the zone name confuses Nominatim.
-        const nominatimQuery = receiptPostcode
-          ? `${parsed.store_name} ${receiptPostcode}`
-          : claudeAddress
+        // Strategy 2: Nominatim — store name + city is more reliable than postcode alone
+        // because Nominatim indexes POIs by name+city better than postcode.
+        const nominatimQuery = receiptCity
+          ? `${parsed.store_name} ${receiptCity}`
+          : receiptPostcode
+            ? `${parsed.store_name} ${receiptPostcode}`
+            : claudeAddress
         const geoData = await fetch(
           `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(nominatimQuery)}&format=json&limit=1&countrycodes=fr`,
           { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
