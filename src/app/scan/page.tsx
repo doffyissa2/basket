@@ -202,7 +202,7 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: 'ima
 function compressImage(
   file: File,
   maxPx = 1200,
-  quality = 0.85
+  quality = 0.60
 ): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -405,7 +405,7 @@ export default function ScanPage() {
     setImagePreviews(prev => prev.filter((_, i) => i !== idx))
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -416,6 +416,22 @@ export default function ScanPage() {
       toast.error('Fichier trop volumineux', { description: 'Taille maximale : 10 Mo.' })
       e.target.value = ''; return
     }
+    // Layer 3: aspect ratio preflight — receipts are portrait.
+    // A strongly landscape image (width > 2× height) is almost certainly not a receipt.
+    await new Promise<void>(resolve => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        if (img.width > img.height * 2) {
+          toast.warning('Photo en paysage détectée', {
+            description: 'Les tickets de caisse sont en portrait. Retournez votre téléphone et reprenez la photo.',
+          })
+        }
+        resolve()
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve() }
+    })
     addImageFile(file)
     // Reset input so the same file can be re-selected
     e.target.value = ''

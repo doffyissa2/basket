@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { Redis } from '@upstash/redis'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
+
+function getScanRedis(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  if (!url || !token) return null
+  return new Redis({ url, token })
+}
 
 // ── Fetch price anchors from community_prices ─────────────────────────────────
 // Returns a formatted section to inject into the Claude prompt so it can
@@ -183,43 +191,101 @@ Format attendu :
 - < 0.3 : trop incertain — OMETTRE l'article complètement${formatHintsSection}`
 }
 
+// ── Haiku receipt gatekeeper ──────────────────────────────────────────────────
+// Cheap yes/no check before committing to Sonnet. Runs in parallel with DB queries.
+// Fails open — a gatekeeper error never blocks a legitimate user.
+async function isReceiptImage(
+  apiKey: string,
+  image: { base64: string; mediaType: string }
+): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+            { type: 'text', text: 'Is this a grocery or retail store receipt? Reply ONLY "yes" or "no".' },
+          ],
+        }],
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return true  // fail open
+    const data = await res.json()
+    const answer = (data.content?.[0]?.text ?? '').trim().toLowerCase()
+    return answer.startsWith('yes')
+  } catch {
+    return true  // fail open — gatekeeper errors must never block real scans
+  }
+}
+
 // ── Call Claude Vision (supports 1–3 images for long receipts) ───────────────
+// Vision calls: prompt cached in system message (same every scan → ~90% discount on prompt tokens).
+// Text-only calls (address verify): standard messages, max_tokens capped at 100.
 async function callClaude(
   apiKey: string,
   images: Array<{ base64: string; mediaType: string }>,
   prompt: string,
   model = 'claude-sonnet-4-6'
 ): Promise<string> {
-  const isMultiPart = images.length > 1
-  const multiPartPrefix = isMultiPart
-    ? `Ces ${images.length} images sont les différentes parties d'un même ticket de caisse, dans l'ordre du haut vers le bas. Analyse-les comme un seul ticket et extrais TOUS les articles de l'ensemble des images.\n\n`
-    : ''
-
   const imageBlocks = images.map(img => ({
     type: 'image' as const,
     source: { type: 'base64' as const, media_type: img.mediaType, data: img.base64 },
   }))
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
+  const isVision = images.length > 0
+  const isMultiPart = images.length > 1
+  const multiPartNote = isMultiPart
+    ? `Ces ${images.length} images sont les différentes parties d'un même ticket de caisse, dans l'ordre du haut vers le bas. Analyse-les comme un seul ticket et extrais TOUS les articles de l'ensemble des images.`
+    : ''
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let requestBody: Record<string, any>
+
+  if (isVision) {
+    // Prompt goes in system (cacheable — same for every scan).
+    // Images go in user message (unique per scan — not cached).
+    headers['anthropic-beta'] = 'prompt-caching-2024-07-31'
+    requestBody = {
       model,
       max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            ...imageBlocks,
-            { type: 'text', text: multiPartPrefix + prompt },
-          ],
-        },
-      ],
-    }),
+      system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: [
+          ...imageBlocks,
+          ...(multiPartNote ? [{ type: 'text', text: multiPartNote }] : []),
+        ],
+      }],
+    }
+  } else {
+    // Text-only verification call (address verify, etc.)
+    requestBody = {
+      model,
+      max_tokens: 100,
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    }
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
   })
 
   if (!response.ok) {
@@ -293,8 +359,26 @@ export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
 
-  const rateLimitResponse = await checkRateLimit(request, 'parseReceipt', authResult.userId)
-  if (rateLimitResponse) return rateLimitResponse
+  // Layer 1: daily cap (10/day) + burst cap (3/min) — checked in parallel
+  const [dailyLimit, burstLimit] = await Promise.all([
+    checkRateLimit(request, 'parseReceipt', authResult.userId),
+    checkRateLimit(request, 'parseReceiptBurst', authResult.userId),
+  ])
+  if (dailyLimit) return dailyLimit
+  if (burstLimit) return burstLimit
+
+  // Layer 5: block users with ≥5 consecutive failed scans (abuse signal)
+  const redis = getScanRedis()
+  const failKey = `basket_scan_fails:${authResult.userId}`
+  if (redis) {
+    const consecutiveFails = await redis.get<number>(failKey).catch(() => null)
+    if ((consecutiveFails ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: 'Trop de tentatives invalides. Contactez le support si c\'est une erreur.' },
+        { status: 429 }
+      )
+    }
+  }
 
   try {
     const body = await request.json()
@@ -334,12 +418,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
     }
 
-    // ── Fetch all known receipt format hints + price anchors ─────────────
+    // ── Layer 2: Haiku gatekeeper + DB queries run in parallel ───────────
+    // Gatekeeper costs ~$0.0005 and stops cat photos / memes before Sonnet.
     const supabase = getServiceClient()
-    const [{ data: formats }, priceAnchorsSection] = await Promise.all([
+    const [{ data: formats }, priceAnchorsSection, isReceipt] = await Promise.all([
       supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'),
       fetchPriceAnchors(supabase),
+      isReceiptImage(apiKey, images[0]),
     ])
+
+    if (!isReceipt) {
+      if (redis) void redis.incr(failKey).then(n => { if (n === 1) void redis.expire(failKey, 86400) }).catch(() => null)
+      return NextResponse.json(
+        { error: 'Cette image ne ressemble pas à un ticket de caisse.' },
+        { status: 400 }
+      )
+    }
 
     const formatHintsSection =
       formats && formats.length > 0
@@ -485,6 +579,9 @@ export async function POST(request: NextRequest) {
       }, { onConflict: 'osm_id', ignoreDuplicates: false })
     }
 
+    // Success — reset consecutive failure counter
+    if (redis) void redis.del(failKey).catch(() => null)
+
     return NextResponse.json({
       ...parsed,
       raw_ocr_text:    textContent,
@@ -493,6 +590,8 @@ export async function POST(request: NextRequest) {
       store_longitude: storeLocation.lon,
     })
   } catch (error) {
+    // Increment failure counter — JSON parse errors / API errors are abuse signals
+    if (redis) void redis.incr(failKey).then(n => { if (n === 1) void redis.expire(failKey, 86400) }).catch(() => null)
     console.error('Parse receipt error:', error)
     return NextResponse.json(
       { error: 'Failed to parse receipt' },

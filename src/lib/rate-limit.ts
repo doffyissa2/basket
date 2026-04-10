@@ -27,8 +27,10 @@ function makeLimiter(requests: number, windowSeconds: number): Ratelimit | null 
 
 // Pre-configured limiters — instantiated once at module level
 const limiters = {
-  // 10 scans/min per IP — Claude Vision is expensive
-  parseReceipt: makeLimiter(10, 60),
+  // 10 scans/day per user — Claude Vision is expensive; no human scans >10 receipts a day
+  parseReceipt: makeLimiter(10, 86400),
+  // 3 scans/min burst cap — prevents rapid replay attacks within the daily budget
+  parseReceiptBurst: makeLimiter(3, 60),
   // 30 comparisons/min per IP — DB heavy but cheaper
   comparePrices: makeLimiter(30, 60),
   // 20 geocode/min per IP — proxies Nominatim
