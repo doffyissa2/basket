@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap, Pencil, Check, ShoppingCart } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, X, Share2, CheckCircle2, AlertCircle, MessageSquare, Copy, Store, Plus, Bell, Zap, Pencil, Check, ShoppingCart, MapPin } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import { useUserContext } from '@/lib/user-context'
 import { emit } from '@/lib/events'
@@ -1067,7 +1067,13 @@ export default function ScanPage() {
                   <h2 className="font-bold text-lg text-graphite">{parsedReceipt.store_name}</h2>
                   <p className="text-xl font-extrabold text-graphite">{parsedReceipt.total.toFixed(2)} €</p>
                 </div>
-                <p className="text-xs text-graphite/40">{parsedReceipt.items.length} articles détectés</p>
+                {parsedReceipt.store_address && (
+                  <p className="text-xs text-graphite/50 flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                    {parsedReceipt.store_address}
+                  </p>
+                )}
+                <p className="text-xs text-graphite/40 mt-0.5">{parsedReceipt.items.length} articles détectés</p>
               </div>
 
               {/* Items */}
@@ -1201,9 +1207,11 @@ export default function ScanPage() {
                               </p>
                             )}
                             {!hasSaving && step === 'comparison' && (
-                              <p className="text-xs mt-0.5 text-graphite/35 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" style={{ color: '#00D09C' }} />
-                                Bon prix
+                              <p className="text-xs mt-0.5 flex items-center gap-1"
+                                style={{ color: comparison && comparison.sample_count === 0 ? 'rgba(17,17,17,0.25)' : 'rgba(17,17,17,0.35)' }}>
+                                {comparison && comparison.sample_count === 0 ? '— Pas de données' : (
+                                  <><CheckCircle2 className="w-3 h-3" style={{ color: '#00D09C' }} /> Bon prix</>
+                                )}
                               </p>
                             )}
                           </div>

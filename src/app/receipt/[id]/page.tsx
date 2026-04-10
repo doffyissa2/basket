@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles, Store } from 'lucide-react'
+import { ArrowLeft, Receipt, TrendingDown, ShoppingBag, Camera, Share2, Sparkles, Store, MapPin } from 'lucide-react'
 import Link from 'next/link'
 import { EASE } from '@/lib/hooks'
 import { useUserContext } from '@/lib/user-context'
@@ -13,6 +13,7 @@ import { useUserContext } from '@/lib/user-context'
 interface ReceiptDetail {
   id: string; store_chain: string | null; total_amount: number | null
   savings_amount?: number | null; receipt_date: string | null; created_at: string
+  store_address?: string | null
 }
 interface PriceItem { item_name: string; unit_price: number; quantity: number | null }
 interface ComparisonItem { name: string; your_price: number; avg_price: number; savings: number; cheaper_store: string | null; sample_count: number }
@@ -71,7 +72,7 @@ export default function ReceiptDetailPage() {
 
       const [{ data: receiptData, error: receiptErr }, { data: itemsData, error: itemsErr }, { data: savingsRow }] = await Promise.all([
         supabase.from('receipts')
-          .select('id, store_chain, total_amount, receipt_date, created_at')
+          .select('id, store_chain, total_amount, receipt_date, created_at, store_address')
           .eq('id', id)
           .eq('user_id', user.id)
           .maybeSingle(),
@@ -243,9 +244,17 @@ export default function ReceiptDetailPage() {
               style={{ background: hasSavings ? 'rgba(126,217,87,0.15)' : 'rgba(126,217,87,0.12)' }}>
               <ShoppingBag className="w-4 h-4" style={{ color: '#7ed957' }} />
             </div>
-            <p className="text-sm font-semibold" style={{ color: hasSavings ? 'rgba(255,255,255,0.7)' : '#111' }}>
-              {receipt?.store_chain || 'Magasin'}
-            </p>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: hasSavings ? 'rgba(255,255,255,0.7)' : '#111' }}>
+                {receipt?.store_chain || 'Magasin'}
+              </p>
+              {receipt?.store_address && (
+                <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: hasSavings ? 'rgba(255,255,255,0.35)' : 'rgba(17,17,17,0.4)' }}>
+                  <MapPin className="w-3 h-3 flex-shrink-0" />
+                  {receipt.store_address}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex items-end gap-6">

@@ -129,9 +129,10 @@ function buildPrompt(formatHintsSection: string, isRetry = false): string {
 Format attendu :
 {
   "store_name": "Nom du magasin",
+  "store_address": "Adresse postale complète si visible sur le ticket, sinon null",
   "items": [
     {
-      "name": "Nom du produit",
+      "name": "Nom du produit développé et lisible (pas l'abréviation du ticket)",
       "price": 2.49,
       "quantity": 1,
       "is_promo": false,
@@ -142,22 +143,29 @@ Format attendu :
   "total": 45.67
 }
 
+── RÈGLES CRITIQUES ──────────────────────────────────────────────────────────
+- INTERDIT : n'inventer AUCUN article. N'inclure QUE les articles dont le nom ET le prix sont CLAIREMENT visibles sur le ticket.
+- IGNORER ABSOLUMENT : "SOUS-TOTAL", "TOTAL", "MONTANT DU", "TVA", "CARTE", "ESPECES", "MONNAIE", "CB", "RENDU", "FIDÉLITÉ", "CAUTION", "CONSIGNE", "ECO-PART", "TAXE EMBALLAGE", "VIGNETTE", numéros de carte, codes barres.
+- Vérification finale : additionne (prix × quantité) pour chaque article. Si le total obtenu s'écarte de plus de 10% du TOTAL imprimé sur le ticket, tu as inclus des lignes non-articles — retire-les.
+
+── ADRESSE DU MAGASIN ────────────────────────────────────────────────────────
+- Cherche l'adresse postale dans le bas ou le haut du ticket (rue + code postal + ville).
+- Si visible → "store_address": "Zone du Gros Chêne, 76230 Isneauville"
+- Si absente → "store_address": null
+
 ── RÈGLES GÉNÉRALES ──────────────────────────────────────────────────────────
 - Extrais le nom du magasin depuis l'en-tête du ticket
-- Pour chaque article, donne le nom lisible (développé, pas abrégé), le prix unitaire et la quantité
+- Pour chaque article, développe le nom lisible à partir de l'abréviation : "BOUT D OR HUILE TO" → "Bouton d'Or huile tournesol"
 - Si la quantité n'est pas visible, mets 1
 - Le prix doit être un nombre décimal (ex: 2.49 pas "2,49€")
 - Le total doit correspondre au montant total payé sur le ticket
-- Ignore les lignes de TVA et les informations de paiement
 
 ── RÈGLES POUR LES PRIX ET QUANTITÉS ────────────────────────────────────────
 - Format "Qté × Prix unitaire" (ex: "2 x 1,49") → price=1.49, quantity=2
 - Format poids "0,543 kg x 12,99 €/kg" → price=12.99 (prix au kg), quantity=0.543 (en kg)
 - Prix barrés et remplacés → utiliser toujours le prix final après remise
 - Remises séparées (lignes REMISE, OFFRE FIDÉLITÉ, -XX%) → SOUSTRAIRE du prix de l'article précédent et mettre is_promo=true; NE PAS créer un article séparé pour la remise
-- Consignes/dépôts → IGNORER les lignes "CAUTION", "CONSIGNE", "ECO-PART", "TAXE EMBALLAGE"
 - Retours/avoirs → inclure avec un prix NÉGATIF
-- IGNORER COMPLÈTEMENT : "SOUS-TOTAL", "TOTAL", "TVA", "CARTE", "ESPECES", "MONNAIE", "CB", "RENDU"
 
 ── RÈGLES POUR is_promo ──────────────────────────────────────────────────────
 - true si : PROMO, REMISE, FIDÉLITÉ, FIDELITE, -XX%, LOT DE, OFFRE, SOLDE, BON PRIX, PRIX CHOC, SURGELÉ PROMO, ou prix barré remplacé
@@ -180,7 +188,7 @@ async function callClaude(
   apiKey: string,
   images: Array<{ base64: string; mediaType: string }>,
   prompt: string,
-  model = 'claude-haiku-4-5-20251001'
+  model = 'claude-sonnet-4-6'
 ): Promise<string> {
   const isMultiPart = images.length > 1
   const multiPartPrefix = isMultiPart
@@ -201,7 +209,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -413,30 +421,68 @@ export async function POST(request: NextRequest) {
       parsed.total = correctedTotal
     }
 
-    // 4. Find nearest matching store for accurate location data
-    const storeLocation = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
+    // 4. Resolve store location — three strategies in priority order:
+    //    a) Forward-geocode the address Claude extracted from the receipt text (most accurate)
+    //    b) GPS-based nearest-store DB lookup (fallback if no receipt address)
+    //    c) User GPS coords only (last resort — still useful for new stores)
+    let storeLocation: { address: string | null; lat: number | null; lon: number | null } =
+      { address: null, lat: null, lon: null }
 
-    // 5. If no existing store found but user shared their GPS coords, upsert it
-    //    to store_locations (fire-and-forget — don't block the response).
+    const parsedRaw = parsed as unknown as Record<string, unknown>
+    const claudeAddress =
+      typeof parsedRaw.store_address === 'string' && parsedRaw.store_address.trim().length > 5
+        ? parsedRaw.store_address.trim()
+        : null
+
+    if (claudeAddress) {
+      // a) Forward geocode + Haiku verify in parallel
+      const [geoData, verifyResult] = await Promise.all([
+        fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`,
+          { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
+        ).then(r => r.json() as Promise<unknown[]>).catch(() => []),
+        callClaude(
+          apiKey, [],
+          `Is "${claudeAddress}" a valid French postal address that could be a ${parsed.store_name} store location? Reply ONLY with valid JSON (no markdown): {"valid": true, "confidence": 0.95}`,
+          'claude-haiku-4-5-20251001'
+        ).then(t => {
+          const c = t.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+          return JSON.parse(c) as { valid: boolean; confidence: number }
+        }).catch(() => ({ valid: false, confidence: 0 })),
+      ])
+
+      const geo = Array.isArray(geoData) ? (geoData[0] as { lat: string; lon: string } | undefined) : undefined
+      if (geo && verifyResult.valid && verifyResult.confidence > 0.7) {
+        const geocodedLat = parseFloat(geo.lat)
+        const geocodedLon = parseFloat(geo.lon)
+        storeLocation = { address: claudeAddress, lat: geocodedLat, lon: geocodedLon }
+        console.log(`[parse-receipt] Receipt address geocoded: "${claudeAddress}" → ${geocodedLat},${geocodedLon}`)
+        // Upsert to store_locations (fire-and-forget — don't block response)
+        const osm_id = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`
+        void supabase.from('store_locations').upsert({
+          osm_id, chain: parsed.store_name, name: parsed.store_name,
+          address: claudeAddress, latitude: geocodedLat, longitude: geocodedLon,
+          source: 'receipt_ocr', accuracy: 'address',
+        }, { onConflict: 'osm_id', ignoreDuplicates: false })
+      }
+    }
+
+    // b) GPS-based fallback: nearest matching store in DB
+    if (!storeLocation.lat) {
+      const gpsBased = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
+      if (gpsBased.lat) storeLocation = gpsBased
+    }
+
+    // c) Last resort: user GPS only + fire-and-forget GPS-accuracy upsert
     if (!storeLocation.lat && callerLat && callerLon && parsed.store_name) {
       storeLocation.lat = callerLat
       storeLocation.lon = callerLon
       const pseudoId = `basket_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${callerLat.toFixed(3)}_${callerLon.toFixed(3)}`
-      void (async () => {
-        let resolvedAddress: string | null = null
-        try {
-          const nomRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${callerLat}&lon=${callerLon}&format=json`,
-            { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
-          )
-          if (nomRes.ok) resolvedAddress = ((await nomRes.json()) as { display_name?: string }).display_name ?? null
-        } catch { /* non-critical */ }
-        await supabase.from('store_locations').upsert({
-          osm_id: pseudoId, chain: parsed.store_name, name: parsed.store_name,
-          latitude: callerLat, longitude: callerLon, address: resolvedAddress,
-          source: 'user_scan', accuracy: 'user_gps', scan_count: 1,
-        }, { onConflict: 'osm_id', ignoreDuplicates: false })
-      })()
+      void supabase.from('store_locations').upsert({
+        osm_id: pseudoId, chain: parsed.store_name, name: parsed.store_name,
+        latitude: callerLat, longitude: callerLon, address: null,
+        source: 'user_scan', accuracy: 'user_gps', scan_count: 1,
+      }, { onConflict: 'osm_id', ignoreDuplicates: false })
     }
 
     return NextResponse.json({
