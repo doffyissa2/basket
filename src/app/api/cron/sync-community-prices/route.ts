@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual, createHash } from 'crypto'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { normalizeProductName } from '@/lib/normalize'
 
 function safeCompare(a: string, b: string): boolean {
@@ -189,9 +189,8 @@ type CommunityPriceRow = {
 }
 
 // ── Upsert helper — uses dedup_key generated column ──────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function upsertRows(
-  supabase: any,
+  supabase: SupabaseClient,
   rows: CommunityPriceRow[]
 ): Promise<{ inserted: number; errors: string[] }> {
   let inserted = 0

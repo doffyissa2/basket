@@ -105,7 +105,7 @@ function StoreSheet({
               <p style={{ fontSize: 12, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>{fullAddress}</p>
             )}
           </div>
-          <button onClick={onClose} style={{
+          <button type="button" onClick={onClose} style={{
             background: 'rgba(255,255,255,0.07)', border: 'none', color: '#6B7280',
             borderRadius: '50%', width: 28, height: 28, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -170,7 +170,7 @@ function StoreSheet({
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onNavigate} style={{
+          <button type="button" onClick={onNavigate} style={{
             flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
             background: '#7ed957', color: '#111', fontWeight: 700, fontSize: 13,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -178,7 +178,7 @@ function StoreSheet({
             <Navigation2 size={14} />
             Naviguer
           </button>
-          <button onClick={onSave} style={{
+          <button type="button" onClick={onSave} style={{
             padding: '10px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
             background: saved ? 'rgba(126,217,87,0.2)' : 'rgba(255,255,255,0.07)',
             color: saved ? '#7ed957' : '#9CA3AF',
@@ -222,7 +222,7 @@ function StoreListPanel({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span style={{ color: '#7ed957' }}>{icon}</span>
         <span style={{ fontWeight: 700, fontSize: 14, color: '#fff', flex: 1 }}>{title}</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', padding: 4 }}>
+        <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', padding: 4 }}>
           <X size={16} />
         </button>
       </div>
@@ -230,7 +230,7 @@ function StoreListPanel({
         {stores.length === 0 ? (
           <p style={{ color: '#4B5563', fontSize: 13, textAlign: 'center', padding: '20px 16px' }}>{emptyMsg}</p>
         ) : stores.map((pin, i) => (
-          <button key={i} onClick={() => { onSelect(pin); onClose() }} style={{
+          <button type="button" key={i} onClick={() => { onSelect(pin); onClose() }} style={{
             width: '100%', background: 'none', border: 'none', cursor: 'pointer',
             padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10,
             borderBottom: '1px solid rgba(255,255,255,0.04)', textAlign: 'left',
@@ -406,7 +406,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
     setSelectedPin(null)
   }, [])
 
-  const handleSearch = useCallback(async (e: React.FormEvent) => {
+  const handleSearch = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!searchQuery.trim() || !mapRef.current) return
     try {
@@ -565,7 +565,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
         {/* Chain filter pills — overlaid */}
         <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', overflowX: 'auto', pointerEvents: 'auto' }}>
           {chains.slice(0, 12).map(c => (
-            <button key={c} onClick={() => setChainFilter(c)}
+            <button type="button" key={c} onClick={() => setChainFilter(c)}
               style={{
                 flexShrink: 0, padding: '6px 13px', borderRadius: 99, border: 'none', cursor: 'pointer',
                 fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap',
@@ -578,7 +578,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
           ))}
           {/* Price tier pills */}
           {(['cheap', 'mid', 'expensive'] as const).map(tier => (
-            <button key={tier} onClick={() => setTierFilter(t => t === tier ? 'Tous' : tier)}
+            <button type="button" key={tier} onClick={() => setTierFilter(t => t === tier ? 'Tous' : tier)}
               style={{
                 flexShrink: 0, padding: '6px 12px', borderRadius: 99, border: 'none', cursor: 'pointer',
                 fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5,
@@ -603,12 +603,12 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
       {/* ── Floating right buttons ─────────────────────────────────────────── */}
       <div style={{ position: 'absolute', bottom: 100, right: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {userCoords && (
-          <button onClick={flyToUser} title="Ma position"
+          <button type="button" onClick={flyToUser} title="Ma position"
             style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#1a1a1a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
             <MapPin size={16} color="#7ed957" />
           </button>
         )}
-        <button onClick={() => setShow3d(v => !v)} title={show3d ? 'Désactiver 3D' : 'Activer 3D'}
+        <button type="button" onClick={() => setShow3d(v => !v)} title={show3d ? 'Désactiver 3D' : 'Activer 3D'}
           style={{ width: 36, height: 36, borderRadius: 8, border: show3d ? 'none' : '1px solid rgba(255,255,255,0.12)', background: show3d ? '#7ed957' : '#1a1a1a', cursor: 'pointer', fontWeight: 800, fontSize: 10, color: show3d ? '#111' : '#6B7280', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
           3D
         </button>
@@ -632,7 +632,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
                   Chaque ticket scanné enrichit la carte avec des prix réels et locaux pour tous.
                 </p>
               </div>
-              <button onClick={() => { setDisclaimerDismissed(true); localStorage.setItem('basket_map_disclaimer', '1') }}
+              <button type="button" onClick={() => { setDisclaimerDismissed(true); localStorage.setItem('basket_map_disclaimer', '1') }}
                 style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
                 <X size={14} />
               </button>
