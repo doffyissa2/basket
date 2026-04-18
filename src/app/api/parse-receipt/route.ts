@@ -8,6 +8,67 @@ import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
+// ── SIRENE API types ──────────────────────────────────────────────────────────
+interface SireneEtab {
+  adresse?: string
+  code_postal?: string
+  siret?: string
+}
+interface SireneResult {
+  siege?: SireneEtab
+  matching_etablissements?: SireneEtab[]
+}
+
+// ── French government geocoding helpers ──────────────────────────────────────
+
+// SIRENE: looks up address text for a SIRET, SIREN, or company name.
+// When postcode is provided, filters to the matching establishment.
+async function lookupSirene(query: string, postcode?: string | null): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(query)}&page=1&per_page=5`,
+      { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(5000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const results: SireneResult[] = data?.results ?? []
+    if (results.length === 0) return null
+    for (const result of results) {
+      const etab = postcode
+        ? (result.matching_etablissements?.find(e => e.code_postal === postcode) ??
+           (result.siege?.code_postal === postcode ? result.siege : null))
+        : result.siege
+      if (etab?.adresse) return etab.adresse
+    }
+    return results[0]?.siege?.adresse ?? null
+  } catch { return null }
+}
+
+// VAT: extracts 9-digit SIREN from a French intra-community VAT number (FR XX XXXXXXXXX).
+function sirenFromVat(vat: string): string | null {
+  const clean = vat.replace(/\s/g, '').toUpperCase()
+  return clean.match(/^FR\w{2}(\d{9})$/)?.[1] ?? null
+}
+
+// BAN (Base Adresse Nationale): geocodes a French address to lat/lon.
+// Returns null if score < 0.4 (low confidence) to avoid wrong pins.
+async function geocodeBAN(address: string): Promise<{ lat: number; lon: number; score: number } | null> {
+  try {
+    const res = await fetch(
+      `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(address)}&limit=1`,
+      { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const feature = data?.features?.[0]
+    if (!feature) return null
+    const score: number = feature.properties?.score ?? 0
+    if (score < 0.4) return null
+    const [lon, lat] = feature.geometry.coordinates as [number, number]
+    return { lat, lon, score }
+  } catch { return null }
+}
+
 function getScanRedis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL
   const token = process.env.UPSTASH_REDIS_REST_TOKEN
@@ -139,6 +200,10 @@ Format attendu :
   "raw_lines": ["PAIN DE MIE COMP", "1,89", "YAOURT BIO 125G", "2 x 1,45", "TOTAL", "45,67"],
   "store_name": "Nom du magasin",
   "store_address": "Adresse postale complète si visible sur le ticket, sinon null",
+  "siret": "12345678900014",
+  "vat_number": "FR12123456789",
+  "company_name": "MONTIS",
+  "postcode": "76230",
   "items": [
     {
       "name": "Nom du produit développé et lisible (pas l'abréviation du ticket)",
@@ -166,6 +231,14 @@ Format attendu :
 - Cherche l'adresse postale dans le bas ou le haut du ticket (rue + code postal + ville).
 - Si visible → "store_address": "Zone du Gros Chêne, 76230 Isneauville"
 - Si absente → "store_address": null
+
+── IDENTIFIANTS LÉGAUX DU MAGASIN ───────────────────────────────────────────
+Ces champs permettent de localiser le magasin précisément via les APIs gouvernementales. Cherche-les dans le bas du ticket (pied de page, mentions légales, ligne TVA).
+
+- "siret" : numéro à 14 chiffres (ex: "123 456 789 00014" → "12345678900014"). Chiffres uniquement. null si absent.
+- "vat_number" : numéro de TVA intracommunautaire commençant par FR (ex: "FR 12 123456789" → "FR12123456789"). null si absent.
+- "company_name" : raison sociale légale (souvent différente de l'enseigne — ex: "MONTIS" pour un Intermarché, "SAS AUCHAN ROUEN" pour un Auchan). null si absente.
+- "postcode" : code postal à 5 chiffres du magasin. null si absent.
 
 ── RÈGLES GÉNÉRALES ──────────────────────────────────────────────────────────
 - Extrais le nom du magasin depuis l'en-tête du ticket
@@ -503,43 +576,102 @@ export async function POST(request: NextRequest) {
       parsed.total = correctedTotal
     }
 
-    // 4. Resolve store location — three strategies in priority order:
-    //    a) Forward-geocode the address Claude extracted from the receipt text (most accurate)
-    //    b) GPS-based nearest-store DB lookup (fallback if no receipt address)
-    //    c) User GPS coords only (last resort — still useful for new stores)
+    // 4. Resolve store location
+    //    Priority: DB cache → SIRET→SIRENE→BAN → VAT→SIREN→SIRENE→BAN
+    //              → company+postcode→SIRENE→BAN → address→BAN → Overpass → no pin
+    //    All identifiers come from the receipt itself — no user GPS used.
     let storeLocation: { address: string | null; lat: number | null; lon: number | null } =
       { address: null, lat: null, lon: null }
 
-    const parsedRaw = parsed as unknown as Record<string, unknown>
-    const claudeAddress =
-      typeof parsedRaw.store_address === 'string' && parsedRaw.store_address.trim().length > 5
-        ? parsedRaw.store_address.trim()
-        : null
+    const parsedRaw     = parsed as unknown as Record<string, unknown>
+    const claudeAddress = typeof parsedRaw.store_address === 'string' && parsedRaw.store_address.trim().length > 5
+      ? parsedRaw.store_address.trim() : null
+    const claudeSiret   = typeof parsedRaw.siret === 'string'
+      ? parsedRaw.siret.replace(/\s/g, '').match(/^\d{14}$/)?.[0] ?? null : null
+    const claudeVat     = typeof parsedRaw.vat_number === 'string' && parsedRaw.vat_number.trim().startsWith('FR')
+      ? parsedRaw.vat_number.trim() : null
+    const claudeCompany = typeof parsedRaw.company_name === 'string' && parsedRaw.company_name.trim().length > 2
+      ? parsedRaw.company_name.trim() : null
+    const claudePostcode = typeof parsedRaw.postcode === 'string'
+      ? parsedRaw.postcode.replace(/\s/g, '').match(/^\d{5}$/)?.[0] ?? null : null
 
-    if (claudeAddress) {
-      // a) Receipt address is authoritative — always use it for display.
-      storeLocation.address = claudeAddress
+    // Extract postcode + city from address text (fallback if not extracted as a standalone field)
+    const postcodeMatch  = claudeAddress?.match(/\b(\d{5})\s+([A-ZÀ-ÿa-z\-]+(?:\s+[A-ZÀ-ÿa-z\-]+)*)/i)
+    const receiptPostcode = claudePostcode ?? postcodeMatch?.[1] ?? null
+    const receiptCity     = postcodeMatch?.[2]?.trim() ?? null
 
-      // Extract postcode + city from address text
-      // e.g. "Zone du Gros Chêne, 76230 Isneauville" → postcode="76230", city="Isneauville"
-      const postcodeMatch = claudeAddress.match(/\b(\d{5})\s+([A-ZÀ-ÿa-z\-]+(?:\s+[A-ZÀ-ÿa-z\-]+)*)/i)
-      const receiptPostcode = postcodeMatch?.[1] ?? null
-      const receiptCity     = postcodeMatch?.[2]?.trim() ?? null
+    if (claudeAddress) storeLocation.address = claudeAddress
 
-      // Strategy 1: Overpass API — find the exact OSM building by chain name + postcode or city.
-      // Two attempts: strict (postcode tag) then loose (addr:city tag) — many OSM stores
-      // have city tagged but not postcode, so both are needed.
-      let overpassLat: number | null = null
-      let overpassLon: number | null = null
-      let overpassOsmId: string | null = null
+    // Stable cache key — SIRET is the most precise anchor, then postcode, then city
+    const stableOsmId = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${claudeSiret ?? receiptPostcode ?? receiptCity?.toLowerCase().replace(/[^a-z0-9]/g, '_') ?? 'fr'}`
 
-      if (receiptPostcode || receiptCity) {
-        try {
-          const chainWord = parsed.store_name.split(/[\s\-]/)[0].replace(/[^a-zA-ZÀ-ÿ]/g, '')
-          // Build filter: try postcode AND city tag variants
-          const pcFilter  = receiptPostcode ? `["addr:postcode"="${receiptPostcode}"]` : ''
-          const cityFilter = receiptCity    ? `["addr:city"~"${receiptCity}","i"]`       : ''
-          const overpassQuery = `[out:json][timeout:8];
+    let locationSource = 'none'
+
+    // Step 0: DB cache — known store skips all external API calls
+    const { data: cached } = await supabase.from('store_locations')
+      .select('latitude, longitude, address').eq('osm_id', stableOsmId).maybeSingle()
+    if (cached?.latitude && cached?.longitude) {
+      storeLocation.lat = cached.latitude
+      storeLocation.lon = cached.longitude
+      if (!storeLocation.address) storeLocation.address = cached.address
+      locationSource = 'cache'
+    }
+
+    // Step 1: SIRET → SIRENE → BAN
+    if (!storeLocation.lat && claudeSiret) {
+      const sireneAddr = await lookupSirene(claudeSiret)
+      if (sireneAddr) {
+        const geo = await geocodeBAN(sireneAddr)
+        if (geo) {
+          storeLocation = { lat: geo.lat, lon: geo.lon, address: claudeAddress ?? sireneAddr }
+          locationSource = 'siret'
+        }
+      }
+    }
+
+    // Step 2: FR VAT → extract SIREN → SIRENE (filtered by postcode) → BAN
+    if (!storeLocation.lat && claudeVat) {
+      const siren = sirenFromVat(claudeVat)
+      if (siren) {
+        const sireneAddr = await lookupSirene(siren, receiptPostcode)
+        if (sireneAddr) {
+          const geo = await geocodeBAN(sireneAddr)
+          if (geo) {
+            storeLocation = { lat: geo.lat, lon: geo.lon, address: claudeAddress ?? sireneAddr }
+            locationSource = 'vat'
+          }
+        }
+      }
+    }
+
+    // Step 3: legal company name + postcode → SIRENE → BAN
+    if (!storeLocation.lat && claudeCompany && receiptPostcode) {
+      const sireneAddr = await lookupSirene(claudeCompany, receiptPostcode)
+      if (sireneAddr) {
+        const geo = await geocodeBAN(sireneAddr)
+        if (geo) {
+          storeLocation = { lat: geo.lat, lon: geo.lon, address: claudeAddress ?? sireneAddr }
+          locationSource = 'company'
+        }
+      }
+    }
+
+    // Step 4: receipt address text → BAN directly
+    if (!storeLocation.lat && claudeAddress) {
+      const geo = await geocodeBAN(claudeAddress)
+      if (geo) {
+        storeLocation = { lat: geo.lat, lon: geo.lon, address: claudeAddress }
+        locationSource = 'address'
+      }
+    }
+
+    // Step 5: chain + postcode → Overpass (receipt has no legal footer at all)
+    if (!storeLocation.lat && (receiptPostcode || receiptCity)) {
+      try {
+        const chainWord  = parsed.store_name.split(/[\s\-]/)[0].replace(/[^a-zA-ZÀ-ÿ]/g, '')
+        const pcFilter   = receiptPostcode ? `["addr:postcode"="${receiptPostcode}"]` : ''
+        const cityFilter = receiptCity     ? `["addr:city"~"${receiptCity}","i"]`    : ''
+        const overpassQuery = `[out:json][timeout:8];
 (
   node["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${pcFilter};
   way["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${pcFilter};
@@ -549,76 +681,39 @@ export async function POST(request: NextRequest) {
   way["name"~"${chainWord}","i"]${pcFilter};
 );
 out center 1;`
-
-          const ovRes = await fetch('https://overpass-api.de/api/interpreter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `data=${encodeURIComponent(overpassQuery)}`,
-            signal: AbortSignal.timeout(8000),
-          })
-          if (ovRes.ok) {
-            const ovData = await ovRes.json() as { elements?: Array<{ type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }
-            const el = ovData.elements?.[0]
-            if (el) {
-              overpassLat = el.lat ?? el.center?.lat ?? null
-              overpassLon = el.lon ?? el.center?.lon ?? null
-              overpassOsmId = `${el.type}/${el.id}`
-            }
+        const ovRes = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(overpassQuery)}`,
+          signal: AbortSignal.timeout(8000),
+        })
+        if (ovRes.ok) {
+          const ovData = await ovRes.json() as { elements?: Array<{ type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }
+          const el = ovData.elements?.[0]
+          if (el) {
+            storeLocation.lat = el.lat ?? el.center?.lat ?? null
+            storeLocation.lon = el.lon ?? el.center?.lon ?? null
+            locationSource = 'overpass'
           }
-        } catch { /* Overpass timeout — fall through to Nominatim */ }
-      }
-
-      // Stable synthetic osm_id: based on chain + postcode (not lat/lon),
-      // so rescanning the same store always overwrites the previous record.
-      const stableOsmId = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${receiptPostcode ?? receiptCity?.toLowerCase().replace(/[^a-z0-9]/g, '_') ?? 'fr'}`
-
-      if (overpassLat && overpassLon) {
-        storeLocation.lat = overpassLat
-        storeLocation.lon = overpassLon
-        console.log(`[parse-receipt] Overpass exact pin: "${parsed.store_name}" ${receiptPostcode} → ${overpassLat},${overpassLon} (${overpassOsmId})`)
-        void supabase.from('store_locations').upsert({
-          osm_id: overpassOsmId ?? stableOsmId,
-          chain: parsed.store_name, name: parsed.store_name,
-          address: claudeAddress, latitude: overpassLat, longitude: overpassLon,
-          source: 'receipt_ocr', accuracy: 'address',
-        }, { onConflict: 'osm_id', ignoreDuplicates: false })
-      } else {
-        // Strategy 2: Nominatim — geocode the receipt address directly (most specific).
-        // Use structured params when we have street+postcode+city for best accuracy.
-        // Only fall back to store-name queries if no specific address was extracted.
-        let nominatimUrl: string
-        if (claudeAddress && receiptPostcode && receiptCity) {
-          const streetPart = claudeAddress.replace(/\b\d{5}\b.*$/, '').trim().replace(/,\s*$/, '')
-          nominatimUrl = `https://nominatim.openstreetmap.org/search?` +
-            `street=${encodeURIComponent(streetPart)}&city=${encodeURIComponent(receiptCity)}` +
-            `&postalcode=${receiptPostcode}&country=fr&format=json&limit=1`
-        } else if (claudeAddress) {
-          nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`
-        } else {
-          nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${parsed.store_name} ${receiptCity ?? receiptPostcode ?? ''}`)}&format=json&limit=1&countrycodes=fr`
         }
+      } catch { /* Overpass timeout — no pin */ }
+    }
 
-        const geoData = await fetch(nominatimUrl,
-          { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
-        ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
+    // Step 6: no pin — better than a wrong one
+    console.log(`[parse-receipt] Location "${parsed.store_name}": source=${locationSource} lat=${storeLocation.lat ?? 'none'}`)
 
-        const geo = Array.isArray(geoData) ? (geoData[0] as { lat: string; lon: string } | undefined) : undefined
-        if (geo) {
-          const geocodedLat = parseFloat(geo.lat)
-          const geocodedLon = parseFloat(geo.lon)
-          storeLocation.lat = geocodedLat
-          storeLocation.lon = geocodedLon
-          console.log(`[parse-receipt] Nominatim pin: "${claudeAddress ?? parsed.store_name}" → ${geocodedLat},${geocodedLon}`)
-          void supabase.from('store_locations').upsert({
-            osm_id: stableOsmId,
-            chain: parsed.store_name, name: parsed.store_name,
-            address: claudeAddress, latitude: geocodedLat, longitude: geocodedLon,
-            source: 'receipt_ocr', accuracy: 'address',
-          }, { onConflict: 'osm_id', ignoreDuplicates: false })
-        }
-        // If both Overpass and Nominatim fail → no coordinates.
-        // A missing pin is far better than a wrong one.
-      }
+    // Persist successful geocoding to DB (all sources except cache)
+    if (locationSource !== 'cache' && locationSource !== 'none' && storeLocation.lat && storeLocation.lon) {
+      void supabase.from('store_locations').upsert({
+        osm_id:    stableOsmId,
+        chain:     parsed.store_name,
+        name:      parsed.store_name,
+        address:   storeLocation.address,
+        latitude:  storeLocation.lat,
+        longitude: storeLocation.lon,
+        source:    locationSource,
+        accuracy:  ['siret', 'vat', 'company'].includes(locationSource) ? 'siret' : 'address',
+      }, { onConflict: 'osm_id', ignoreDuplicates: false })
     }
 
     // Success — reset consecutive failure counter
