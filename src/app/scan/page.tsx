@@ -590,6 +590,8 @@ export default function ScanPage() {
         longitude: userCoords?.lon ?? null,
         is_promo: item.is_promo ?? false,
         is_private_label: item.is_private_label ?? false,
+        brand: item.brand ?? null,
+        volume_weight: item.volume_weight ?? null,
       }))
 
       if (!isNewScan) {
@@ -657,7 +659,7 @@ export default function ScanPage() {
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({
-          items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price })),
+          items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
           postcode: postcode || null, store_chain: storeChain,
         }),
       })
@@ -837,6 +839,14 @@ export default function ScanPage() {
                 <p className="text-[11px] leading-relaxed text-graphite/55">
                   <span className="font-semibold text-graphite/75">Nous ne vendons jamais vos données personnelles.</span>{' '}
                   Seuls des prix agrégés et anonymisés contribuent à la base communautaire. Vos tickets restent privés.
+                </p>
+              </div>
+
+              {/* Footer visibility reminder */}
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl mb-4" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <span className="text-amber-500 text-sm flex-shrink-0 mt-0.5">&#9888;&#65039;</span>
+                <p className="text-[11px] leading-relaxed text-graphite/55">
+                  Assurez-vous que le <span className="font-semibold text-graphite/75">bas du ticket</span> (SIRET et code postal) est bien visible pour localiser le magasin.
                 </p>
               </div>
 

@@ -63,11 +63,30 @@ export async function POST(request: NextRequest) {
     const matchCache = new Map<string, string | null>()
 
     // ── Helper: match a single item name to canonical product name ───────────
-    // Uses pg_trgm-powered match_product RPC which searches the entire product table.
-    async function resolveMatch(rawName: string): Promise<string | null> {
+    // Tries structured pre-match (brand + volume) first, falls back to pg_trgm.
+    async function resolveMatch(
+      rawName: string,
+      brand?: string | null,
+      volumeWeight?: string | null
+    ): Promise<string | null> {
       const key = rawName.toLowerCase().trim()
       if (matchCache.has(key)) return matchCache.get(key)!
 
+      // Structured pre-match: brand + volume → deterministic lookup
+      if (brand && volumeWeight) {
+        const { data: structMatch } = await supabase
+          .from('product_price_stats')
+          .select('item_name_normalised')
+          .ilike('item_name_normalised', `%${brand.toLowerCase()}%${volumeWeight.toLowerCase()}%`)
+          .limit(1)
+        if (structMatch && structMatch.length > 0 && structMatch[0].item_name_normalised) {
+          const matched = structMatch[0].item_name_normalised as string
+          matchCache.set(key, matched)
+          return matched
+        }
+      }
+
+      // Fallback: pg_trgm fuzzy match
       const { data: rpcResult, error: rpcError } = await supabase.rpc('match_product', {
         search_name: key,
       })
@@ -130,8 +149,8 @@ export async function POST(request: NextRequest) {
 
     // ── Parallel comparison (all items at once) ──────────────────────────────
     const comparisons = await Promise.all(
-      (items as { name: string; price: number }[]).map(async (item): Promise<ComparisonResult> => {
-        const matchedName = await resolveMatch(item.name)
+      (items as { name: string; price: number; brand?: string | null; volume_weight?: string | null }[]).map(async (item): Promise<ComparisonResult> => {
+        const matchedName = await resolveMatch(item.name, item.brand, item.volume_weight)
 
         if (!matchedName) {
           const weightStr = extractWeight(item.name)

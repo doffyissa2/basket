@@ -5,7 +5,7 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
-import { normalizeProductName } from '@/lib/normalize'
+import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
 // ── SIRENE API types ──────────────────────────────────────────────────────────
@@ -212,7 +212,9 @@ Format attendu :
       "is_promo": false,
       "is_private_label": false,
       "confidence": 0.95,
-      "raw_ref": "PAIN DE MIE COMP"
+      "raw_ref": "PAIN DE MIE COMP",
+      "brand": "Harrys",
+      "volume_weight": "500g"
     }
   ],
   "total": 45.67
@@ -251,7 +253,11 @@ Ces champs permettent de localiser le magasin précisément via les APIs gouvern
 - Format "Qté × Prix unitaire" (ex: "2 x 1,49") → price=1.49, quantity=2
 - Format poids "0,543 kg x 12,99 €/kg" → price=12.99 (prix au kg), quantity=0.543 (en kg)
 - Prix barrés et remplacés → utiliser toujours le prix final après remise
-- Remises séparées (lignes REMISE, OFFRE FIDÉLITÉ, -XX%) → SOUSTRAIRE du prix de l'article précédent et mettre is_promo=true; NE PAS créer un article séparé pour la remise
+- Remises séparées (REMISE, REMISE FIDÉLITÉ, OFFRE, AVOIR, RÉDUCTION, -XX%) avec un montant NÉGATIF :
+  RATTACHE le montant négatif à l'article IMMÉDIATEMENT AU-DESSUS dans le ticket.
+  Modifie son price = prix original - remise, et mets is_promo=true.
+  NE CRÉE JAMAIS un article séparé pour une ligne de remise.
+  Ex: "POULET FERMIER 8.00" suivi de "REMISE FIDELITE -2.00" → price=6.00, is_promo=true
 - Retours/avoirs → inclure avec un prix NÉGATIF
 
 ── RÈGLES POUR is_promo ──────────────────────────────────────────────────────
@@ -267,7 +273,17 @@ Ces champs permettent de localiser le magasin précisément via les APIs gouvern
 - 1.0 : nom et prix parfaitement lisibles
 - 0.7–0.9 : texte partiellement lisible mais sens clair
 - 0.3–0.6 : partie du nom ou prix devinée
-- < 0.3 : trop incertain — OMETTRE l'article complètement${formatHintsSection}`
+- < 0.3 : trop incertain — OMETTRE l'article complètement
+
+── EXTRACTION MARQUE ET POIDS/VOLUME ────────────────────────────────────────
+- "brand" : marque du produit (ex: "Président", "Coca-Cola", "Barilla", "Panzani"). null si MDD (is_private_label=true) ou inconnu.
+- "volume_weight" : poids ou volume standardisé en minuscules sans espace (ex: "1.5l", "500g", "250ml", "1kg", "6x25cl"). null si absent du ticket.
+- Si le ticket abrège la marque (ex: "PRES" pour Président, "DAN" pour Danone), reconstitue le nom complet.
+- Pour les MDD (marques de distributeur), mettre brand à null.
+
+── VÉRIFICATION ARITHMÉTIQUE ────────────────────────────────────────────────
+Après avoir extrait tous les articles, calcule : somme = Σ(price × quantity) pour chaque article.
+Si |somme - total| > total × 0.05, tu as probablement fait une erreur d'extraction. Revérifie chaque prix et corrige avant de répondre.${formatHintsSection}`
 }
 
 // ── Haiku receipt gatekeeper ──────────────────────────────────────────────────
@@ -391,6 +407,9 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
       is_promo: item.is_promo === true,
       is_private_label: item.is_private_label === true,
       confidence: typeof item.confidence === 'number' ? Math.min(1, Math.max(0, item.confidence)) : 1,
+      raw_ref: typeof item.raw_ref === 'string' ? item.raw_ref.trim() : undefined,
+      brand: typeof item.brand === 'string' ? item.brand.trim() || null : null,
+      volume_weight: typeof item.volume_weight === 'string' ? item.volume_weight.trim().toLowerCase() || null : null,
     }))
 }
 
@@ -514,6 +533,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // ── Fallback enrichment: deterministic extractors when AI didn't provide ─
+    parsed.items = parsed.items.map(item => ({
+      ...item,
+      brand: item.brand ?? extractBrand(item.name) ?? null,
+      volume_weight: item.volume_weight ?? extractWeight(item.name) ?? null,
+    }))
+
     parsed.total = Number(parsed.total) || parsed.items.reduce(
       (s, i) => s + i.price * i.quantity, 0
     )
@@ -544,6 +570,11 @@ export async function POST(request: NextRequest) {
             return retryRawSet.some(line => line === ref || line.includes(ref) || ref.includes(line))
           })
         }
+        retryParsed.items = retryParsed.items.map(item => ({
+          ...item,
+          brand: item.brand ?? extractBrand(item.name) ?? null,
+          volume_weight: item.volume_weight ?? extractWeight(item.name) ?? null,
+        }))
         retryParsed.total = Number(retryParsed.total) || retryParsed.items.reduce(
           (s, i) => s + i.price * i.quantity, 0
         )
