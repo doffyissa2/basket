@@ -61,10 +61,10 @@ export async function GET(request: NextRequest) {
 
   // ── Fetch all data in parallel ────────────────────────────────────────────
   const [mpResult, cpResult] = await Promise.all([
-    // market_prices: chain-level catalog prices
+    // market_prices: chain-level catalog prices (include product_name + source for staples fallback)
     supabase
       .from('market_prices')
-      .select('store_chain, unit_price')
+      .select('store_chain, unit_price, product_name, source')
       .limit(25000),
     // community_prices: all rows (for chain fallback avg) + location rows (for per-store items)
     supabase
@@ -81,13 +81,26 @@ export async function GET(request: NextRequest) {
   if (mpResult.error)  console.error('[price-map] market_prices error:', mpResult.error.message)
   if (cpResult.error)  console.error('[price-map] community_prices error:', cpResult.error.message)
 
-  // ── Chain avg_price from market_prices ────────────────────────────────────
+  // ── Chain avg_price + staples from market_prices ──────────────────────────
   const mpByChain = new Map<string, number[]>()
+  const mpStaplesByChain = new Map<string, { name: string; avg_price: number }[]>()
   for (const r of mpRows) {
+    const chain = r.store_chain as string
     const p = r.unit_price as number
+    const name = (r.product_name ?? '') as string
+    const source = (r.source ?? '') as string
     if (p <= 0 || p > 300) continue
-    if (!mpByChain.has(r.store_chain)) mpByChain.set(r.store_chain, [])
-    mpByChain.get(r.store_chain)!.push(p)
+    if (!mpByChain.has(chain)) mpByChain.set(chain, [])
+    mpByChain.get(chain)!.push(p)
+
+    // Track staple items separately for fallback top_items display
+    if (source === 'tracked_staple_off' && name) {
+      if (!mpStaplesByChain.has(chain)) mpStaplesByChain.set(chain, [])
+      mpStaplesByChain.get(chain)!.push({
+        name,
+        avg_price: Math.round(p * 100) / 100,
+      })
+    }
   }
 
   // ── Chain avg_price from community_prices (fallback) ──────────────────────
@@ -194,9 +207,12 @@ export async function GET(request: NextRequest) {
       hasLocalData = true
     } else if (stat) {
       // Chain national average — not comparable across store types, so null
+      // But show tracked staples as top_items so every store pin has useful data
       avgPrice     = null
       itemCount    = stat.count
-      topItems     = []
+      topItems     = (mpStaplesByChain.get(store.chain) ?? [])
+        .sort((a, b) => a.avg_price - b.avg_price)
+        .slice(0, 5)
       hasLocalData = false
     } else {
       // No DB data at all — still show the store using known tier

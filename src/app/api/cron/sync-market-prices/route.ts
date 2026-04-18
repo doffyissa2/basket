@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual, createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { getChainPricesForEan } from '@/lib/scrapers/open-food-facts'
 
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(createHash('sha256').update(a).digest())
@@ -215,9 +216,76 @@ export async function POST(request: NextRequest) {
     if (!report[chain]) report[chain] = 0
   }
 
+  // ── Phase 2: Targeted EAN-based pricing from tracked_staples ──────────────
+  // For each staple EAN, query OFF Prices API filtered by that exact product,
+  // then upsert chain-level median prices into market_prices.
+  const staplesReport: Record<string, number> = {}
+  let staplesProcessed = 0
+
+  const { data: staples, error: staplesErr } = await supabase
+    .from('tracked_staples')
+    .select('ean, name, brand, category, target_volume')
+    .eq('active', true)
+
+  if (staplesErr) {
+    console.error('[sync-market-prices] tracked_staples fetch error:', staplesErr.message)
+  }
+
+  if (staples && staples.length > 0) {
+    console.log(`[sync-market-prices] Phase 2: ${staples.length} tracked staples`)
+
+    for (const staple of staples) {
+      try {
+        const chainPrices = await getChainPricesForEan(staple.ean)
+
+        if (chainPrices.length > 0) {
+          const rows = chainPrices.map(cp => ({
+            store_chain: cp.chain,
+            product_name: staple.name,
+            product_name_normalised: normaliseProductName(staple.name),
+            ean: staple.ean,
+            unit_price: cp.medianPrice,
+            unit: staple.target_volume ?? null,
+            category: staple.category,
+            region: null,
+            source: 'tracked_staple_off',
+            source_url: 'https://prices.openfoodfacts.org',
+            scraped_at: now,
+          }))
+
+          const { error: uErr } = await supabase
+            .from('market_prices')
+            .upsert(rows, {
+              onConflict: 'store_chain,product_name_normalised,region',
+              ignoreDuplicates: false,
+            })
+
+          if (uErr) {
+            console.error(`[sync-market-prices] staple ${staple.ean} upsert error:`, uErr.message)
+          } else {
+            staplesProcessed++
+            for (const cp of chainPrices) {
+              staplesReport[cp.chain] = (staplesReport[cp.chain] ?? 0) + 1
+            }
+          }
+        }
+
+        // Polite delay between EAN queries (OFF fair-use)
+        await new Promise(r => setTimeout(r, 600))
+      } catch (err) {
+        console.error(`[sync-market-prices] staple ${staple.ean} error:`, err)
+      }
+    }
+
+    console.log(`[sync-market-prices] Phase 2 done: ${staplesProcessed}/${staples.length} staples with prices`)
+  }
+
   return NextResponse.json({
     ok: true,
     report,
+    staples_report: staplesReport,
+    staples_processed: staplesProcessed,
+    staples_total: staples?.length ?? 0,
     total_upserted: Object.values(report).reduce((s, n) => s + n, 0),
     raw_items_fetched: allItems.length,
     elapsed_s: Math.round((Date.now() - startedAt) / 1000),

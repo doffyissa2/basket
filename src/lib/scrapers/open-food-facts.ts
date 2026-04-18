@@ -87,6 +87,107 @@ export async function searchProducts(
   }
 }
 
+// ── OFF Prices API: per-EAN chain-level pricing ─────────────────────────────
+
+const PRICES_BASE = 'https://prices.openfoodfacts.org/api/v1/prices'
+
+const CHAIN_PATTERNS: [RegExp, string][] = [
+  [/carrefour/i,                        'Carrefour'],
+  [/leclerc/i,                          'Leclerc'],
+  [/lidl/i,                             'Lidl'],
+  [/aldi/i,                             'Aldi'],
+  [/intermarché|intermarche|itm\b/i,    'Intermarché'],
+  [/super\s*u|hyper\s*u|u\s*express|système\s*u|systeme\s*u/i, 'Super U'],
+  [/monoprix|monop'/i,                  'Monoprix'],
+  [/casino/i,                           'Casino'],
+  [/franprix/i,                         'Franprix'],
+  [/auchan/i,                           'Auchan'],
+]
+
+function detectChain(storeName: string | null): string | null {
+  if (!storeName) return null
+  for (const [pattern, name] of CHAIN_PATTERNS) {
+    if (pattern.test(storeName)) return name
+  }
+  return null
+}
+
+export interface ChainPrice {
+  chain:       string
+  medianPrice: number
+  minPrice:    number
+  maxPrice:    number
+  sampleCount: number
+}
+
+/**
+ * Query OFF Prices API for a specific EAN, filtered to French EUR prices.
+ * Returns median price per chain. Paginates up to 5 pages (500 prices).
+ *
+ * Throttled to 1 request per 500ms to respect OFF fair-use.
+ */
+export async function getChainPricesForEan(ean: string): Promise<ChainPrice[]> {
+  const byChain = new Map<string, number[]>()
+
+  for (let page = 1; page <= 5; page++) {
+    try {
+      const url = `${PRICES_BASE}?product_code=${encodeURIComponent(ean)}&currency=EUR&order_by=-date&page=${page}&size=100`
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (!res.ok) break
+
+      const raw = await res.json() as Record<string, unknown>
+      const items = (Array.isArray(raw.items) ? raw.items : []) as Array<{
+        price?: number
+        currency?: string
+        location?: { osm_name?: string | null; osm_address_country_code?: string | null } | null
+      }>
+
+      if (items.length === 0) break
+
+      for (const item of items) {
+        if (item.currency !== 'EUR') continue
+        if (typeof item.price !== 'number' || item.price <= 0.10 || item.price > 500) continue
+        if (item.location?.osm_address_country_code !== 'FR') continue
+
+        const chain = detectChain(item.location?.osm_name ?? null)
+        if (!chain) continue
+
+        if (!byChain.has(chain)) byChain.set(chain, [])
+        byChain.get(chain)!.push(item.price)
+      }
+
+      if (items.length < 100) break // last page
+      await new Promise(r => setTimeout(r, 500))
+    } catch {
+      break
+    }
+  }
+
+  const results: ChainPrice[] = []
+
+  for (const [chain, prices] of byChain) {
+    if (prices.length === 0) continue
+    const sorted = prices.sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid]
+
+    results.push({
+      chain,
+      medianPrice: Math.round(median * 100) / 100,
+      minPrice:    Math.round(sorted[0] * 100) / 100,
+      maxPrice:    Math.round(sorted[sorted.length - 1] * 100) / 100,
+      sampleCount: sorted.length,
+    })
+  }
+
+  return results
+}
+
 /**
  * Batch-enrich a list of item names: for each, search OFD and return the
  * best-matching canonical name + EAN. Used after receipt parsing to normalise
