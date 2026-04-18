@@ -703,8 +703,11 @@ out center 1;`
     console.log(`[parse-receipt] Location "${parsed.store_name}": source=${locationSource} lat=${storeLocation.lat ?? 'none'}`)
 
     // Persist successful geocoding to DB (all sources except cache)
+    // When we have a SIRET, conflict on 'siret' — this matches stores already seeded from the
+    // SIRENE dataset and enriches them rather than creating a duplicate.
+    // Without SIRET, fall back to the stable osm_id key.
     if (locationSource !== 'cache' && locationSource !== 'none' && storeLocation.lat && storeLocation.lon) {
-      void supabase.from('store_locations').upsert({
+      const upsertPayload = {
         osm_id:    stableOsmId,
         chain:     parsed.store_name,
         name:      parsed.store_name,
@@ -713,7 +716,12 @@ out center 1;`
         longitude: storeLocation.lon,
         source:    locationSource,
         accuracy:  ['siret', 'vat', 'company'].includes(locationSource) ? 'siret' : 'address',
-      }, { onConflict: 'osm_id', ignoreDuplicates: false })
+        ...(claudeSiret ? { siret: claudeSiret } : {}),
+      }
+      const conflictCol = claudeSiret ? 'siret' : 'osm_id'
+      void supabase.from('store_locations').upsert(upsertPayload,
+        { onConflict: conflictCol, ignoreDuplicates: false }
+      )
     }
 
     // Success — reset consecutive failure counter
