@@ -201,7 +201,7 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: 'ima
 
 function compressImage(
   file: File,
-  maxPx = 1200,
+  maxPx = 1600,
   quality = 0.60
 ): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
   return new Promise((resolve, reject) => {

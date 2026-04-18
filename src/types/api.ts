@@ -12,6 +12,7 @@ export interface ParsedItem {
   is_promo:         boolean
   is_private_label: boolean
   confidence?:      number
+  raw_ref?:         string  // raw receipt line anchor for hallucination guard
 }
 
 export interface ParsedReceipt {

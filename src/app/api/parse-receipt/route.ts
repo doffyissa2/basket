@@ -136,6 +136,7 @@ function buildPrompt(formatHintsSection: string, isRetry = false): string {
 
 Format attendu :
 {
+  "raw_lines": ["PAIN DE MIE COMP", "1,89", "YAOURT BIO 125G", "2 x 1,45", "TOTAL", "45,67"],
   "store_name": "Nom du magasin",
   "store_address": "Adresse postale complète si visible sur le ticket, sinon null",
   "items": [
@@ -145,11 +146,16 @@ Format attendu :
       "quantity": 1,
       "is_promo": false,
       "is_private_label": false,
-      "confidence": 0.95
+      "confidence": 0.95,
+      "raw_ref": "PAIN DE MIE COMP"
     }
   ],
   "total": 45.67
 }
+
+── RÈGLE ANTI-HALLUCINATION (CRITIQUE) ──────────────────────────────────────
+ÉTAPE 1 — Remplis d'abord "raw_lines" : copie CHAQUE ligne imprimée sur le ticket, exactement telle qu'elle est écrite, de haut en bas. Ne saute aucune ligne, n'invente rien.
+ÉTAPE 2 — Pour chaque article dans "items", le champ "raw_ref" DOIT contenir la ligne exacte de "raw_lines" où apparaît le nom de l'article. Si tu ne trouves pas la ligne dans ta transcription → N'INCLUS PAS cet article.
 
 ── RÈGLES CRITIQUES ──────────────────────────────────────────────────────────
 - INTERDIT : n'inventer AUCUN article. N'inclure QUE les articles dont le nom ET le prix sont CLAIREMENT visibles sur le ticket.
@@ -315,45 +321,6 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
     }))
 }
 
-// ── Nearest store lookup ──────────────────────────────────────────────────────
-// Finds the closest store_locations row matching the chain within 15 km.
-// Uses the Haversine formula client-side on a bounded result set (faster than PostGIS RPC).
-async function findNearestStore(
-  supabase: SupabaseClient,
-  chain: string,
-  lat: number | null,
-  lon: number | null
-): Promise<{ address: string | null; lat: number | null; lon: number | null }> {
-  if (!lat || !lon) return { address: null, lat: null, lon: null }
-  try {
-    // Fetch candidate stores within a rough ~0.15° bounding box (~15 km)
-    const { data } = await supabase
-      .from('store_locations')
-      .select('name, address, latitude, longitude')
-      .ilike('chain', `%${chain.split(' ')[0]}%`)
-      .gte('latitude', lat - 0.15)
-      .lte('latitude', lat + 0.15)
-      .gte('longitude', lon - 0.20)
-      .lte('longitude', lon + 0.20)
-      .limit(20)
-
-    if (!data || data.length === 0) return { address: null, lat: null, lon: null }
-
-    // Pick closest by Haversine
-    let best = data[0]
-    let bestDist = Infinity
-    for (const row of data) {
-      const dLat = (row.latitude - lat) * (Math.PI / 180)
-      const dLon = (row.longitude - lon) * (Math.PI / 180)
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * Math.PI / 180) * Math.cos(row.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-      const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-      if (dist < bestDist) { bestDist = dist; best = row }
-    }
-
-    if (bestDist > 5) return { address: null, lat: null, lon: null } // >5 km away — skip
-    return { address: best.address ?? best.name ?? null, lat: best.latitude, lon: best.longitude }
-  } catch { return { address: null, lat: null, lon: null } }
-}
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request)
@@ -382,10 +349,6 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-
-    // Optional caller-provided coords for store location lookup
-    const callerLat: number | null = typeof body.latitude === 'number' ? body.latitude : null
-    const callerLon: number | null = typeof body.longitude === 'number' ? body.longitude : null
 
     // Support both single image (legacy) and multi-part arrays
     const images: Array<{ base64: string; mediaType: string }> = Array.isArray(body.images)
@@ -464,6 +427,20 @@ export async function POST(request: NextRequest) {
     }
 
     parsed.items = normaliseItems(parsed.items)
+
+    // ── Hallucination guard: reject items not anchored in raw_lines ───────
+    const rawLines = Array.isArray((parsed as unknown as Record<string, unknown>).raw_lines)
+      ? ((parsed as unknown as Record<string, unknown>).raw_lines as string[])
+      : []
+    if (rawLines.length > 0) {
+      const rawSet = rawLines.map(l => l.toLowerCase().trim())
+      parsed.items = parsed.items.filter(item => {
+        if (!item.raw_ref) return true  // no anchor → keep (graceful for old prompts)
+        const ref = item.raw_ref.toLowerCase().trim()
+        return rawSet.some(line => line === ref || line.includes(ref) || ref.includes(line))
+      })
+    }
+
     parsed.total = Number(parsed.total) || parsed.items.reduce(
       (s, i) => s + i.price * i.quantity, 0
     )
@@ -483,6 +460,17 @@ export async function POST(request: NextRequest) {
 
       if (retryParsed.store_name && Array.isArray(retryParsed.items) && retryParsed.items.length > 0) {
         retryParsed.items = normaliseItems(retryParsed.items)
+        const retryRawLines = Array.isArray((retryParsed as unknown as Record<string, unknown>).raw_lines)
+          ? ((retryParsed as unknown as Record<string, unknown>).raw_lines as string[])
+          : []
+        if (retryRawLines.length > 0) {
+          const retryRawSet = retryRawLines.map(l => l.toLowerCase().trim())
+          retryParsed.items = retryParsed.items.filter(item => {
+            if (!item.raw_ref) return true
+            const ref = item.raw_ref.toLowerCase().trim()
+            return retryRawSet.some(line => line === ref || line.includes(ref) || ref.includes(line))
+          })
+        }
         retryParsed.total = Number(retryParsed.total) || retryParsed.items.reduce(
           (s, i) => s + i.price * i.quantity, 0
         )
@@ -553,10 +541,10 @@ export async function POST(request: NextRequest) {
           const cityFilter = receiptCity    ? `["addr:city"~"${receiptCity}","i"]`       : ''
           const overpassQuery = `[out:json][timeout:8];
 (
-  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${pcFilter};
-  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${pcFilter};
-  node["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${cityFilter};
-  way["shop"~"supermarket|convenience|hypermarket"]["name"~"${chainWord}","i"]${cityFilter};
+  node["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${pcFilter};
+  way["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${pcFilter};
+  node["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${cityFilter};
+  way["shop"~"supermarket|convenience|hypermarket|discount|grocery|department_store"]["name"~"${chainWord}","i"]${cityFilter};
   node["name"~"${chainWord}","i"]${pcFilter};
   way["name"~"${chainWord}","i"]${pcFilter};
 );
@@ -580,26 +568,37 @@ out center 1;`
         } catch { /* Overpass timeout — fall through to Nominatim */ }
       }
 
+      // Stable synthetic osm_id: based on chain + postcode (not lat/lon),
+      // so rescanning the same store always overwrites the previous record.
+      const stableOsmId = `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${receiptPostcode ?? receiptCity?.toLowerCase().replace(/[^a-z0-9]/g, '_') ?? 'fr'}`
+
       if (overpassLat && overpassLon) {
         storeLocation.lat = overpassLat
         storeLocation.lon = overpassLon
         console.log(`[parse-receipt] Overpass exact pin: "${parsed.store_name}" ${receiptPostcode} → ${overpassLat},${overpassLon} (${overpassOsmId})`)
         void supabase.from('store_locations').upsert({
-          osm_id: overpassOsmId ?? `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${overpassLat.toFixed(4)}_${overpassLon.toFixed(4)}`,
+          osm_id: overpassOsmId ?? stableOsmId,
           chain: parsed.store_name, name: parsed.store_name,
           address: claudeAddress, latitude: overpassLat, longitude: overpassLon,
           source: 'receipt_ocr', accuracy: 'address',
         }, { onConflict: 'osm_id', ignoreDuplicates: false })
       } else {
-        // Strategy 2: Nominatim — store name + city is more reliable than postcode alone
-        // because Nominatim indexes POIs by name+city better than postcode.
-        const nominatimQuery = receiptCity
-          ? `${parsed.store_name} ${receiptCity}`
-          : receiptPostcode
-            ? `${parsed.store_name} ${receiptPostcode}`
-            : claudeAddress
-        const geoData = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(nominatimQuery)}&format=json&limit=1&countrycodes=fr`,
+        // Strategy 2: Nominatim — geocode the receipt address directly (most specific).
+        // Use structured params when we have street+postcode+city for best accuracy.
+        // Only fall back to store-name queries if no specific address was extracted.
+        let nominatimUrl: string
+        if (claudeAddress && receiptPostcode && receiptCity) {
+          const streetPart = claudeAddress.replace(/\b\d{5}\b.*$/, '').trim().replace(/,\s*$/, '')
+          nominatimUrl = `https://nominatim.openstreetmap.org/search?` +
+            `street=${encodeURIComponent(streetPart)}&city=${encodeURIComponent(receiptCity)}` +
+            `&postalcode=${receiptPostcode}&country=fr&format=json&limit=1`
+        } else if (claudeAddress) {
+          nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(claudeAddress)}&format=json&limit=1&countrycodes=fr`
+        } else {
+          nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${parsed.store_name} ${receiptCity ?? receiptPostcode ?? ''}`)}&format=json&limit=1&countrycodes=fr`
+        }
+
+        const geoData = await fetch(nominatimUrl,
           { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
         ).then(r => r.json() as Promise<unknown[]>).catch(() => [])
 
@@ -609,37 +608,17 @@ out center 1;`
           const geocodedLon = parseFloat(geo.lon)
           storeLocation.lat = geocodedLat
           storeLocation.lon = geocodedLon
-          console.log(`[parse-receipt] Nominatim fallback: "${nominatimQuery}" → ${geocodedLat},${geocodedLon}`)
+          console.log(`[parse-receipt] Nominatim pin: "${claudeAddress ?? parsed.store_name}" → ${geocodedLat},${geocodedLon}`)
           void supabase.from('store_locations').upsert({
-            osm_id: `basket_receipt_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${geocodedLat.toFixed(3)}_${geocodedLon.toFixed(3)}`,
+            osm_id: stableOsmId,
             chain: parsed.store_name, name: parsed.store_name,
             address: claudeAddress, latitude: geocodedLat, longitude: geocodedLon,
             source: 'receipt_ocr', accuracy: 'address',
           }, { onConflict: 'osm_id', ignoreDuplicates: false })
         }
+        // If both Overpass and Nominatim fail → no coordinates.
+        // A missing pin is far better than a wrong one.
       }
-    }
-
-    // b) GPS-based fallback for lat/lon only — never overwrite a receipt-extracted address
-    if (!storeLocation.lat) {
-      const gpsBased = await findNearestStore(supabase, parsed.store_name, callerLat, callerLon)
-      if (gpsBased.lat) {
-        storeLocation.lat = gpsBased.lat
-        storeLocation.lon = gpsBased.lon
-        if (!storeLocation.address) storeLocation.address = gpsBased.address
-      }
-    }
-
-    // c) Last resort: user GPS only + fire-and-forget GPS-accuracy upsert
-    if (!storeLocation.lat && callerLat && callerLon && parsed.store_name) {
-      storeLocation.lat = callerLat
-      storeLocation.lon = callerLon
-      const pseudoId = `basket_${parsed.store_name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${callerLat.toFixed(3)}_${callerLon.toFixed(3)}`
-      void supabase.from('store_locations').upsert({
-        osm_id: pseudoId, chain: parsed.store_name, name: parsed.store_name,
-        latitude: callerLat, longitude: callerLon, address: null,
-        source: 'user_scan', accuracy: 'user_gps', scan_count: 1,
-      }, { onConflict: 'osm_id', ignoreDuplicates: false })
     }
 
     // Success — reset consecutive failure counter
