@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Large INSEE/SIRENE data files (download separately)
+GeolocalisationEtablissement_Sirene_pour_etudes_statistiques_utf8.csv
