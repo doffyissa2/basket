@@ -752,7 +752,9 @@ out center 1;`
       const conflictCol = claudeSiret ? 'siret' : 'osm_id'
       void supabase.from('store_locations').upsert(upsertPayload,
         { onConflict: conflictCol, ignoreDuplicates: false }
-      )
+      ).then(({ error: upsertErr }) => {
+        if (upsertErr) console.error('[parse-receipt] store_locations upsert failed:', upsertErr.message)
+      })
     }
 
     // Success — reset consecutive failure counter

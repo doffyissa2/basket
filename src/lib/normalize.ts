@@ -38,6 +38,7 @@ const WEIGHT_PATTERN = /\b(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml|cl|dl|mg)\b/gi
 
 export function extractWeight(str: string): string | null {
   const normalized = str.toLowerCase().replace(/,/g, '.')
+  WEIGHT_PATTERN.lastIndex = 0
   const match = WEIGHT_PATTERN.exec(normalized)
   WEIGHT_PATTERN.lastIndex = 0
   if (!match) return null

@@ -371,8 +371,8 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [],
     }
 
     const pinHits = mapRef.current.queryRenderedFeatures(e.point, { layers: ['unclustered-point'] })
-    if (pinHits.length > 0) {
-      const p = pinHits[0].properties!
+    if (pinHits.length > 0 && pinHits[0].properties) {
+      const p = pinHits[0].properties
       const pin: StorePin = {
         store_name:     p.store_name,
         store_chain:    p.store_chain,

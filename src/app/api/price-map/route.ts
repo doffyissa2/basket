@@ -151,7 +151,8 @@ export async function GET(request: NextRequest) {
   }> = []
 
   const PAGE = 1000   // PostgREST default max_rows; requesting >1000 silently caps at 1000
-  for (let offset = 0; ; offset += PAGE) {
+  const MAX_PAGES = 50 // Safety cap: 50k stores max
+  for (let offset = 0; offset < MAX_PAGES * PAGE; offset += PAGE) {
     const { data, error } = await supabase
       .from('store_locations')
       .select('chain, name, latitude, longitude, address, city, postcode, source')

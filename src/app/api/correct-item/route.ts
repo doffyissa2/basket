@@ -21,8 +21,11 @@ export async function POST(request: NextRequest) {
   try {
     const { receipt_id, original_name, corrected_name, original_price, corrected_price } = await request.json()
 
-    if (!receipt_id || typeof original_name !== 'string') {
-      return NextResponse.json({ error: 'receipt_id and original_name required' }, { status: 400 })
+    if (!receipt_id || typeof receipt_id !== 'string' || receipt_id.length > 500) {
+      return NextResponse.json({ error: 'Valid receipt_id required' }, { status: 400 })
+    }
+    if (typeof original_name !== 'string') {
+      return NextResponse.json({ error: 'original_name required' }, { status: 400 })
     }
 
     const supabase = getServiceClient()
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
           .from('receipts')
           .select('store_chain')
           .eq('id', receipt_id)
-          .single()
+          .maybeSingle()
         const storeChain = receiptRow?.store_chain ?? null
 
         await supabase.from('ocr_corrections').upsert({

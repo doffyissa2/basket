@@ -139,6 +139,8 @@ export default function HomePage() {
 
     let termInterval: ReturnType<typeof setInterval> | undefined
     let lenisInstance: { raf: (t: number) => void; destroy?: () => void } | undefined
+    let rafId: number | undefined
+    let mouseMoveHandler: ((e: MouseEvent) => void) | undefined
     const injectedScripts: HTMLScriptElement[] = []
 
     function loadScript(src: string): Promise<void> {
@@ -176,8 +178,8 @@ export default function HomePage() {
 
       // Lenis smooth scroll
       lenisInstance = new Lenis({ lerp: 0.08, smoothWheel: true })
-      function raf(time: number) { lenisInstance!.raf(time); requestAnimationFrame(raf) }
-      requestAnimationFrame(raf)
+      function raf(time: number) { if (!lenisInstance) return; lenisInstance.raf(time); rafId = requestAnimationFrame(raf) }
+      rafId = requestAnimationFrame(raf)
 
       gsap.registerPlugin(ScrollTrigger)
 
@@ -188,7 +190,8 @@ export default function HomePage() {
         let cursorX = mouseX, cursorY = mouseY
         // xPercent/yPercent centres the dot on the hotspot regardless of its size
         gsap.set(cursor, { xPercent: -50, yPercent: -50, x: mouseX, y: mouseY })
-        window.addEventListener('mousemove', (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY })
+        mouseMoveHandler = (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY }
+        window.addEventListener('mousemove', mouseMoveHandler)
         gsap.ticker.add(() => {
           cursorX += (mouseX - cursorX) * 0.15
           cursorY += (mouseY - cursorY) * 0.15
@@ -397,7 +400,10 @@ export default function HomePage() {
 
     return () => {
       if (termInterval) clearInterval(termInterval)
+      if (rafId) cancelAnimationFrame(rafId)
+      if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler)
       try { lenisInstance?.destroy?.() } catch { /* ignore */ }
+      lenisInstance = undefined
       style.remove()
       htmlEl.style.backgroundColor    = prevHtmlBg
       document.body.style.backgroundColor = prevBodyBg

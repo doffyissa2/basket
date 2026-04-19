@@ -10,14 +10,20 @@
  * What we STRIP: names, cards, phones, emails, full addresses, loyalty IDs.
  */
 
+// ── Patterns used by BOTH scrubPII (needs /g for .replace) and hasPII (needs NO /g for .test).
+// We keep the /g variants for .replace() and define separate non-global patterns for .test().
+
 // French mobile / landline patterns
 const PHONE_FR = /(?:(?:\+33|0033|0)[\s.-]?)(?:[1-9][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2})/g
+const PHONE_FR_TEST = /(?:(?:\+33|0033|0)[\s.-]?)(?:[1-9][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2})/
 
 // Email
 const EMAIL = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g
+const EMAIL_TEST = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/
 
 // French IBAN
 const IBAN = /FR\d{2}[\s]?[\d\s]{23,27}/gi
+const IBAN_TEST = /FR\d{2}[\s]?[\d\s]{23,27}/i
 
 // Credit/debit card — 4 groups of 4 digits (with various separators)
 const CARD_NUMBER = /\b(?:\d[\s\-*x]{0,2}){13,19}\b/g
@@ -66,9 +72,9 @@ export function scrubPII(raw: string): string {
  */
 export function hasPII(text: string): boolean {
   return (
-    PHONE_FR.test(text) ||
-    EMAIL.test(text) ||
-    IBAN.test(text) ||
+    PHONE_FR_TEST.test(text) ||
+    EMAIL_TEST.test(text) ||
+    IBAN_TEST.test(text) ||
     /\b\d{13,19}\b/.test(text) // long digit strings = card number
   )
 }
