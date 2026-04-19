@@ -134,6 +134,20 @@ export async function GET(request: NextRequest) {
     report.xp_log_skipped = 1
   }
 
+  // ── 5. Delete stale scan_jobs (>1 hour) ─────────────────────────────
+  try {
+    const oneHourAgo = new Date(now - 3600 * 1000).toISOString()
+    const { data: staleJobs } = await supabase
+      .from('scan_jobs')
+      .delete()
+      .lt('created_at', oneHourAgo)
+      .select('id')
+    report.scan_jobs_deleted = staleJobs?.length ?? 0
+  } catch (err) {
+    console.warn('[cleanup] scan_jobs cleanup skipped:', err)
+    report.scan_jobs_skipped = 1
+  }
+
   console.log('[cleanup-old-data] Report:', JSON.stringify(report))
   return NextResponse.json({ ok: true, report })
 }

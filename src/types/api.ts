@@ -92,3 +92,16 @@ export interface LeaderboardRow {
   total_savings: number
   is_me:         boolean
 }
+
+// ── Async scan pipeline ──────────────────────────────────────────────────────
+
+export interface ScanJobResponse {
+  job_id:  string
+  status:  'pending'
+}
+
+export interface ScanStatusResponse {
+  status:     'pending' | 'processing' | 'done' | 'failed'
+  result?:    ParsedReceipt & { quality_warning?: boolean; receipt_id?: string }
+  error_msg?: string
+}

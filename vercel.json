@@ -1,5 +1,8 @@
 {
   "functions": {
+    "src/app/api/parse-receipt/route.ts": { "maxDuration": 15 },
+    "src/app/api/process-scan/route.ts": { "maxDuration": 60 },
+    "src/app/api/scan-status/[id]/route.ts": { "maxDuration": 10 },
     "src/app/api/cron/sync-store-locations/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/sync-market-prices/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/sync-community-prices/route.ts": { "maxDuration": 300 },

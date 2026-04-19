@@ -519,17 +519,13 @@ export default function ScanPage() {
       // Stage 0: "Compression de l'image…" (0→25%)
       setStage(0, 5)
 
-      // Upload + preprocess run in parallel (upload doesn't depend on preprocessing)
+      // Preprocess images (grayscale + contrast boost)
+      const preprocessed = await Promise.all(imageFiles.map(f => preprocessReceiptImage(f)))
+
+      // Fire-and-forget: upload to storage (non-blocking)
       const primaryFile = imageFiles[0]
       const fileName = `${user.id}/${Date.now()}-${primaryFile.name}`
-
-      const [uploadResult, preprocessed] = await Promise.all([
-        supabase.storage.from('receipts').upload(fileName, primaryFile),
-        Promise.all(imageFiles.map(f => preprocessReceiptImage(f))),
-      ])
-      if (uploadResult.error) throw new Error('Erreur upload: ' + uploadResult.error.message)
-
-      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
+      void supabase.storage.from('receipts').upload(fileName, primaryFile).catch(() => {})
 
       // Compress all preprocessed images in parallel
       const compressed = await Promise.all(preprocessed.map(f => compressImage(f)))
@@ -537,6 +533,7 @@ export default function ScanPage() {
       // Stage 1: "Analyse par l'IA…" (25→65%)
       setStage(1, 25)
 
+      // Submit to Phase 1 — returns { job_id } in <3s, or cached result instantly
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
         headers: {
@@ -545,31 +542,113 @@ export default function ScanPage() {
         },
         body: JSON.stringify({
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
-          latitude: userCoords?.lat ?? null,
-          longitude: userCoords?.lon ?? null,
         }),
+        signal: AbortSignal.timeout(10000),
       })
-      if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
+      if (!parseResponse.ok) {
+        const errBody = await parseResponse.json().catch(() => null)
+        throw new Error(errBody?.error ?? 'Erreur analyse du ticket')
+      }
+
+      const parseBody = await parseResponse.json()
 
       // Check if receipt was queued offline
-      const parseBody = await parseResponse.json()
       if (parseBody.queued) {
         toast.success('Reçu sauvegardé ! Il sera analysé dès que vous retrouverez du réseau.', { duration: 5000 })
         setStep('upload')
         return
       }
 
-      // Stage 2: "Recherche des prix…" (65→85%)
-      setStage(2, 65)
+      // Dedup cache hit — full result returned immediately
+      if (parseBody.cached) {
+        const parsed: ParsedReceipt = parseBody
+        setParsedReceipt(parsed)
+        setReceiptId(parseBody.receipt_id)
+        setLowQualityWarning(false)
 
-      const parsed: ParsedReceipt = parseBody
+        setStage(3, 85)
+        setStep('results')
+
+        // Jump to comparison
+        const storeChain = normalizeStoreChain(parsed.store_name)
+        const compareResponse = await fetch('/api/compare-prices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
+            postcode: postcode || null, store_chain: storeChain,
+          }),
+        })
+        if (compareResponse.ok) {
+          const comparisonData = await compareResponse.json()
+          setComparisons(comparisonData.comparisons || [])
+          setBestStore(comparisonData.best_store || null)
+          if (comparisonData.data_as_of) setDataAsOf(comparisonData.data_as_of)
+          clearProgress()
+          setStep('comparison')
+          const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
+          if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
+          emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
+          void ctx.refresh(['recentStores', 'profile'])
+        } else {
+          clearProgress()
+        }
+        return
+      }
+
+      // ── Async flow: poll for results ──────────────────────────────────────
+      const jobId = parseBody.job_id as string
+      if (!jobId) throw new Error('Erreur: identifiant de scan manquant')
+
+      // Stage 2: "Recherche des prix…" — poll every 1.5s
+      setStage(2, 35)
+
+      const MAX_POLLS = 27 // 27 * 1.5s = ~40s max
+      let pollResult: ParsedReceipt | null = null
+      let savedReceiptId = ''
+
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise(r => setTimeout(r, 1500))
+
+        const statusRes = await fetch(`/api/scan-status/${jobId}`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (!statusRes.ok) continue
+
+        const statusBody = await statusRes.json()
+
+        if (statusBody.status === 'done' && statusBody.result) {
+          pollResult = statusBody.result as ParsedReceipt
+          savedReceiptId = (statusBody.result as { receipt_id?: string }).receipt_id ?? ''
+          break
+        }
+
+        if (statusBody.status === 'failed') {
+          throw new Error(statusBody.error_msg || 'Échec de l\'analyse')
+        }
+
+        // Animate progress while polling
+        setScanProgress(35 + Math.min(50, i * 3))
+      }
+
+      if (!pollResult) throw new Error('L\'analyse a pris trop de temps. Réessayez.')
+
+      // ── Results received ──────────────────────────────────────────────────
+      const parsed: ParsedReceipt = pollResult
       setParsedReceipt(parsed)
+      if (savedReceiptId) setReceiptId(savedReceiptId)
 
-      // Set low-quality warning if few items or low avg confidence
+      // Set low-quality warning
+      const qualityWarning = (parsed as unknown as { quality_warning?: boolean }).quality_warning
       const avgConf = parsed.items.length > 0
         ? parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
         : 1
-      setLowQualityWarning(parsed.items.length < 3 || avgConf < 0.5)
+      setLowQualityWarning(qualityWarning === true || parsed.items.length < 3 || avgConf < 0.5)
 
       const storeChain = normalizeStoreChain(parsed.store_name)
 
@@ -596,97 +675,6 @@ export default function ScanPage() {
             sample_items: parsed.items.slice(0, 15).map((i) => i.name),
           }),
         }).catch(() => {})
-      }
-      const receiptDate = new Date().toISOString().split('T')[0]
-
-      // ── Duplicate detection: same user, store, total, date → skip re-insert ─
-      const { data: existing } = await supabase
-        .from('receipts')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('store_chain', storeChain)
-        .eq('total_amount', parsed.total)
-        .eq('receipt_date', receiptDate)
-        .limit(1)
-
-      let savedReceiptId: string
-      const isNewScan = !(existing && existing.length > 0)
-
-      // Pre-filter items — used in both branches
-      const validItems = parsed.items.filter(item => item.price > 0 && item.name.trim().length > 0)
-      const itemRows = (receiptId: string) => validItems.map((item) => ({
-        receipt_id: receiptId,
-        user_id: user.id,
-        item_name: item.name,
-        item_name_normalised: normalizeProductName(item.name),
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity,
-        store_chain: storeChain,
-        postcode: postcode || null,
-        latitude: userCoords?.lat ?? null,
-        longitude: userCoords?.lon ?? null,
-        is_promo: item.is_promo ?? false,
-        is_private_label: item.is_private_label ?? false,
-        brand: item.brand ?? null,
-        volume_weight: item.volume_weight ?? null,
-      }))
-
-      if (!isNewScan) {
-        // Duplicate receipt — reuse existing id but backfill items if the prior scan had none
-        savedReceiptId = existing![0].id
-        setReceiptId(savedReceiptId)
-
-        if (validItems.length > 0) {
-          const { count } = await supabase
-            .from('price_items')
-            .select('*', { count: 'exact', head: true })
-            .eq('receipt_id', savedReceiptId)
-          if ((count ?? 0) === 0) {
-            const { error: backfillError } = await supabase.from('price_items').insert(itemRows(savedReceiptId))
-            if (backfillError) console.error('[scan] price_items backfill error:', backfillError.message)
-          }
-        }
-      } else {
-        // New receipt: insert receipt row
-        const { data: receiptRow, error: receiptError } = await supabase
-          .from('receipts')
-          .insert({
-            user_id:         user.id,
-            store_chain:     storeChain,
-            total_amount:    parsed.total,
-            receipt_date:    receiptDate,
-            image_url:       publicUrl,
-            postcode:        postcode || null,
-            latitude:        userCoords?.lat ?? null,
-            longitude:       userCoords?.lon ?? null,
-            raw_ocr_text:    parsed.raw_ocr_text ?? null,
-            store_address:   parsed.store_address ?? null,
-            store_latitude:  parsed.store_latitude ?? null,
-            store_longitude: parsed.store_longitude ?? null,
-            image_hash:      parsed.image_hash ?? null,
-          })
-          .select().single()
-        if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)
-        savedReceiptId = receiptRow.id
-        setReceiptId(savedReceiptId)
-
-        // ── Insert price_items ────────────────────────────────────────────────
-        if (validItems.length > 0) {
-          const { error: itemsError } = await supabase.from('price_items').insert(itemRows(savedReceiptId))
-          if (itemsError) {
-            // Non-critical: receipt was saved — don't block the user, just log
-            console.error('[scan] price_items insert error:', itemsError.message)
-          }
-        }
-
-        // ── Fire-and-forget: keep pricing engine current after every scan ──
-        if (accessToken) {
-          void fetch('/api/trigger-stats-refresh', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }).catch(() => {})
-        }
       }
 
       // Stage 3: "Calcul de vos économies…" (85→100%)
@@ -717,7 +705,7 @@ export default function ScanPage() {
         if (savedReceiptId) {
           await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
         }
-        if (isNewScan) void awardScanXP(savings, storeChain)
+        void awardScanXP(savings, storeChain)
         emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
         void ctx.refresh(['recentStores', 'profile'])
       } else {
