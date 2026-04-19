@@ -630,7 +630,8 @@ export default function ScanPage() {
         },
         body: JSON.stringify({ job_id: jobId, user_id: user!.id }),
       }).then(async res => {
-        if (!res.ok) {
+        // 409 = job already processed (double-trigger from after() + client) — not an error
+        if (!res.ok && res.status !== 409) {
           const body = await res.json().catch(() => null)
           processScanError = body?.error ?? `Erreur serveur (${res.status})`
           console.error('[scan] process-scan failed:', res.status, body)

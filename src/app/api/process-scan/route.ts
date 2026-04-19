@@ -335,11 +335,16 @@ async function callClaude(
 
   if (!response.ok) {
     const err = await response.text()
-    throw new Error(`Claude API error: ${response.status} ${err}`)
+    console.error(`[callClaude] API error ${response.status}:`, err.slice(0, 500))
+    throw new Error(`Claude API error: ${response.status} ${err.slice(0, 200)}`)
   }
 
   const data = await response.json()
-  return data.content?.[0]?.text ?? ''
+  const text = data.content?.[0]?.text ?? ''
+  if (!text) {
+    console.error('[callClaude] Empty response from Claude:', JSON.stringify(data).slice(0, 300))
+  }
+  return text
 }
 
 // ── Normalise raw Claude output ──────────────────────────────────────────────
@@ -552,15 +557,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
 
+  console.log(`[process-scan] Starting job=${job_id} user=${user_id}`)
+
   try {
     // ── Read job ─────────────────────────────────────────────────────────
-    const { data: job } = await supabase.from('scan_jobs')
+    const { data: job, error: jobReadErr } = await supabase.from('scan_jobs')
       .select('id, user_id, image_hash, image_data, status')
       .eq('id', job_id)
       .single()
 
-    if (!job || job.status !== 'pending') {
-      return NextResponse.json({ error: 'Job not found or already processed' }, { status: 404 })
+    if (jobReadErr) {
+      console.error(`[process-scan] Failed to read job ${job_id}:`, jobReadErr.message)
+    }
+
+    if (!job) {
+      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+    }
+
+    // Allow re-processing of stuck jobs (pending or processing)
+    if (job.status === 'done' || job.status === 'failed') {
+      console.log(`[process-scan] Job ${job_id} already ${job.status}, skipping`)
+      return NextResponse.json({ error: `Job already ${job.status}` }, { status: 409 })
     }
 
     // ── Mark processing ──────────────────────────────────────────────────
@@ -590,7 +607,9 @@ export async function POST(request: NextRequest) {
         : ''
 
     // ── Sonnet Vision parse (25s timeout) ────────────────────────────────
+    console.log(`[process-scan] Calling Claude (${images.length} image(s), model=claude-sonnet-4-6)`)
     const textContent = await callClaude(apiKey, images, buildPrompt(formatHintsSection + priceAnchorsSection))
+    console.log(`[process-scan] Claude response: ${textContent.length} chars`)
 
     // Clean and repair JSON response
     let cleaned = textContent.trim()

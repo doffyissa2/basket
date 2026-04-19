@@ -132,25 +132,34 @@ export async function POST(request: NextRequest) {
         .select('item_name, unit_price, quantity, is_promo, is_private_label, brand, volume_weight')
         .eq('receipt_id', cachedReceipt.id)
 
-      console.log(`[parse-receipt] cache hit for user ${authResult.userId} (hash ${imageHash.slice(0, 8)}…)`)
-      return NextResponse.json({
-        cached: true,
-        receipt_id: cachedReceipt.id,
-        store_name: cachedReceipt.store_chain,
-        total: cachedReceipt.total_amount,
-        items: (cachedItems ?? []).map(i => ({
-          name: i.item_name,
-          price: i.unit_price,
-          quantity: i.quantity,
-          is_promo: i.is_promo ?? false,
-          is_private_label: i.is_private_label ?? false,
-          brand: i.brand ?? null,
-          volume_weight: i.volume_weight ?? null,
-        })),
-        raw_ocr_text: cachedReceipt.raw_ocr_text,
-        store_address: cachedReceipt.store_address,
-        image_hash: imageHash,
-      })
+      // Only trust cache if items were actually extracted.
+      // Stale 0-item results (from past bugs) must be purged and re-scanned.
+      if (cachedItems && cachedItems.length > 0) {
+        console.log(`[parse-receipt] cache hit (${cachedItems.length} items) for user ${authResult.userId} (hash ${imageHash.slice(0, 8)}…)`)
+        return NextResponse.json({
+          cached: true,
+          receipt_id: cachedReceipt.id,
+          store_name: cachedReceipt.store_chain,
+          total: cachedReceipt.total_amount,
+          items: cachedItems.map(i => ({
+            name: i.item_name,
+            price: i.unit_price,
+            quantity: i.quantity,
+            is_promo: i.is_promo ?? false,
+            is_private_label: i.is_private_label ?? false,
+            brand: i.brand ?? null,
+            volume_weight: i.volume_weight ?? null,
+          })),
+          raw_ocr_text: cachedReceipt.raw_ocr_text,
+          store_address: cachedReceipt.store_address,
+          image_hash: imageHash,
+        })
+      }
+
+      // Purge stale cached receipt with 0 items so re-scan can proceed
+      console.log(`[parse-receipt] stale cache (0 items) for hash ${imageHash.slice(0, 8)}… — purging and re-scanning`)
+      await supabase.from('price_items').delete().eq('receipt_id', cachedReceipt.id)
+      await supabase.from('receipts').delete().eq('id', cachedReceipt.id)
     }
 
     // ── Haiku gatekeeper (8s timeout) ───────────────────────────────────
