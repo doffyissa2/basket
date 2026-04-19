@@ -613,10 +613,22 @@ export default function ScanPage() {
       const jobId = parseBody.job_id as string
       if (!jobId) throw new Error('Erreur: identifiant de scan manquant')
 
+      // Trigger Phase 2 directly from the client (most reliable path —
+      // browser fetch isn't killed like Vercel server-to-server fire-and-forget).
+      // process-scan accepts user Bearer tokens, so no internal secret needed.
+      void fetch('/api/process-scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ job_id: jobId, user_id: user!.id }),
+      }).catch(() => {}) // best effort — server after() and scan-status retry are fallbacks
+
       // Stage 2: "Recherche des prix…" — poll every 1.5s
       setStage(2, 35)
 
-      const MAX_POLLS = 27 // 27 * 1.5s = ~40s max
+      const MAX_POLLS = 40 // 40 * 1.5s = ~60s max
       let pollResult: ParsedReceipt | null = null
       let savedReceiptId = ''
 

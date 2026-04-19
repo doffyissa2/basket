@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { timingSafeEqual } from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getServiceClient } from '@/lib/supabase-service'
+import { requireAuth } from '@/lib/auth'
 import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
@@ -11,8 +12,8 @@ import type { ParsedItem, ParsedReceipt } from '@/types/api'
 // Reads scan_jobs row → Sonnet Vision parse → post-processing → DB inserts
 // → marks job done. Location resolution runs AFTER marking done (deferred).
 //
-// Triggered by /api/parse-receipt via fire-and-forget fetch.
-// Auth: x-internal-secret header (not user-facing).
+// Auth: accepts EITHER x-internal-secret header (server-to-server)
+// OR a user Bearer token (client-triggered). The user must own the job.
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -527,13 +528,29 @@ out center 1;`
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  if (!authorizeInternal(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth: internal secret (server-to-server) OR user Bearer token (client-triggered)
+  let authenticatedUserId: string | null = null
+
+  if (authorizeInternal(request)) {
+    // Server-to-server: trust the user_id in the body
+    authenticatedUserId = null // will be read from body
+  } else {
+    // Try user auth as fallback (client-triggered)
+    const authResult = await requireAuth(request)
+    if (authResult instanceof NextResponse) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    authenticatedUserId = authResult.userId
   }
 
   const { job_id, user_id } = await request.json()
   if (!job_id || !user_id) {
     return NextResponse.json({ error: 'Missing job_id or user_id' }, { status: 400 })
+  }
+
+  // If authenticated via user token, ensure they own this job
+  if (authenticatedUserId && authenticatedUserId !== user_id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
   const supabase = getServiceClient()
