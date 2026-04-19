@@ -351,6 +351,24 @@ export default function ScanPage() {
     if (!ctx.loading && !user) window.location.href = '/login'
   }, [ctx.loading, user])
 
+  // Listen for offline receipt sync completions from service worker
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'receipt-synced') {
+        toast.success('Votre ticket a été analysé avec succès !', { duration: 4000 })
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', handler)
+    // Safari/iOS fallback: replay on reconnect (no Background Sync API)
+    const onOnline = () => navigator.serviceWorker.controller?.postMessage('replayReceipts')
+    window.addEventListener('online', onOnline)
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handler)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [])
+
   // Seed postcode/coords from context location
   useEffect(() => {
     if (location) {
@@ -533,10 +551,18 @@ export default function ScanPage() {
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
 
+      // Check if receipt was queued offline
+      const parseBody = await parseResponse.json()
+      if (parseBody.queued) {
+        toast.success('Reçu sauvegardé ! Il sera analysé dès que vous retrouverez du réseau.', { duration: 5000 })
+        setStep('upload')
+        return
+      }
+
       // Stage 2: "Recherche des prix…" (65→85%)
       setStage(2, 65)
 
-      const parsed: ParsedReceipt = await parseResponse.json()
+      const parsed: ParsedReceipt = parseBody
       setParsedReceipt(parsed)
 
       // Set low-quality warning if few items or low avg confidence
@@ -638,6 +664,7 @@ export default function ScanPage() {
             store_address:   parsed.store_address ?? null,
             store_latitude:  parsed.store_latitude ?? null,
             store_longitude: parsed.store_longitude ?? null,
+            image_hash:      parsed.image_hash ?? null,
           })
           .select().single()
         if (receiptError) throw new Error('Erreur sauvegarde: ' + receiptError.message)

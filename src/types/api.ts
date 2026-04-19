@@ -26,6 +26,8 @@ export interface ParsedReceipt {
   store_address?:  string | null // nearest store address from store_locations
   store_latitude?: number | null
   store_longitude?: number | null
+  image_hash?:     string | null // SHA-256 of first image, for dedup
+  cached?:         boolean       // true if returned from dedup cache
 }
 
 // ── Price comparison ──────────────────────────────────────────────────────────

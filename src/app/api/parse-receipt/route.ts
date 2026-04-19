@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Redis } from '@upstash/redis'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -473,9 +474,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
     }
 
+    // ── Image hash dedup — skip Claude if same user already scanned this exact image ──
+    const imageHash = createHash('sha256').update(images[0].base64).digest('hex')
+    const supabase = getServiceClient()
+
+    const { data: cachedReceipt } = await supabase
+      .from('receipts')
+      .select('id, store_chain, total_amount, raw_ocr_text, store_address, receipt_date, image_url')
+      .eq('user_id', authResult.userId)
+      .eq('image_hash', imageHash)
+      .maybeSingle()
+
+    if (cachedReceipt) {
+      // Fetch items for the cached receipt
+      const { data: cachedItems } = await supabase
+        .from('price_items')
+        .select('item_name, unit_price, quantity, is_promo, is_private_label, brand, volume_weight')
+        .eq('receipt_id', cachedReceipt.id)
+
+      console.log(`[parse-receipt] cache hit for user ${authResult.userId} (hash ${imageHash.slice(0, 8)}…)`)
+      return NextResponse.json({
+        cached: true,
+        receipt_id: cachedReceipt.id,
+        store_name: cachedReceipt.store_chain,
+        total: cachedReceipt.total_amount,
+        items: (cachedItems ?? []).map(i => ({
+          name: i.item_name,
+          price: i.unit_price,
+          quantity: i.quantity,
+          is_promo: i.is_promo ?? false,
+          is_private_label: i.is_private_label ?? false,
+          brand: i.brand ?? null,
+          volume_weight: i.volume_weight ?? null,
+        })),
+        raw_ocr_text: cachedReceipt.raw_ocr_text,
+        store_address: cachedReceipt.store_address,
+        image_hash: imageHash,
+      })
+    }
+
     // ── Layer 2: Haiku gatekeeper + DB queries run in parallel ───────────
     // Gatekeeper costs ~$0.0005 and stops cat photos / memes before Sonnet.
-    const supabase = getServiceClient()
     const [{ data: formats }, priceAnchorsSection, isReceipt] = await Promise.all([
       supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'),
       fetchPriceAnchors(supabase),
@@ -766,6 +805,7 @@ out center 1;`
       store_address:   storeLocation.address,
       store_latitude:  storeLocation.lat,
       store_longitude: storeLocation.lon,
+      image_hash:      imageHash,
     })
   } catch (error) {
     // Increment failure counter — JSON parse errors / API errors are abuse signals

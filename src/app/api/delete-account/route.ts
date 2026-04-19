@@ -19,11 +19,27 @@ export async function DELETE(request: NextRequest) {
     const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
     const email = authUser?.email ?? null
 
+    // ── Delete receipt images from Supabase Storage ─────────────────────
+    // Must run BEFORE deleting receipt rows (paths derived from userId)
+    try {
+      const { data: storageFiles } = await supabase.storage.from('receipts').list(userId, { limit: 1000 })
+      if (storageFiles && storageFiles.length > 0) {
+        const paths = storageFiles.map(f => `${userId}/${f.name}`)
+        for (let i = 0; i < paths.length; i += 100) {
+          await supabase.storage.from('receipts').remove(paths.slice(i, i + 100))
+        }
+      }
+    } catch (err) {
+      console.warn('[delete-account] storage cleanup error (non-blocking):', err)
+    }
+
     // Delete all user data in order (children before parents)
     const deletions = await Promise.allSettled([
       supabase.from('price_items').delete().eq('user_id', userId),
       supabase.from('price_watches').delete().eq('user_id', userId),
       supabase.from('notifications').delete().eq('user_id', userId),
+      supabase.from('item_corrections').delete().eq('user_id', userId),
+      supabase.from('xp_log').delete().eq('user_id', userId),
     ])
 
     // Receipts after price_items (FK dependency)

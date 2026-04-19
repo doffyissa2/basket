@@ -30,7 +30,7 @@ export default function PrivacyPage() {
 
       <main className="max-w-3xl mx-auto px-5 py-12">
         <h1 className="text-3xl font-extrabold text-graphite mb-2">Politique de confidentialité</h1>
-        <p className="text-sm text-graphite/40 mb-10">Dernière mise à jour : 8 avril 2026</p>
+        <p className="text-sm text-graphite/40 mb-10">Dernière mise à jour : 19 avril 2026</p>
 
         <Section title="1. Responsable du traitement">
           <p>
@@ -47,7 +47,7 @@ export default function PrivacyPage() {
           <p>Nous collectons uniquement les données nécessaires au fonctionnement du service :</p>
           <ul className="list-disc list-inside space-y-1.5 pl-2">
             <li><strong>Données de compte :</strong> adresse e-mail, mot de passe (chiffré), code postal.</li>
-            <li><strong>Tickets de caisse :</strong> images uploadées pour l&apos;analyse OCR par intelligence artificielle. Les images ne sont pas conservées au-delà du traitement.</li>
+            <li><strong>Tickets de caisse :</strong> images uploadées pour l&apos;analyse OCR par intelligence artificielle. Les images sont conservées 30 jours pour permettre la réanalyse en cas d&apos;erreur, puis supprimées automatiquement.</li>
             <li><strong>Articles et prix :</strong> noms des produits, prix, nom du magasin, date d&apos;achat.</li>
             <li><strong>Données de localisation :</strong> code postal ou coordonnées GPS approximatives (avec votre consentement explicite), pour afficher les prix de votre secteur.</li>
             <li><strong>Données d&apos;utilisation :</strong> pages visitées, actions effectuées, pour améliorer l&apos;application.</li>
@@ -72,6 +72,7 @@ export default function PrivacyPage() {
             <li>Suppression de tous les éléments d&apos;identification personnelle (nom, téléphone, email, numéro de carte de fidélité, IBAN, numéro de transaction).</li>
             <li>Le code postal est réduit au niveau du département (ex. 75013 → 75).</li>
             <li>Aucun identifiant utilisateur n&apos;est attaché aux données communautaires publiées.</li>
+            <li>Les prix sont dissociés de tout identifiant utilisateur avant leur ajout à la base communautaire.</li>
           </ul>
         </Section>
 
@@ -88,9 +89,11 @@ export default function PrivacyPage() {
         <Section title="6. Durée de conservation">
           <ul className="list-disc list-inside space-y-1.5 pl-2">
             <li>Compte et données associées : conservés jusqu&apos;à la suppression du compte.</li>
-            <li>Images de tickets : supprimées immédiatement après traitement OCR.</li>
+            <li>Images de tickets : conservées 30 jours, puis supprimées automatiquement.</li>
+            <li>Texte brut OCR : anonymisé après 30 jours (les métadonnées du ticket sont conservées).</li>
             <li>Données de prix : conservées jusqu&apos;à la suppression du compte, puis anonymisées dans la base communautaire.</li>
-            <li>Logs de connexion : 90 jours maximum.</li>
+            <li>Notifications : supprimées après 90 jours.</li>
+            <li>Historique XP (gamification) : conservé 6 mois, puis supprimé.</li>
             <li>Newsletter : jusqu&apos;au désabonnement.</li>
           </ul>
         </Section>
@@ -100,7 +103,7 @@ export default function PrivacyPage() {
           <ul className="list-disc list-inside space-y-1.5 pl-2">
             <li><strong>Droit d&apos;accès :</strong> obtenir une copie de vos données.</li>
             <li><strong>Droit de rectification :</strong> corriger des données inexactes.</li>
-            <li><strong>Droit à l&apos;effacement :</strong> supprimer votre compte et toutes vos données personnelles (disponible directement depuis votre profil).</li>
+            <li><strong>Droit à l&apos;effacement :</strong> supprimer votre compte et toutes vos données personnelles, y compris les images de tickets, les corrections, l&apos;historique de gamification et les données de liste de courses (disponible directement depuis votre profil).</li>
             <li><strong>Droit à la portabilité :</strong> recevoir vos données dans un format structuré.</li>
             <li><strong>Droit d&apos;opposition :</strong> vous opposer au traitement pour motif légitime.</li>
             <li><strong>Droit de retrait du consentement :</strong> à tout moment, pour les traitements basés sur le consentement.</li>
