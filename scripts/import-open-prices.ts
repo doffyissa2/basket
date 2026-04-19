@@ -114,8 +114,8 @@ interface OFFApiResponse {
       osm_address_city?: string | null
       osm_address_postcode?: string | null
       osm_address_country_code?: string | null
-      lat?: number | null
-      lon?: number | null
+      osm_lat?: number | null
+      osm_lon?: number | null
     } | null
   }>
   total?: number
@@ -176,8 +176,8 @@ async function fetchPage(page: number): Promise<{ items: PriceItem[]; total: num
         store_address: i.location?.osm_display_name ?? null,
         city: i.location?.osm_address_city ?? null,
         postcode,
-        lat: typeof i.location?.lat === 'number' ? i.location.lat : null,
-        lon: typeof i.location?.lon === 'number' ? i.location.lon : null,
+        lat: typeof i.location?.osm_lat === 'number' ? i.location.osm_lat : null,
+        lon: typeof i.location?.osm_lon === 'number' ? i.location.osm_lon : null,
         brand,
         date: i.date ?? null,
       }
