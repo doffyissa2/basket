@@ -108,11 +108,11 @@ self.addEventListener('fetch', (e) => {
 
           // Notify all clients about the new queue count
           const clients = await self.clients.matchAll({ type: 'window' })
-          const count = await openOfflineDB().then(async (db2) => {
-            const c = await countPending(db2)
-            db2.close()
-            return c
-          })
+          let count = 0
+          try {
+            const db2 = await openOfflineDB()
+            try { count = await countPending(db2) } finally { db2.close() }
+          } catch { /* ignore count failure */ }
           clients.forEach((client) => client.postMessage({ type: 'offline-queue-count', count }))
 
           // Register background sync if supported
