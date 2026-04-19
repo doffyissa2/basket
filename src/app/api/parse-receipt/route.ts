@@ -45,7 +45,7 @@ async function isReceiptImage(
           ],
         }],
       }),
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return true  // fail open
     const data = await res.json()
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ── Haiku gatekeeper (4s timeout) ───────────────────────────────────
+    // ── Haiku gatekeeper (8s timeout) ───────────────────────────────────
     const isReceipt = await isReceiptImage(apiKey, images[0])
 
     if (!isReceipt) {

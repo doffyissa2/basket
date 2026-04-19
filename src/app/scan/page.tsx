@@ -553,7 +553,7 @@ export default function ScanPage() {
         body: JSON.stringify({
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
         }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(20000),
       })
       if (!parseResponse.ok) {
         const errBody = await parseResponse.json().catch(() => null)
@@ -723,7 +723,11 @@ export default function ScanPage() {
       }
     } catch (err) {
       clearProgress()
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue')
+      const isAbort = err instanceof DOMException && err.name === 'AbortError'
+      const msg = isAbort
+        ? 'La connexion a mis trop de temps. Vérifiez votre réseau et réessayez.'
+        : err instanceof Error ? err.message : 'Une erreur est survenue'
+      setError(msg)
       setStep('upload')
     }
   }
