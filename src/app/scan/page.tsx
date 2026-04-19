@@ -623,23 +623,31 @@ export default function ScanPage() {
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise(r => setTimeout(r, 1500))
 
-        const statusRes = await fetch(`/api/scan-status/${jobId}`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-          signal: AbortSignal.timeout(5000),
-        })
+        try {
+          const statusRes = await fetch(`/api/scan-status/${jobId}`, {
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+            signal: AbortSignal.timeout(12000),
+          })
 
-        if (!statusRes.ok) continue
+          if (!statusRes.ok) continue
 
-        const statusBody = await statusRes.json()
+          const statusBody = await statusRes.json()
 
-        if (statusBody.status === 'done' && statusBody.result) {
-          pollResult = statusBody.result as ParsedReceipt
-          savedReceiptId = (statusBody.result as { receipt_id?: string }).receipt_id ?? ''
-          break
-        }
+          if (statusBody.status === 'done' && statusBody.result) {
+            pollResult = statusBody.result as ParsedReceipt
+            savedReceiptId = (statusBody.result as { receipt_id?: string }).receipt_id ?? ''
+            break
+          }
 
-        if (statusBody.status === 'failed') {
-          throw new Error(statusBody.error_msg || 'Échec de l\'analyse')
+          if (statusBody.status === 'failed') {
+            throw new Error(statusBody.error_msg || 'Échec de l\'analyse')
+          }
+        } catch (pollErr) {
+          // Re-throw actual scan failures (from 'failed' status above)
+          if (pollErr instanceof Error && !(pollErr instanceof DOMException)) throw pollErr
+          // Abort/network errors on individual polls — skip and retry next cycle
+          console.warn(`[scan] poll ${i + 1} failed, retrying…`, pollErr)
+          continue
         }
 
         // Animate progress while polling

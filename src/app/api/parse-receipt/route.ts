@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createHash } from 'crypto'
 import { Redis } from '@upstash/redis'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -181,20 +181,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create scan job' }, { status: 500 })
     }
 
-    // ── Fire-and-forget: trigger Phase 2 background worker ──────────────
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+    // ── Trigger Phase 2 background worker (runs after response is sent) ──
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+      ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
     const internalSecret = process.env.INTERNAL_API_SECRET ?? process.env.CRON_SECRET
 
-    void fetch(`${siteUrl}/api/process-scan`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(internalSecret ? { 'x-internal-secret': internalSecret } : {}),
-      },
-      body: JSON.stringify({ job_id: job.id, user_id: authResult.userId }),
-    }).catch(err => {
-      console.error('[parse-receipt] Failed to trigger process-scan:', err)
+    after(async () => {
+      try {
+        await fetch(`${siteUrl}/api/process-scan`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(internalSecret ? { 'x-internal-secret': internalSecret } : {}),
+          },
+          body: JSON.stringify({ job_id: job.id, user_id: authResult.userId }),
+        })
+      } catch (err) {
+        console.error('[parse-receipt] Failed to trigger process-scan:', err)
+      }
     })
 
     // Success — reset consecutive failure counter
