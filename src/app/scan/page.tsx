@@ -613,27 +613,42 @@ export default function ScanPage() {
       const jobId = parseBody.job_id as string
       if (!jobId) throw new Error('Erreur: identifiant de scan manquant')
 
-      // Trigger Phase 2 directly from the client (most reliable path —
-      // browser fetch isn't killed like Vercel server-to-server fire-and-forget).
-      // process-scan accepts user Bearer tokens, so no internal secret needed.
-      void fetch('/api/process-scan', {
+      // Trigger Phase 2 directly from the client. Track the promise so we
+      // can surface errors instead of silently swallowing them.
+      let processScanError: string | null = null
+      const processScanPromise = fetch('/api/process-scan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({ job_id: jobId, user_id: user!.id }),
-      }).catch(() => {}) // best effort — server after() and scan-status retry are fallbacks
+      }).then(async res => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          processScanError = body?.error ?? `Erreur serveur (${res.status})`
+          console.error('[scan] process-scan failed:', res.status, body)
+        }
+      }).catch(err => {
+        processScanError = err instanceof Error ? err.message : 'Erreur réseau'
+        console.error('[scan] process-scan fetch error:', err)
+      })
 
-      // Stage 2: "Recherche des prix…" — poll every 1.5s
+      // Stage 2: "Recherche des prix…" — poll every 2s
       setStage(2, 35)
 
-      const MAX_POLLS = 40 // 40 * 1.5s = ~60s max
+      const MAX_POLLS = 40 // 40 * 2s = ~80s max
       let pollResult: ParsedReceipt | null = null
       let savedReceiptId = ''
+      let lastJobStatus = 'pending'
 
       for (let i = 0; i < MAX_POLLS; i++) {
-        await new Promise(r => setTimeout(r, 1500))
+        await new Promise(r => setTimeout(r, 2000))
+
+        // If process-scan already returned an error and job is stuck, bail early
+        if (processScanError && i > 3) {
+          throw new Error(processScanError)
+        }
 
         try {
           const statusRes = await fetch(`/api/scan-status/${jobId}`, {
@@ -644,6 +659,7 @@ export default function ScanPage() {
           if (!statusRes.ok) continue
 
           const statusBody = await statusRes.json()
+          lastJobStatus = statusBody.status
 
           if (statusBody.status === 'done' && statusBody.result) {
             pollResult = statusBody.result as ParsedReceipt
@@ -663,10 +679,15 @@ export default function ScanPage() {
         }
 
         // Animate progress while polling
-        setScanProgress(35 + Math.min(50, i * 3))
+        setScanProgress(35 + Math.min(50, i * 2))
       }
 
-      if (!pollResult) throw new Error('L\'analyse a pris trop de temps. Réessayez.')
+      // Wait for process-scan to finish before giving up
+      if (!pollResult) {
+        await processScanPromise
+        if (processScanError) throw new Error(processScanError)
+        throw new Error(`L'analyse a pris trop de temps (statut: ${lastJobStatus}). Réessayez.`)
+      }
 
       // ── Results received ──────────────────────────────────────────────────
       const parsed: ParsedReceipt = pollResult
