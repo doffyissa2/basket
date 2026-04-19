@@ -222,7 +222,7 @@ async function matchStore(
     const { data, error } = await client.rpc('match_store_by_location', {
       p_lat: lat,
       p_lon: lon,
-      p_radius_m: 50,
+      p_radius_m: 400,
     })
 
     if (error || !data || (Array.isArray(data) && data.length === 0)) {
@@ -308,7 +308,7 @@ async function upsertBatch(
 async function main() {
   console.log('=== Open Prices Bulk Importer ===')
   console.log(`  Pages to fetch:    ${MAX_PAGES}`)
-  console.log(`  Store matching:    ${SKIP_STORE_MATCH ? 'DISABLED' : 'ENABLED (50m PostGIS)'}`)
+  console.log(`  Store matching:    ${SKIP_STORE_MATCH ? 'DISABLED' : 'ENABLED (400m PostGIS)'}`)
   console.log(`  Batch size:        ${BATCH_SIZE}`)
   console.log(`  API delay:         ${API_DELAY_MS}ms`)
   console.log()
