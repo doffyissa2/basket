@@ -195,7 +195,6 @@ function buildPrompt(formatHintsSection: string): string {
 
 Format attendu :
 {
-  "raw_lines": ["PAIN DE MIE COMP", "1,89", "YAOURT BIO 125G", "2 x 1,45", "TOTAL", "45,67"],
   "store_name": "Nom du magasin",
   "store_address": "Adresse postale complète si visible sur le ticket, sinon null",
   "siret": "12345678900014",
@@ -210,17 +209,12 @@ Format attendu :
       "is_promo": false,
       "is_private_label": false,
       "confidence": 0.95,
-      "raw_ref": "PAIN DE MIE COMP",
       "brand": "Harrys",
       "volume_weight": "500g"
     }
   ],
   "total": 45.67
 }
-
-── RÈGLE ANTI-HALLUCINATION (CRITIQUE) ──────────────────────────────────────
-ÉTAPE 1 — Remplis d'abord "raw_lines" : copie CHAQUE ligne imprimée sur le ticket, exactement telle qu'elle est écrite, de haut en bas. Ne saute aucune ligne, n'invente rien.
-ÉTAPE 2 — Pour chaque article dans "items", le champ "raw_ref" DOIT contenir la ligne exacte de "raw_lines" où apparaît le nom de l'article. Si tu ne trouves pas la ligne dans ta transcription → N'INCLUS PAS cet article.
 
 ── RÈGLES CRITIQUES ──────────────────────────────────────────────────────────
 - INTERDIT : n'inventer AUCUN article. N'inclure QUE les articles dont le nom ET le prix sont CLAIREMENT visibles sur le ticket.
@@ -281,7 +275,7 @@ Ces champs permettent de localiser le magasin précisément via les APIs gouvern
 
 ── VÉRIFICATION ARITHMÉTIQUE ────────────────────────────────────────────────
 Après avoir extrait tous les articles, calcule : somme = Σ(price × quantity) pour chaque article.
-Si |somme - total| > total × 0.05, tu as probablement fait une erreur d'extraction. Revérifie chaque prix et corrige avant de répondre.${formatHintsSection}`
+Si |somme - total| > total × 0.10, revérifie chaque prix et corrige-les si nécessaire. Ne supprime PAS d'articles.${formatHintsSection}`
 }
 
 // ── Call Claude Vision ───────────────────────────────────────────────────────
@@ -313,16 +307,14 @@ async function callClaude(
   let requestBody: Record<string, any>
 
   if (isVision) {
-    headers['anthropic-beta'] = 'prompt-caching-2024-07-31'
     requestBody = {
       model,
       max_tokens: 4096,
-      system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
       messages: [{
         role: 'user',
         content: [
           ...imageBlocks,
-          ...(multiPartNote ? [{ type: 'text', text: multiPartNote }] : []),
+          { type: 'text', text: (multiPartNote ? multiPartNote + '\n\n' : '') + prompt },
         ],
       }],
     }
@@ -577,14 +569,17 @@ export async function POST(request: NextRequest) {
     const images: Array<{ base64: string; mediaType: string }> = job.image_data as Array<{ base64: string; mediaType: string }>
 
     // ── Parallel DB queries ──────────────────────────────────────────────
-    const [{ data: formats }, priceAnchorsSection, corrections] = await Promise.all([
-      supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'),
+    const [formats, priceAnchorsSection, corrections] = await Promise.all([
+      Promise.resolve(supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'))
+        .then(r => r.data as { store_chain: string; format_hints: string }[] | null)
+        .catch(() => null as { store_chain: string; format_hints: string }[] | null),
       fetchPriceAnchors(supabase),
-      supabase.from('ocr_corrections')
+      Promise.resolve(supabase.from('ocr_corrections')
         .select('original_text, corrected_text')
         .gte('correction_count', 3)
-        .limit(200)
-        .then(r => (r.data ?? []) as { original_text: string; corrected_text: string }[]),
+        .limit(200))
+        .then(r => (r.data ?? []) as { original_text: string; corrected_text: string }[])
+        .catch(() => [] as { original_text: string; corrected_text: string }[]),
     ])
 
     const formatHintsSection =
@@ -597,8 +592,20 @@ export async function POST(request: NextRequest) {
     // ── Sonnet Vision parse (25s timeout) ────────────────────────────────
     const textContent = await callClaude(apiKey, images, buildPrompt(formatHintsSection + priceAnchorsSection))
 
-    const cleaned = textContent.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-    let parsed: ParsedReceipt = JSON.parse(cleaned)
+    // Clean and repair JSON response
+    let cleaned = textContent.trim()
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1') // fix trailing commas
+
+    let parsed: ParsedReceipt
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch {
+      // Try to extract JSON object from mixed content
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('Réponse Claude invalide (pas de JSON détecté)')
+      parsed = JSON.parse(jsonMatch[0].replace(/,(\s*[}\]])/g, '$1'))
+    }
 
     if (!parsed.store_name || !Array.isArray(parsed.items)) {
       throw new Error('Invalid receipt structure')
@@ -606,18 +613,7 @@ export async function POST(request: NextRequest) {
 
     parsed.items = normaliseItems(parsed.items)
 
-    // ── Hallucination guard ──────────────────────────────────────────────
-    const rawLines = Array.isArray((parsed as unknown as Record<string, unknown>).raw_lines)
-      ? ((parsed as unknown as Record<string, unknown>).raw_lines as string[])
-      : []
-    if (rawLines.length > 0) {
-      const rawSet = rawLines.map(l => l.toLowerCase().trim())
-      parsed.items = parsed.items.filter(item => {
-        if (!item.raw_ref) return true
-        const ref = item.raw_ref.toLowerCase().trim()
-        return rawSet.some(line => line === ref || line.includes(ref) || ref.includes(line))
-      })
-    }
+    console.log(`[process-scan] Parsed: store="${parsed.store_name}", total=${parsed.total}, items=${parsed.items.length}`)
 
     // ── Enrichment ───────────────────────────────────────────────────────
     parsed.items = parsed.items.map(item => ({

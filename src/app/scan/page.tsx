@@ -574,7 +574,13 @@ export default function ScanPage() {
         const parsed: ParsedReceipt = parseBody
         setParsedReceipt(parsed)
         setReceiptId(parseBody.receipt_id)
-        setLowQualityWarning(false)
+        setLowQualityWarning(parsed.items.length === 0)
+
+        if (parsed.items.length === 0) {
+          clearProgress()
+          setStep('comparison')
+          return
+        }
 
         setStage(3, 85)
         setStep('results')
@@ -693,6 +699,14 @@ export default function ScanPage() {
       const parsed: ParsedReceipt = pollResult
       setParsedReceipt(parsed)
       if (savedReceiptId) setReceiptId(savedReceiptId)
+
+      // Skip comparison if no items extracted
+      if (parsed.items.length === 0) {
+        setLowQualityWarning(true)
+        clearProgress()
+        setStep('comparison')
+        return
+      }
 
       // Set low-quality warning
       const qualityWarning = (parsed as unknown as { quality_warning?: boolean }).quality_warning
@@ -1203,6 +1217,26 @@ export default function ScanPage() {
                 )}
                 <p className="text-xs text-graphite/40 mt-0.5">{parsedReceipt.items.length} articles détectés</p>
               </div>
+
+              {/* No items detected — retry prompt */}
+              {parsedReceipt.items.length === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl px-5 py-4 mb-4 text-center"
+                  style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
+                >
+                  <p className="text-sm font-semibold text-graphite/70 mb-1">Aucun article détecté</p>
+                  <p className="text-xs text-graphite/50 mb-3">La photo est peut-être floue ou mal cadrée. Assurez-vous que les articles et prix sont bien lisibles.</p>
+                  <button
+                    onClick={() => { setStep('upload'); setError(''); setImageFiles([]); setImagePreviews([]) }}
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-white"
+                    style={{ background: '#111' }}
+                  >
+                    Réessayer
+                  </button>
+                </motion.div>
+              )}
 
               {/* Items */}
               <div className="space-y-2 mb-5">
