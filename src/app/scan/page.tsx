@@ -146,10 +146,10 @@ function LevelUpModal({ result, onClose }: { result: XPAwardResult; onClose: () 
 
 
 const PARSE_MESSAGES = [
-  'Lecture du ticket...',
-  'Détection des articles...',
-  'Analyse des prix...',
-  'Calcul de vos économies...',
+  'Compression de l\u2019image\u2026',
+  'Analyse par l\u2019IA\u2026',
+  'Recherche des prix\u2026',
+  'Calcul de vos économies\u2026',
 ]
 
 function ConfettiParticles() {
@@ -201,9 +201,9 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: 'ima
 
 function compressImage(
   file: File,
-  maxPx = 2000,
-  quality = 0.75
-): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
+  maxPx = 1568,
+  quality = 0.80
+): Promise<{ base64: string; mediaType: 'image/jpeg' | 'image/webp' }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -216,19 +216,30 @@ function compressImage(
       const ctx = canvas.getContext('2d')
       if (!ctx) { reject(new Error('canvas unavailable')); return }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error('compression failed')); return }
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            const result = reader.result as string
-            resolve({ base64: result.split(',')[1], mediaType: 'image/jpeg' })
-          }
-          reader.readAsDataURL(blob)
-        },
-        'image/jpeg',
-        quality
-      )
+
+      // Try WebP first (smaller payload, same quality), fall back to JPEG
+      const tryFormat = (format: 'image/webp' | 'image/jpeg') => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob && format === 'image/webp') {
+              // Browser doesn't support WebP encoding — fall back to JPEG
+              tryFormat('image/jpeg')
+              return
+            }
+            if (!blob) { reject(new Error('compression failed')); return }
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const result = reader.result as string
+              const mediaType = format === 'image/webp' ? 'image/webp' as const : 'image/jpeg' as const
+              resolve({ base64: result.split(',')[1], mediaType })
+            }
+            reader.readAsDataURL(blob)
+          },
+          format,
+          quality
+        )
+      }
+      tryFormat('image/webp')
     }
     img.onerror = () => {
       // Browser can't decode this format (e.g. HEIC on Chrome) — send raw bytes
@@ -317,7 +328,7 @@ export default function ScanPage() {
   const [imageFlash, setImageFlash] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
 
-  const haptic = () => { if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10) }
+  const haptic = (ms = 10) => { if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(ms) }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -378,14 +389,8 @@ export default function ScanPage() {
     return () => clearTimeout(timer)
   }, [step, parsedReceipt, shoppingListItems])
 
-  // Cycle parse messages
-  useEffect(() => {
-    if (step !== 'parsing') return
-    const interval = setInterval(() => {
-      setParseMessageIdx((i) => (i + 1) % PARSE_MESSAGES.length)
-    }, 1800)
-    return () => clearInterval(interval)
-  }, [step])
+  // Parse message index is now driven by actual scan stages (set in handleSubmit),
+  // no longer cycled on a timer.
 
   const addImageFile = (file: File) => {
     if (imageFiles.length >= 3) return
@@ -485,16 +490,17 @@ export default function ScanPage() {
     setError('')
     gamificationAwarded.current = false
 
-    // Fake progress: 0→85% over ~18s, then jumps to 100 when done
-    let progressInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
-      setScanProgress(p => p < 85 ? p + (85 - p) * 0.06 : p)
-    }, 400)
-    const clearProgress = () => {
-      if (progressInterval) { clearInterval(progressInterval); progressInterval = null }
-      setScanProgress(100)
+    // Stage-driven progress: each stage sets both the message index and progress %
+    const setStage = (stage: number, progress: number) => {
+      setParseMessageIdx(stage)
+      setScanProgress(progress)
     }
+    const clearProgress = () => setScanProgress(100)
 
     try {
+      // Stage 0: "Compression de l'image…" (0→25%)
+      setStage(0, 5)
+
       // Upload + preprocess run in parallel (upload doesn't depend on preprocessing)
       const primaryFile = imageFiles[0]
       const fileName = `${user.id}/${Date.now()}-${primaryFile.name}`
@@ -510,6 +516,9 @@ export default function ScanPage() {
       // Compress all preprocessed images in parallel
       const compressed = await Promise.all(preprocessed.map(f => compressImage(f)))
 
+      // Stage 1: "Analyse par l'IA…" (25→65%)
+      setStage(1, 25)
+
       const parseResponse = await fetch('/api/parse-receipt', {
         method: 'POST',
         headers: {
@@ -523,6 +532,9 @@ export default function ScanPage() {
         }),
       })
       if (!parseResponse.ok) throw new Error('Erreur analyse du ticket')
+
+      // Stage 2: "Recherche des prix…" (65→85%)
+      setStage(2, 65)
 
       const parsed: ParsedReceipt = await parseResponse.json()
       setParsedReceipt(parsed)
@@ -650,6 +662,8 @@ export default function ScanPage() {
         }
       }
 
+      // Stage 3: "Calcul de vos économies…" (85→100%)
+      setStage(3, 85)
       setStep('results')
 
       const compareResponse = await fetch('/api/compare-prices', {
@@ -884,9 +898,9 @@ export default function ScanPage() {
               {imagePreviews.length < 3 && (
                 <div className="space-y-3 mb-4">
                   <motion.button
-                    onClick={() => cameraInputRef.current?.click()}
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    className="w-full rounded-3xl p-6 flex items-center gap-4"
+                    onClick={() => { haptic(30); cameraInputRef.current?.click() }}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                    className="w-full rounded-3xl p-6 flex items-center gap-4 transition-shadow lg:hover:shadow-lg"
                     style={{ background: '#111111', boxShadow: '0 8px 30px rgba(17,17,17,0.2)' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                     <Camera className="w-8 h-8 text-white flex-shrink-0" />
@@ -918,9 +932,9 @@ export default function ScanPage() {
               {/* Analyse button — visible once at least 1 photo added */}
               {imagePreviews.length > 0 && (
                 <motion.button
-                  onClick={() => { haptic(); handleScan() }}
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  className="w-full h-14 rounded-2xl font-bold text-white text-base mb-2 overflow-hidden relative"
+                  onClick={() => { haptic(50); handleScan() }}
+                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  className="w-full h-14 rounded-2xl font-bold text-white text-base mb-2 overflow-hidden relative transition-shadow lg:hover:shadow-[0_0_24px_rgba(126,217,87,0.25)]"
                   style={{ background: '#111111' }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                   Analyser {imagePreviews.length > 1 ? `les ${imagePreviews.length} photos` : 'ce ticket'}

@@ -249,9 +249,11 @@ interface MapClientProps {
   userCoords?:    { lat: number; lon: number } | null
   accessToken?:   string | null
   visitedChains?: string[]   // store_chain values from user's receipt history
+  onVisibleStoresChange?: (stores: StorePin[]) => void
+  onStoreSelect?: (pin: StorePin | null) => void
 }
 
-export default function MapClient({ userCoords, accessToken, visitedChains = [] }: MapClientProps) {
+export default function MapClient({ userCoords, accessToken, visitedChains = [], onVisibleStoresChange, onStoreSelect }: MapClientProps) {
   const mapRef        = useRef<MapRef>(null)
   const [pins, setPins] = useState<StorePin[]>([])
   const [loading, setLoading]       = useState(true)
@@ -314,6 +316,10 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [] 
     }),
     [pins, chainFilter, tierFilter]
   )
+
+  // Notify parent of visible stores for desktop sidebar
+  useEffect(() => { onVisibleStoresChange?.(visible) }, [visible, onVisibleStoresChange])
+  useEffect(() => { onStoreSelect?.(selectedPin) }, [selectedPin, onStoreSelect])
 
   const cheapestNearby = useMemo(() => {
     if (!userCoords) return null
