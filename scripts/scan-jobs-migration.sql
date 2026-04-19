@@ -27,6 +27,5 @@ ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users read own scan_jobs" ON scan_jobs
   FOR SELECT USING (auth.uid() = user_id);
 
--- Service role needs full access for the background worker
-CREATE POLICY "Service role full access on scan_jobs" ON scan_jobs
-  FOR ALL USING (true) WITH CHECK (true);
+-- Note: the service_role client (used by process-scan worker) bypasses RLS
+-- automatically, so no additional policy is needed for the background worker.
