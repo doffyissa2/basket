@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { motion, LayoutGroup } from 'framer-motion'
 import { Home, Camera, User, ShoppingCart, Map } from 'lucide-react'
+import { haptic } from '@/lib/haptic'
 
 const TABS = [
   { id: 'home',    label: 'Accueil', icon: Home,         href: '/dashboard' },
@@ -66,7 +67,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
 
             if (tab.isFab) {
               return (
-                <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5">
+                <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5" onClick={() => haptic(50)}>
                   <motion.div
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
@@ -87,7 +88,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
             }
 
             return (
-              <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5 py-1 relative min-w-[48px]">
+              <Link key={tab.id} href={tab.href} prefetch className="flex flex-col items-center gap-0.5 py-1 relative min-w-[48px]" onClick={() => haptic()}>
                 <motion.div
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}

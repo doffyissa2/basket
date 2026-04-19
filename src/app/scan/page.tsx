@@ -15,6 +15,7 @@ import type { XPAwardResult } from '@/lib/gamification'
 import { getFrameStyle, LEGENDARY_GRADIENT } from '@/lib/gamification'
 import { EASE, useCountUp } from '@/lib/hooks'
 import type { ParsedReceipt, ComparisonItem, BestStore } from '@/types/api'
+import { haptic } from '@/lib/haptic'
 
 // ── XP float "+N XP" ─────────────────────────────────────────────────────────
 function XPFloat({ amount, onDone }: { amount: number; onDone: () => void }) {
@@ -328,7 +329,16 @@ export default function ScanPage() {
   const [imageFlash, setImageFlash] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
 
-  const haptic = (ms = 10) => { if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(ms) }
+  // Timer-driven text cycling: advances parseMessageIdx every 2.5s during parsing
+  // so the user sees smooth progress even during long API waits.
+  // Real stage transitions from the polling loop still override via Math.max in setStage.
+  useEffect(() => {
+    if (step !== 'parsing') return
+    const timer = setInterval(() => {
+      setParseMessageIdx(i => (i < PARSE_MESSAGES.length - 1 ? i + 1 : i))
+    }, 2500)
+    return () => clearInterval(timer)
+  }, [step])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -510,7 +520,7 @@ export default function ScanPage() {
 
     // Stage-driven progress: each stage sets both the message index and progress %
     const setStage = (stage: number, progress: number) => {
-      setParseMessageIdx(stage)
+      setParseMessageIdx(i => Math.max(i, stage))
       setScanProgress(progress)
     }
     const clearProgress = () => setScanProgress(100)
@@ -983,7 +993,12 @@ export default function ScanPage() {
               className="flex flex-col items-center justify-center py-16"
             >
               {imagePreview && (
-                <div className="relative w-44 rounded-2xl overflow-hidden mb-8" style={{ border: '1px solid rgba(17,17,17,0.1)', boxShadow: '0 12px 40px rgba(17,17,17,0.12)' }}>
+                <motion.div
+                  className="relative w-44 rounded-2xl overflow-hidden mb-8"
+                  style={{ border: '1px solid rgba(17,17,17,0.1)' }}
+                  animate={{ boxShadow: ['0 12px 40px rgba(126,217,87,0)', '0 12px 40px rgba(126,217,87,0.25)', '0 12px 40px rgba(126,217,87,0)'] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                >
                   <img src={imagePreview} alt="Ticket" className="w-full opacity-60" />
                   {/* Scanning line */}
                   <motion.div
@@ -999,7 +1014,7 @@ export default function ScanPage() {
                     animate={{ opacity: [0.5, 1, 0.5] }}
                     transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
                   />
-                </div>
+                </motion.div>
               )}
 
               {/* Cycling message */}

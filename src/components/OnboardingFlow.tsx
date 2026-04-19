@@ -2,26 +2,26 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingDown, Sparkles, ShoppingBasket } from 'lucide-react'
+import { Map, Camera, Trophy } from 'lucide-react'
 
 const SLIDES = [
   {
-    icon: ShoppingBasket,
-    title: 'Bienvenue sur Basket',
-    desc: 'Votre assistant pour payer moins cher vos courses chaque semaine.',
+    icon: Map,
+    title: 'Comparez les prix autour de vous',
+    desc: 'Découvrez en un clin d\u2019œil quel supermarché près de chez vous est le moins cher.',
     color: '#7ed957',
   },
   {
-    icon: TrendingDown,
-    title: 'Comparez les prix',
-    desc: 'Scannez vos tickets de caisse et voyez instantanément où vos voisins paient moins.',
+    icon: Camera,
+    title: 'Scannez vos tickets de caisse',
+    desc: 'Prenez en photo votre ticket et notre IA extrait chaque article et son prix en quelques secondes.',
     color: '#00D09C',
   },
   {
-    icon: Sparkles,
-    title: 'Économisez chaque semaine',
-    desc: 'Nos utilisateurs économisent en moyenne 23€ par semaine. Commencez maintenant.',
-    color: '#7ed957',
+    icon: Trophy,
+    title: 'Rejoignez la communauté',
+    desc: 'Chaque ticket scanné enrichit la carte pour tous. Gagnez de l\u2019XP et montez en niveau !',
+    color: '#F59E0B',
   },
 ]
 

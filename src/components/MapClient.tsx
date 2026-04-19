@@ -6,7 +6,9 @@ import type { MapRef, MapMouseEvent } from 'react-map-gl/mapbox'
 import type { GeoJSONSource } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Drawer } from 'vaul'
 import { Star, Navigation2, X, Clock, Bookmark, MapPin } from 'lucide-react'
+import { haptic } from '@/lib/haptic'
 import type { StorePin } from '@/app/api/price-map/route'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,140 +50,109 @@ function saveRecents(pins: StorePin[]) {
   try { localStorage.setItem('basket_recent_stores', JSON.stringify(pins.slice(0, MAX_RECENTS))) } catch { /* ignore */ }
 }
 
-// ── Store bottom-sheet ────────────────────────────────────────────────────────
+// ── Store bottom-sheet (Vaul drawer — swipe to dismiss) ──────────────────────
 
-function StoreSheet({
-  pin, saved, visited, onClose, onSave, onNavigate,
+function StoreDrawerContent({
+  pin, saved, visited, onSave, onNavigate,
 }: {
   pin: StorePin
   saved: boolean
   visited: boolean
-  onClose: () => void
   onSave: () => void
   onNavigate: () => void
 }) {
   const fullAddress = [pin.address, pin.postcode, pin.city].filter(Boolean).join(', ') || null
 
   return (
-    <motion.div
-      initial={{ y: '100%' }}
-      animate={{ y: 0 }}
-      exit={{ y: '100%' }}
-      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-      style={{
-        position: 'absolute',
-        bottom: 'calc(var(--nav-h, 56px) + env(safe-area-inset-bottom, 0px))',
-        left: 0, right: 0, zIndex: 30,
-        background: '#1a1a1a',
-        borderRadius: '20px 20px 0 0',
-        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
-        maxHeight: 'calc(60vh - var(--nav-h, 56px))',
-        overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-      }}
-    >
-      {/* Drag handle */}
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
-      </div>
-
-      <div style={{ padding: '0 20px 20px', overflowY: 'auto', flex: 1 }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-              <p style={{ fontWeight: 800, fontSize: 17, color: '#fff', margin: 0, lineHeight: 1.25 }}>
-                {pin.store_name}
-              </p>
-              {visited && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
-                  background: 'rgba(126,217,87,0.15)', color: '#7ed957',
-                  border: '1px solid rgba(126,217,87,0.25)',
-                }}>
-                  ✓ Déjà visité
-                </span>
-              )}
-            </div>
-            {fullAddress && (
-              <p style={{ fontSize: 12, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>{fullAddress}</p>
-            )}
-          </div>
-          <button type="button" onClick={onClose} style={{
-            background: 'rgba(255,255,255,0.07)', border: 'none', color: '#6B7280',
-            borderRadius: '50%', width: 28, height: 28, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Data quality badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 12px',
-          }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: pinColor(pin.price_tier) }} />
-            <span style={{ color: '#9CA3AF', fontSize: 12 }}>
-              {TIER_LABELS[pin.price_tier]}
-            </span>
-            {pin.item_count > 0 && (
-              <span style={{ color: '#6B7280', fontSize: 11 }}>
-                · {pin.item_count} article{pin.item_count > 1 ? 's' : ''}
+    <div style={{ padding: '0 20px 20px', overflowY: 'auto', flex: 1 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+            <Drawer.Title style={{ fontWeight: 800, fontSize: 17, color: '#fff', margin: 0, lineHeight: 1.25 }}>
+              {pin.store_name}
+            </Drawer.Title>
+            {visited && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                background: 'rgba(126,217,87,0.15)', color: '#7ed957',
+                border: '1px solid rgba(126,217,87,0.25)',
+              }}>
+                ✓ Déjà visité
               </span>
             )}
           </div>
-        </div>
-
-        {/* Top items */}
-        {pin.top_items.length > 0 ? (
-          <div style={{ marginBottom: 16 }}>
-            <p style={{ fontSize: 10, color: '#4B5563', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, margin: '0 0 8px' }}>
-              Articles les moins chers ici
-            </p>
-            {pin.top_items.map((item, j) => (
-              <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6, marginBottom: 6, borderBottom: j < pin.top_items.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                <span style={{ color: '#D1D5DB', fontSize: 13, flex: 1, marginRight: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.name}
-                </span>
-                <span style={{ color: '#7ed957', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                  {item.avg_price.toFixed(2)} €
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic', marginBottom: 14 }}>
-            {pin.has_local_data
-              ? 'Aucun article local disponible.'
-              : 'Pas encore de données locales. Scannez un ticket ici pour contribuer !'}
-          </p>
-        )}
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={onNavigate} style={{
-            flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
-            background: '#7ed957', color: '#111', fontWeight: 700, fontSize: 13,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}>
-            <Navigation2 size={14} />
-            Naviguer
-          </button>
-          <button type="button" onClick={onSave} style={{
-            padding: '10px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
-            background: saved ? 'rgba(126,217,87,0.2)' : 'rgba(255,255,255,0.07)',
-            color: saved ? '#7ed957' : '#9CA3AF',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            fontWeight: 600, fontSize: 13,
-          }}>
-            <Star size={14} fill={saved ? '#7ed957' : 'none'} />
-            {saved ? 'Sauvegardé' : 'Sauvegarder'}
-          </button>
+          {fullAddress && (
+            <Drawer.Description style={{ fontSize: 12, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>{fullAddress}</Drawer.Description>
+          )}
         </div>
       </div>
-    </motion.div>
+
+      {/* Data quality badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 12px',
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: pinColor(pin.price_tier) }} />
+          <span style={{ color: '#9CA3AF', fontSize: 12 }}>
+            {TIER_LABELS[pin.price_tier]}
+          </span>
+          {pin.item_count > 0 && (
+            <span style={{ color: '#6B7280', fontSize: 11 }}>
+              · {pin.item_count} article{pin.item_count > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Top items */}
+      {pin.top_items.length > 0 ? (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 10, color: '#4B5563', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, margin: '0 0 8px' }}>
+            Articles les moins chers ici
+          </p>
+          {pin.top_items.map((item, j) => (
+            <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6, marginBottom: 6, borderBottom: j < pin.top_items.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+              <span style={{ color: '#D1D5DB', fontSize: 13, flex: 1, marginRight: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.name}
+              </span>
+              <span style={{ color: '#7ed957', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                {item.avg_price.toFixed(2)} €
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic', marginBottom: 14 }}>
+          {pin.has_local_data
+            ? 'Aucun article local disponible.'
+            : 'Pas encore de données locales. Scannez un ticket ici pour contribuer !'}
+        </p>
+      )}
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={() => { haptic(30); onNavigate() }} style={{
+          flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
+          background: '#7ed957', color: '#111', fontWeight: 700, fontSize: 13,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          <Navigation2 size={14} />
+          Naviguer
+        </button>
+        <button type="button" onClick={() => { haptic(); onSave() }} style={{
+          padding: '10px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
+          background: saved ? 'rgba(126,217,87,0.2)' : 'rgba(255,255,255,0.07)',
+          color: saved ? '#7ed957' : '#9CA3AF',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          fontWeight: 600, fontSize: 13,
+        }}>
+          <Star size={14} fill={saved ? '#7ed957' : 'none'} />
+          {saved ? 'Sauvegardé' : 'Sauvegarder'}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -664,20 +635,50 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [],
         )}
       </AnimatePresence>
 
-      {/* ── Store bottom sheet ─────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {selectedPin && (
-          <StoreSheet
-            key="sheet"
-            pin={selectedPin}
-            saved={isSaved}
-            visited={visitedChains.includes(selectedPin.store_chain)}
-            onClose={() => setSelectedPin(null)}
-            onSave={toggleSave}
-            onNavigate={navigateTo}
+      {/* ── Store bottom sheet (Vaul) ──────────────────────────────────────── */}
+      <Drawer.Root
+        open={!!selectedPin}
+        onOpenChange={open => { if (!open) setSelectedPin(null) }}
+        modal={false}
+        snapPoints={[0.45, 0.75]}
+      >
+        <Drawer.Portal>
+          <Drawer.Overlay
+            style={{
+              position: 'fixed', inset: 0, zIndex: 29,
+              background: 'transparent',
+              pointerEvents: 'none',
+            }}
           />
-        )}
-      </AnimatePresence>
+          <Drawer.Content
+            style={{
+              position: 'fixed',
+              bottom: 0, left: 0, right: 0, zIndex: 30,
+              background: '#1a1a1a',
+              borderRadius: '20px 20px 0 0',
+              boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+              maxHeight: 'calc(75vh - var(--nav-h, 56px))',
+              paddingBottom: 'calc(var(--nav-h, 56px) + env(safe-area-inset-bottom, 0px))',
+              display: 'flex', flexDirection: 'column',
+              outline: 'none',
+            }}
+          >
+            {/* Drag handle */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
+            </div>
+            {selectedPin && (
+              <StoreDrawerContent
+                pin={selectedPin}
+                saved={isSaved}
+                visited={visitedChains.includes(selectedPin.store_chain)}
+                onSave={toggleSave}
+                onNavigate={navigateTo}
+              />
+            )}
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
 
       {/* ── Loading overlay ────────────────────────────────────────────────── */}
       <AnimatePresence>
