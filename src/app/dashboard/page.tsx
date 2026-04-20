@@ -136,8 +136,9 @@ function DashboardPage() {
       ] = await Promise.all([
         receiptsQ,
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-        supabase.from('notifications').select('id', { count: 'exact', head: true })
-          .eq('user_id', userId).eq('read', false),
+        Promise.resolve(supabase.from('notifications').select('id', { count: 'exact', head: true })
+          .eq('user_id', userId).eq('read', false))
+          .catch(() => ({ count: 0 } as { count: number })),
         supabase.from('receipts')
           .select('created_at, total_amount, receipt_date').eq('user_id', userId).limit(10000),
       ])

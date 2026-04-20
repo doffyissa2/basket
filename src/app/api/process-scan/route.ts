@@ -8,6 +8,8 @@ import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
+export const maxDuration = 60
+
 // ── Phase 2: Background Worker ──────────────────────────────────────────────
 // Reads scan_jobs row → Sonnet Vision parse → post-processing → DB inserts
 // → marks job done. Location resolution runs AFTER marking done (deferred).
@@ -559,31 +561,40 @@ export async function POST(request: NextRequest) {
 
   console.log(`[process-scan] Starting job=${job_id} user=${user_id}`)
 
+  // ── Atomic job claim: pending→processing in one step ────────────────
+  const { data: job, error: claimErr } = await supabase.from('scan_jobs')
+    .update({ status: 'processing', updated_at: new Date().toISOString() })
+    .eq('id', job_id)
+    .eq('status', 'pending')
+    .select('id, user_id, image_hash, image_data')
+    .single()
+
+  if (claimErr || !job) {
+    const { data: existing } = await supabase.from('scan_jobs')
+      .select('status').eq('id', job_id).single()
+    if (existing?.status === 'done' || existing?.status === 'failed' || existing?.status === 'processing') {
+      console.log(`[process-scan] Job ${job_id} already ${existing.status}, skipping`)
+      return NextResponse.json({ error: `Job already ${existing.status}` }, { status: 409 })
+    }
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+  }
+
+  const images: Array<{ base64: string; mediaType: string }> = job.image_data as Array<{ base64: string; mediaType: string }>
+
+  // ── Safety timeout: mark failed 10s before Vercel's 60s hard kill ───
+  const safetyTimeout = setTimeout(async () => {
+    console.error(`[process-scan] Safety timeout hit for job=${job_id}`)
+    try {
+      await supabase.from('scan_jobs').update({
+        status: 'failed',
+        error_msg: 'Délai dépassé (timeout serveur)',
+        image_data: null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', job_id)
+    } catch { /* best effort */ }
+  }, 50000)
+
   try {
-    // ── Read job ─────────────────────────────────────────────────────────
-    const { data: job, error: jobReadErr } = await supabase.from('scan_jobs')
-      .select('id, user_id, image_hash, image_data, status')
-      .eq('id', job_id)
-      .single()
-
-    if (jobReadErr) {
-      console.error(`[process-scan] Failed to read job ${job_id}:`, jobReadErr.message)
-    }
-
-    if (!job) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-    }
-
-    // Allow re-processing of stuck jobs (pending or processing)
-    if (job.status === 'done' || job.status === 'failed') {
-      console.log(`[process-scan] Job ${job_id} already ${job.status}, skipping`)
-      return NextResponse.json({ error: `Job already ${job.status}` }, { status: 409 })
-    }
-
-    // ── Mark processing ──────────────────────────────────────────────────
-    await supabase.from('scan_jobs').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', job_id)
-
-    const images: Array<{ base64: string; mediaType: string }> = job.image_data as Array<{ base64: string; mediaType: string }>
 
     // ── Parallel DB queries ──────────────────────────────────────────────
     const [formats, priceAnchorsSection, corrections] = await Promise.all([
@@ -751,5 +762,7 @@ export async function POST(request: NextRequest) {
     } catch { /* best effort */ }
 
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 })
+  } finally {
+    clearTimeout(safetyTimeout)
   }
 }

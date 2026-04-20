@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 
+export const maxDuration = 10
+
 // Polling endpoint for async scan jobs.
 // Client calls GET /api/scan-status/{job_id} every 1.5s until status is 'done' or 'failed'.
 //

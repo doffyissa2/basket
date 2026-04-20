@@ -5,6 +5,8 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 
+export const maxDuration = 15
+
 // ── Phase 1: Fast Path ──────────────────────────────────────────────────────
 // Auth → rate limit → image validation → dedup check → Haiku gatekeeper
 // → create scan_jobs row → trigger background worker → return job_id
