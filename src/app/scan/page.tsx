@@ -518,7 +518,6 @@ export default function ScanPage() {
     setError('')
     gamificationAwarded.current = false
 
-    // Stage-driven progress: each stage sets both the message index and progress %
     const setStage = (stage: number, progress: number) => {
       setParseMessageIdx(i => Math.max(i, stage))
       setScanProgress(progress)
@@ -526,25 +525,23 @@ export default function ScanPage() {
     const clearProgress = () => setScanProgress(100)
 
     try {
-      // Stage 0: "Compression de l'image…" (0→25%)
+      // Stage 0: "Compression de l'image…"
       setStage(0, 5)
 
-      // Preprocess images (grayscale + contrast boost)
       const preprocessed = await Promise.all(imageFiles.map(f => preprocessReceiptImage(f)))
 
-      // Fire-and-forget: upload to storage (non-blocking)
+      // Fire-and-forget: upload original to storage
       const primaryFile = imageFiles[0]
       const fileName = `${user.id}/${Date.now()}-${primaryFile.name}`
       void supabase.storage.from('receipts').upload(fileName, primaryFile).catch(() => {})
 
-      // Compress all preprocessed images in parallel
       const compressed = await Promise.all(preprocessed.map(f => compressImage(f)))
 
-      // Stage 1: "Analyse par l'IA…" (25→65%)
+      // Stage 1: "Analyse par l'IA…"
       setStage(1, 25)
 
-      // Submit to Phase 1 — returns { job_id } in <3s, or cached result instantly
-      const parseResponse = await fetch('/api/parse-receipt', {
+      // ── Single synchronous call — no jobs, no polling ─────────────────
+      const response = await fetch('/api/scan-receipt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -553,200 +550,58 @@ export default function ScanPage() {
         body: JSON.stringify({
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
         }),
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(55000),
       })
-      if (!parseResponse.ok) {
-        const errBody = await parseResponse.json().catch(() => null)
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => null)
         throw new Error(errBody?.error ?? 'Erreur analyse du ticket')
       }
 
-      const parseBody = await parseResponse.json()
+      const result = await response.json()
 
-      // Check if receipt was queued offline
-      if (parseBody.queued) {
-        toast.success('Reçu sauvegardé ! Il sera analysé dès que vous retrouverez du réseau.', { duration: 5000 })
-        setStep('upload')
-        return
-      }
-
-      // Dedup cache hit — full result returned immediately
-      if (parseBody.cached) {
-        const parsed: ParsedReceipt = parseBody
-        setParsedReceipt(parsed)
-        setReceiptId(parseBody.receipt_id)
-        setLowQualityWarning(parsed.items.length === 0)
-
-        if (parsed.items.length === 0) {
-          clearProgress()
-          setStep('comparison')
-          return
-        }
-
-        setStage(3, 85)
-        setStep('results')
-
-        // Jump to comparison
-        const storeChain = normalizeStoreChain(parsed.store_name)
-        const compareResponse = await fetch('/api/compare-prices', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
-          body: JSON.stringify({
-            items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
-            postcode: postcode || null, store_chain: storeChain,
-          }),
-        })
-        if (compareResponse.ok) {
-          const comparisonData = await compareResponse.json()
-          setComparisons(comparisonData.comparisons || [])
-          setBestStore(comparisonData.best_store || null)
-          if (comparisonData.data_as_of) setDataAsOf(comparisonData.data_as_of)
-          clearProgress()
-          setStep('comparison')
-          const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
-          if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-          emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
-          void ctx.refresh(['recentStores', 'profile'])
-        } else {
-          clearProgress()
-        }
-        return
-      }
-
-      // ── Async flow: poll for results ──────────────────────────────────────
-      const jobId = parseBody.job_id as string
-      if (!jobId) throw new Error('Erreur: identifiant de scan manquant')
-
-      // Trigger Phase 2 directly from the client. Track the promise so we
-      // can surface errors instead of silently swallowing them.
-      let processScanError: string | null = null
-      const processScanPromise = fetch('/api/process-scan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ job_id: jobId, user_id: user!.id }),
-      }).then(async res => {
-        // 409 = job already processed (double-trigger from after() + client) — not an error
-        if (!res.ok && res.status !== 409) {
-          const body = await res.json().catch(() => null)
-          processScanError = body?.error ?? `Erreur serveur (${res.status})`
-          console.error('[scan] process-scan failed:', res.status, body)
-        }
-      }).catch(err => {
-        processScanError = err instanceof Error ? err.message : 'Erreur réseau'
-        console.error('[scan] process-scan fetch error:', err)
-      })
-
-      // Stage 2: "Recherche des prix…" — poll every 2s
-      setStage(2, 35)
-
-      const MAX_POLLS = 40 // 40 * 2s = ~80s max
-      let pollResult: ParsedReceipt | null = null
-      let savedReceiptId = ''
-      let lastJobStatus = 'pending'
-
-      for (let i = 0; i < MAX_POLLS; i++) {
-        await new Promise(r => setTimeout(r, 2000))
-
-        // If process-scan already returned an error and job is stuck, bail early
-        if (processScanError && i > 3) {
-          throw new Error(processScanError)
-        }
-
-        try {
-          const statusRes = await fetch(`/api/scan-status/${jobId}`, {
-            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-            signal: AbortSignal.timeout(12000),
-          })
-
-          if (!statusRes.ok) continue
-
-          const statusBody = await statusRes.json()
-          lastJobStatus = statusBody.status
-
-          if (statusBody.status === 'done' && statusBody.result) {
-            pollResult = statusBody.result as ParsedReceipt
-            savedReceiptId = (statusBody.result as { receipt_id?: string }).receipt_id ?? ''
-            break
-          }
-
-          if (statusBody.status === 'failed') {
-            throw new Error(statusBody.error_msg || 'Échec de l\'analyse')
-          }
-        } catch (pollErr) {
-          // Re-throw actual scan failures (from 'failed' status above)
-          if (pollErr instanceof Error && !(pollErr instanceof DOMException)) throw pollErr
-          // Abort/network errors on individual polls — skip and retry next cycle
-          console.warn(`[scan] poll ${i + 1} failed, retrying…`, pollErr)
-          continue
-        }
-
-        // Animate progress while polling
-        setScanProgress(35 + Math.min(50, i * 2))
-      }
-
-      // Wait for process-scan to finish before giving up
-      if (!pollResult) {
-        await processScanPromise
-        if (processScanError) throw new Error(processScanError)
-        throw new Error(`L'analyse a pris trop de temps (statut: ${lastJobStatus}). Réessayez.`)
-      }
-
-      // ── Results received ──────────────────────────────────────────────────
-      const parsed: ParsedReceipt = pollResult
+      // ── Handle result ─────────────────────────────────────────────────
+      const parsed: ParsedReceipt = result
       setParsedReceipt(parsed)
-      if (savedReceiptId) setReceiptId(savedReceiptId)
+      setReceiptId(result.receipt_id ?? null)
 
-      // Skip comparison if no items extracted
-      if (parsed.items.length === 0) {
+      if (!parsed.items || parsed.items.length === 0) {
         setLowQualityWarning(true)
         clearProgress()
         setStep('comparison')
         return
       }
 
-      // Set low-quality warning
-      const qualityWarning = (parsed as unknown as { quality_warning?: boolean }).quality_warning
-      const avgConf = parsed.items.length > 0
-        ? parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
-        : 1
-      setLowQualityWarning(qualityWarning === true || parsed.items.length < 3 || avgConf < 0.5)
+      // Set quality warning
+      const qualityWarning = result.quality_warning === true
+      const avgConf = parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
+      setLowQualityWarning(qualityWarning || parsed.items.length < 3 || avgConf < 0.5)
 
       const storeChain = normalizeStoreChain(parsed.store_name)
 
-      // ── Fire-and-forget: log unknown store for CHAIN_MAP expansion ────────
+      // Fire-and-forget: log unknown store
       if (!isKnownStore(parsed.store_name) && accessToken) {
         void fetch('/api/log-unknown-store', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({
-            raw_name: parsed.store_name,
-            lat: userCoords?.lat ?? null,
-            lon: userCoords?.lon ?? null,
-          }),
+          body: JSON.stringify({ raw_name: parsed.store_name, lat: userCoords?.lat ?? null, lon: userCoords?.lon ?? null }),
         }).catch(() => {})
       }
 
-      // ── Fire-and-forget: learn receipt format for this store ──────────────
+      // Fire-and-forget: learn receipt format
       if (accessToken && parsed.items.length > 0) {
         void fetch('/api/learn-receipt-format', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({
-            store_chain: storeChain,
-            sample_items: parsed.items.slice(0, 15).map((i) => i.name),
-          }),
+          body: JSON.stringify({ store_chain: storeChain, sample_items: parsed.items.slice(0, 15).map(i => i.name) }),
         }).catch(() => {})
       }
 
-      // Stage 3: "Calcul de vos économies…" (85→100%)
+      // Stage 3: "Calcul de vos économies…"
       setStage(3, 85)
       setStep('results')
 
+      // ── Price comparison ──────────────────────────────────────────────
       const compareResponse = await fetch('/api/compare-prices', {
         method: 'POST',
         headers: {
@@ -754,8 +609,9 @@ export default function ScanPage() {
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({
-          items: parsed.items.map((i) => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
-          postcode: postcode || null, store_chain: storeChain,
+          items: parsed.items.map(i => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
+          postcode: postcode || null,
+          store_chain: storeChain,
         }),
       })
 
@@ -768,8 +624,8 @@ export default function ScanPage() {
         setStep('comparison')
         const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
         if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-        if (savedReceiptId) {
-          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', savedReceiptId)
+        if (result.receipt_id) {
+          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', result.receipt_id)
         }
         void awardScanXP(savings, storeChain)
         emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
