@@ -201,7 +201,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
               .from('profiles')
               .select('postcode, onboarded, total_savings')
               .eq('id', userId)
-              .single()
+              .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
 
         Promise.resolve(readLocationCache()),
@@ -297,7 +297,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
                 .from('profiles')
                 .select('postcode, onboarded, total_savings')
                 .eq('id', userId)
-                .single()
+                .maybeSingle()
               if (data) {
                 const pc = (data.postcode as string) ?? null
                 setProfile({
