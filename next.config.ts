@@ -30,7 +30,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://tile.openstreetmap.org https://*.cartocdn.com https://*.basemaps.cartocdn.com https://*.mapbox.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.upstash.io https://api.anthropic.com https://overpass-api.de https://overpass.kumi.systems https://overpass.openstreetmap.fr https://api.prices.openfoodfacts.org https://prices.openfoodfacts.org https://*.mapbox.com https://events.mapbox.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.upstash.io https://api.anthropic.com https://overpass-api.de https://overpass.kumi.systems https://overpass.openstreetmap.fr https://api.prices.openfoodfacts.org https://prices.openfoodfacts.org https://*.mapbox.com https://events.mapbox.com https://api.iconify.design https://api.simplesvg.com https://api.unisvg.com",
       "media-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",
