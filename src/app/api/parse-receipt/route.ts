@@ -96,11 +96,13 @@ export async function POST(request: NextRequest) {
   }
 
   // Trigger background worker (fire-and-forget)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-  fetch(`${appUrl}/api/process-scan`, {
+  const workerUrl = `${appUrl}/api/process-scan`
+  console.log(`[parse-receipt] Job ${jobId} created. Triggering worker at ${workerUrl}`)
+
+  fetch(workerUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
