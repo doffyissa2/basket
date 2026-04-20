@@ -93,15 +93,13 @@ export interface LeaderboardRow {
   is_me:         boolean
 }
 
-// ── Async scan pipeline ──────────────────────────────────────────────────────
+// ── Scan result (single synchronous endpoint) ───────────────────────────────
 
-export interface ScanJobResponse {
-  job_id:  string
-  status:  'pending'
-}
-
-export interface ScanStatusResponse {
-  status:     'pending' | 'processing' | 'done' | 'failed'
-  result?:    ParsedReceipt & { quality_warning?: boolean; receipt_id?: string }
-  error_msg?: string
+export interface ScanResult extends ParsedReceipt {
+  receipt_id:       string
+  quality_warning:  boolean
+  comparisons:      ComparisonItem[]
+  total_savings:    number
+  best_store:       BestStore | null
+  data_as_of:       string | null
 }

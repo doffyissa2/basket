@@ -1,4 +1,4 @@
-const CACHE = 'basket-v3'
+const CACHE = 'basket-v4'
 const STATIC = [
   '/',
   '/dashboard',
@@ -82,7 +82,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(request.url)
 
   // ── Offline queue: intercept POST /api/parse-receipt ──────────────────
-  if (request.method === 'POST' && url.pathname === '/api/parse-receipt' && url.origin === self.location.origin) {
+  if (request.method === 'POST' && url.pathname === '/api/scan' && url.origin === self.location.origin) {
     // Clone request body BEFORE fetch consumes it (can only read body once)
     const bodyClone = request.clone()
     e.respondWith(
@@ -181,7 +181,7 @@ async function replayPendingReceipts() {
 
     for (const entry of pending) {
       try {
-        const res = await fetch('/api/parse-receipt', {
+        const res = await fetch('/api/scan', {
           method: 'POST',
           headers: entry.headers,
           body: JSON.stringify(entry.body),

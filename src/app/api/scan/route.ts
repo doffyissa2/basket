@@ -6,13 +6,10 @@ import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
+import { comparePrices, type ComparisonResult } from '@/lib/compare-prices'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
 export const maxDuration = 60
-
-// ── Single synchronous endpoint ─────────────────────────────────────────────
-// Receives receipt image(s) → Claude Vision parse → DB insert → return result.
-// No job queue, no polling. One call, one result.
 
 // ── Call Claude Vision ──────────────────────────────────────────────────────
 async function callClaude(
@@ -52,7 +49,7 @@ async function callClaude(
 
   if (!response.ok) {
     const err = await response.text()
-    console.error(`[scan-receipt] Claude API error ${response.status}:`, err.slice(0, 500))
+    console.error(`[scan] Claude API error ${response.status}:`, err.slice(0, 500))
     throw new Error(`Erreur API Claude: ${response.status}`)
   }
 
@@ -210,7 +207,7 @@ async function fetchPriceAnchors(supabase: SupabaseClient): Promise<string> {
 // ── Post-parse price validation ─────────────────────────────────────────────
 async function validateItemPrices(
   items: ParsedItem[],
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
 ): Promise<ParsedItem[]> {
   try {
     const { data } = await supabase
@@ -263,7 +260,7 @@ async function validateItemPrices(
   }
 }
 
-// ── Store location resolution (deferred — runs after response) ──────────────
+// ── Store location resolution (deferred) ────────────────────────────────────
 async function resolveStoreLocation(
   supabase: SupabaseClient,
   parsed: ParsedReceipt,
@@ -277,12 +274,11 @@ async function resolveStoreLocation(
   const claudePostcode = typeof parsedRaw.postcode === 'string'
     ? parsedRaw.postcode.replace(/\s/g, '').match(/^\d{5}$/)?.[0] ?? null : null
 
-  // Try BAN geocoder with the address Claude extracted
   if (claudeAddress) {
     try {
       const res = await fetch(
         `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(claudeAddress)}&limit=1`,
-        { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) }
+        { headers: { 'User-Agent': 'basket-app/1.0' }, signal: AbortSignal.timeout(4000) },
       )
       if (res.ok) {
         const data = await res.json()
@@ -295,7 +291,6 @@ async function resolveStoreLocation(
             store_longitude: lon,
           }).eq('id', receiptId)
 
-          // Cache in store_locations
           const storeName = parsed.store_name ?? 'unknown'
           const stableId = `basket_receipt_${storeName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${claudeSiret ?? claudePostcode ?? 'fr'}`
           await supabase.from('store_locations').upsert({
@@ -309,7 +304,7 @@ async function resolveStoreLocation(
             accuracy: 'address',
             ...(claudeSiret ? { siret: claudeSiret } : {}),
           }, { onConflict: 'osm_id', ignoreDuplicates: false }).then(({ error }) => {
-            if (error) console.error('[scan-receipt] store_locations upsert failed:', error.message)
+            if (error) console.error('[scan] store_locations upsert failed:', error.message)
           })
           return
         }
@@ -317,7 +312,6 @@ async function resolveStoreLocation(
     } catch { /* non-critical */ }
   }
 
-  // Fallback: Overpass for chain + postcode
   if (claudePostcode) {
     try {
       const chainWord = (parsed.store_name ?? '').split(/[\s\-]/)[0].replace(/[^a-zA-ZÀ-ÿ]/g, '')
@@ -350,12 +344,10 @@ async function resolveStoreLocation(
 // ── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  // ── Auth ─────────────────────────────────────────────────────────────
   const authResult = await requireAuth(request)
   if (authResult instanceof NextResponse) return authResult
   const userId = authResult.userId
 
-  // ── Rate limit ───────────────────────────────────────────────────────
   const [dailyLimit, burstLimit] = await Promise.all([
     checkRateLimit(request, 'parseReceipt', userId),
     checkRateLimit(request, 'parseReceiptBurst', userId),
@@ -363,7 +355,6 @@ export async function POST(request: NextRequest) {
   if (dailyLimit) return dailyLimit
   if (burstLimit) return burstLimit
 
-  // ── Parse + validate images ──────────────────────────────────────────
   const body = await request.json()
   const images: Array<{ base64: string; mediaType: string }> = Array.isArray(body.images)
     ? body.images.map((img: { image_base64: string; media_type?: string }) => ({
@@ -397,10 +388,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
 
-  // ── Dedup: return cached result if same image was scanned before ─────
   const imageHash = createHash('sha256').update(images[0].base64).digest('hex')
   const supabase = getServiceClient()
 
+  // Postcode from request body (sent by frontend)
+  const postcode: string | null = typeof body.postcode === 'string' && body.postcode.length === 5
+    ? body.postcode : null
+  const dept = postcode ? postcode.slice(0, 2) : null
+
+  // ── Dedup: return cached result if same image was scanned before ─────
   const { data: cachedReceipt } = await supabase
     .from('receipts')
     .select('id, store_chain, total_amount, raw_ocr_text, store_address, receipt_date, image_url')
@@ -415,37 +411,45 @@ export async function POST(request: NextRequest) {
       .eq('receipt_id', cachedReceipt.id)
 
     if (cachedItems && cachedItems.length > 0) {
-      console.log(`[scan-receipt] cache hit (${cachedItems.length} items) for user ${userId}`)
+      console.log(`[scan] cache hit (${cachedItems.length} items) for user ${userId}`)
+
+      const items = cachedItems.map(i => ({
+        name: i.item_name as string,
+        price: i.unit_price as number,
+        quantity: i.quantity as number,
+        is_promo: (i.is_promo as boolean) ?? false,
+        is_private_label: (i.is_private_label as boolean) ?? false,
+        brand: (i.brand as string) ?? null,
+        volume_weight: (i.volume_weight as string) ?? null,
+      }))
+
+      const storeChain = cachedReceipt.store_chain as string
+      const compResult = await comparePrices(supabase, items, storeChain, dept)
+
       return NextResponse.json({
         cached: true,
         receipt_id: cachedReceipt.id,
-        store_name: cachedReceipt.store_chain,
+        store_name: storeChain,
         total: cachedReceipt.total_amount,
-        items: cachedItems.map(i => ({
-          name: i.item_name,
-          price: i.unit_price,
-          quantity: i.quantity,
-          is_promo: i.is_promo ?? false,
-          is_private_label: i.is_private_label ?? false,
-          brand: i.brand ?? null,
-          volume_weight: i.volume_weight ?? null,
-        })),
-        raw_ocr_text: cachedReceipt.raw_ocr_text,
-        store_address: cachedReceipt.store_address,
+        items,
+        store_address: cachedReceipt.store_address ?? null,
         image_hash: imageHash,
+        quality_warning: false,
+        comparisons: compResult.comparisons,
+        total_savings: compResult.total_savings,
+        best_store: compResult.best_store,
+        data_as_of: compResult.data_as_of,
       })
     }
 
-    // Stale cache with 0 items — purge and re-scan
     await supabase.from('price_items').delete().eq('receipt_id', cachedReceipt.id)
     await supabase.from('receipts').delete().eq('id', cachedReceipt.id)
   }
 
-  // ── Call Claude Vision (the main work) ───────────────────────────────
+  // ── Claude Vision parse ───────────────────────────────────────────────
   try {
-    console.log(`[scan-receipt] Starting Claude Vision for user=${userId} (${images.length} image(s))`)
+    console.log(`[scan] Starting Claude Vision for user=${userId} (${images.length} image(s))`)
 
-    // Fetch prompt context in parallel with nothing — these are fast DB reads
     const [formatHints, priceAnchors, corrections] = await Promise.all([
       Promise.resolve(supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'))
         .then(r => {
@@ -464,7 +468,7 @@ export async function POST(request: NextRequest) {
     ])
 
     const textContent = await callClaude(apiKey, images, buildPrompt(formatHints, priceAnchors))
-    console.log(`[scan-receipt] Claude response: ${textContent.length} chars`)
+    console.log(`[scan] Claude response: ${textContent.length} chars`)
 
     // ── Parse JSON response ──────────────────────────────────────────────
     let cleaned = textContent.trim()
@@ -494,31 +498,28 @@ export async function POST(request: NextRequest) {
     }))
 
     parsed.total = Number(parsed.total) || parsed.items.reduce(
-      (s, i) => s + i.price * i.quantity, 0
+      (s, i) => s + i.price * i.quantity, 0,
     )
 
     parsed.store_name = normalizeStoreChain(parsed.store_name)
 
-    // Apply community corrections
     if (corrections.length > 0) {
       parsed.items = parsed.items.map(item => {
         const match = corrections.find(
-          (c: { original_text: string; corrected_text: string }) => c.original_text.toLowerCase() === item.name.toLowerCase()
+          (c: { original_text: string; corrected_text: string }) => c.original_text.toLowerCase() === item.name.toLowerCase(),
         )
         return match ? { ...item, name: match.corrected_text } : item
       })
     }
 
-    // Validate prices against community data
     parsed.items = await validateItemPrices(parsed.items, supabase)
 
-    // Reconcile total
     const correctedTotal = parsed.items.reduce((s, i) => s + i.price * i.quantity, 0)
     if (Math.abs(correctedTotal - parsed.total) / (parsed.total || 1) < 0.15) {
       parsed.total = correctedTotal
     }
 
-    console.log(`[scan-receipt] Parsed: store="${parsed.store_name}", total=${parsed.total}, items=${parsed.items.length}`)
+    console.log(`[scan] Parsed: store="${parsed.store_name}", total=${parsed.total}, items=${parsed.items.length}`)
 
     // ── Insert receipt + price_items ─────────────────────────────────────
     const { data: receiptRow, error: receiptErr } = await supabase
@@ -538,7 +539,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (receiptErr || !receiptRow) {
-      console.error('[scan-receipt] receipt insert failed:', receiptErr?.message)
+      console.error('[scan] receipt insert failed:', receiptErr?.message)
       throw new Error('Erreur base de données')
     }
 
@@ -560,15 +561,36 @@ export async function POST(request: NextRequest) {
       }))
 
       const { error: itemsErr } = await supabase.from('price_items').insert(priceItems)
-      if (itemsErr) console.error('[scan-receipt] price_items insert error:', itemsErr.message)
+      if (itemsErr) console.error('[scan] price_items insert error:', itemsErr.message)
+    }
+
+    // ── Price comparison (inline — no second HTTP call) ──────────────────
+    const storeChain = parsed.store_name
+    const compItems = parsed.items.map(i => ({
+      name: i.name,
+      price: i.price,
+      brand: i.brand ?? null,
+      volume_weight: i.volume_weight ?? null,
+    }))
+
+    let compResult = { comparisons: [] as ComparisonResult[], total_savings: 0, best_store: null as { name: string; items_cheaper: number; total_savings: number } | null, data_as_of: null as string | null }
+    try {
+      compResult = await comparePrices(supabase, compItems, storeChain, dept)
+    } catch (e) {
+      console.error('[scan] comparison failed (non-blocking):', e)
+    }
+
+    // Save savings amount
+    if (compResult.total_savings > 0) {
+      void supabase.from('receipts').update({ savings_amount: compResult.total_savings }).eq('id', receiptId).then(() => {})
     }
 
     // ── Deferred: resolve store location (non-blocking) ─────────────────
     void resolveStoreLocation(supabase, parsed, receiptId).catch(err => {
-      console.error('[scan-receipt] Location resolution failed:', err)
+      console.error('[scan] Location resolution failed:', err)
     })
 
-    // ── Return full result ──────────────────────────────────────────────
+    // ── Return complete result ──────────────────────────────────────────
     const qualityWarning = !parsed.items || parsed.items.length === 0 ||
       (parsed.total === 0 && parsed.items.length < 2) ||
       parsed.items.filter(i => i.price === 0).length > parsed.items.length * 0.4
@@ -587,15 +609,18 @@ export async function POST(request: NextRequest) {
         volume_weight: i.volume_weight ?? null,
         confidence: i.confidence ?? 1,
       })),
-      raw_ocr_text: textContent,
       store_address: typeof (parsed as unknown as Record<string, unknown>).store_address === 'string'
         ? (parsed as unknown as Record<string, unknown>).store_address as string
         : null,
       image_hash: imageHash,
       quality_warning: qualityWarning,
+      comparisons: compResult.comparisons,
+      total_savings: compResult.total_savings,
+      best_store: compResult.best_store,
+      data_as_of: compResult.data_as_of,
     })
   } catch (error) {
-    console.error('[scan-receipt] Error:', error)
+    console.error('[scan] Error:', error)
     const msg = error instanceof Error ? error.message : 'Erreur inconnue'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

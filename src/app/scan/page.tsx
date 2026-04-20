@@ -14,7 +14,7 @@ import { normalizeProductName } from '@/lib/normalize'
 import type { XPAwardResult } from '@/lib/gamification'
 import { getFrameStyle, LEGENDARY_GRADIENT } from '@/lib/gamification'
 import { EASE, useCountUp } from '@/lib/hooks'
-import type { ParsedReceipt, ComparisonItem, BestStore } from '@/types/api'
+import type { ParsedReceipt, ComparisonItem, BestStore, ScanResult } from '@/types/api'
 import { haptic } from '@/lib/haptic'
 
 // ── XP float "+N XP" ─────────────────────────────────────────────────────────
@@ -540,8 +540,8 @@ export default function ScanPage() {
       // Stage 1: "Analyse par l'IA…"
       setStage(1, 25)
 
-      // ── Single synchronous call — no jobs, no polling ─────────────────
-      const response = await fetch('/api/scan-receipt', {
+      // ── Single synchronous call — returns EVERYTHING ──────────────────
+      const response = await fetch('/api/scan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -549,6 +549,7 @@ export default function ScanPage() {
         },
         body: JSON.stringify({
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
+          postcode: postcode || null,
         }),
         signal: AbortSignal.timeout(55000),
       })
@@ -558,12 +559,18 @@ export default function ScanPage() {
         throw new Error(errBody?.error ?? 'Erreur analyse du ticket')
       }
 
-      const result = await response.json()
+      const result: ScanResult = await response.json()
 
-      // ── Handle result ─────────────────────────────────────────────────
+      // Stage 3: "Calcul de vos économies…"
+      setStage(3, 85)
+
+      // ── Handle complete result ────────────────────────────────────────
       const parsed: ParsedReceipt = result
       setParsedReceipt(parsed)
       setReceiptId(result.receipt_id ?? null)
+      setComparisons(result.comparisons || [])
+      setBestStore(result.best_store || null)
+      if (result.data_as_of) setDataAsOf(result.data_as_of)
 
       if (!parsed.items || parsed.items.length === 0) {
         setLowQualityWarning(true)
@@ -572,7 +579,6 @@ export default function ScanPage() {
         return
       }
 
-      // Set quality warning
       const qualityWarning = result.quality_warning === true
       const avgConf = parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
       setLowQualityWarning(qualityWarning || parsed.items.length < 3 || avgConf < 0.5)
@@ -597,42 +603,14 @@ export default function ScanPage() {
         }).catch(() => {})
       }
 
-      // Stage 3: "Calcul de vos économies…"
-      setStage(3, 85)
-      setStep('results')
+      clearProgress()
+      setStep('comparison')
 
-      // ── Price comparison ──────────────────────────────────────────────
-      const compareResponse = await fetch('/api/compare-prices', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({
-          items: parsed.items.map(i => ({ name: i.name, normalised: normalizeProductName(i.name), price: i.price, brand: i.brand ?? null, volume_weight: i.volume_weight ?? null })),
-          postcode: postcode || null,
-          store_chain: storeChain,
-        }),
-      })
-
-      if (compareResponse.ok) {
-        const comparisonData = await compareResponse.json()
-        setComparisons(comparisonData.comparisons || [])
-        setBestStore(comparisonData.best_store || null)
-        if (comparisonData.data_as_of) setDataAsOf(comparisonData.data_as_of)
-        clearProgress()
-        setStep('comparison')
-        const savings = (comparisonData.comparisons || []).reduce((s: number, c: ComparisonItem) => s + Math.max(0, c.savings), 0)
-        if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-        if (result.receipt_id) {
-          await supabase.from('receipts').update({ savings_amount: savings }).eq('id', result.receipt_id)
-        }
-        void awardScanXP(savings, storeChain)
-        emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
-        void ctx.refresh(['recentStores', 'profile'])
-      } else {
-        clearProgress()
-      }
+      const savings = result.total_savings ?? 0
+      if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
+      void awardScanXP(savings, storeChain)
+      emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
+      void ctx.refresh(['recentStores', 'profile'])
     } catch (err) {
       clearProgress()
       const isAbort = err instanceof DOMException && err.name === 'AbortError'
