@@ -147,20 +147,48 @@ function LevelUpModal({ result, onClose }: { result: XPAwardResult; onClose: () 
 
 
 const PARSE_MESSAGES = [
-  'Compression de l\u2019image\u2026',
-  'Analyse par l\u2019IA\u2026',
-  'Recherche des prix\u2026',
-  'Calcul de vos économies\u2026',
+  { text: 'Compression de l\u2019image\u2026', emoji: '\ud83d\udddc\ufe0f' },
+  { text: 'L\u2019IA analyse votre ticket\u2026', emoji: '\ud83e\udde0' },
+  { text: 'Comparaison des prix en cours\u2026', emoji: '\ud83d\udd0d' },
+  { text: 'Calcul de vos \u00e9conomies\u2026', emoji: '\ud83d\udcb0' },
 ]
 
-function ConfettiParticles() {
-  const particles = Array.from({ length: 25 }, (_, i) => ({
+// Floating particles during scan
+function ScanParticles() {
+  const particles = Array.from({ length: 12 }, (_, i) => ({
     id: i,
-    x: Math.random() * 300 - 150,
-    y: -(Math.random() * 200 + 80),
-    color: ['#7ed957', '#00D09C', '#111111', '#a3f07a', '#7ed957'][Math.floor(Math.random() * 5)],
-    size: Math.random() * 6 + 4,
-    delay: Math.random() * 0.4,
+    size: Math.random() * 4 + 2,
+    x: Math.random() * 200 - 100,
+    duration: Math.random() * 2 + 2,
+    delay: Math.random() * 2,
+  }))
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {particles.map(p => (
+        <motion.div
+          key={p.id}
+          className="absolute left-1/2 bottom-0 rounded-full"
+          style={{ width: p.size, height: p.size, background: '#7ed957', opacity: 0.6 }}
+          animate={{ y: [-20, -180], x: [0, p.x], opacity: [0, 0.8, 0], scale: [0.5, 1, 0.3] }}
+          transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, ease: 'easeOut' }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Celebration confetti burst
+function ConfettiParticles({ count = 40 }: { count?: number }) {
+  const particles = Array.from({ length: count }, (_, i) => ({
+    id: i,
+    x: (Math.random() - 0.5) * 400,
+    y: -(Math.random() * 300 + 100),
+    rotate: Math.random() * 720 - 360,
+    color: ['#7ed957', '#00D09C', '#FFD700', '#a3f07a', '#B9F2FF', '#FF6B6B'][i % 6],
+    size: Math.random() * 8 + 4,
+    delay: Math.random() * 0.6,
+    shape: Math.random() > 0.5 ? 'rounded-full' : 'rounded-sm',
   }))
 
   return (
@@ -168,11 +196,28 @@ function ConfettiParticles() {
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full"
-          style={{ width: p.size, height: p.size, background: p.color }}
-          initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-          animate={{ opacity: 0, x: p.x, y: p.y, scale: 0 }}
-          transition={{ duration: 1.5, delay: p.delay, ease: 'easeOut' }}
+          className={`absolute ${p.shape}`}
+          style={{ width: p.size, height: p.size * (p.shape === 'rounded-sm' ? 0.6 : 1), background: p.color }}
+          initial={{ opacity: 1, x: 0, y: 0, scale: 1, rotate: 0 }}
+          animate={{ opacity: [1, 1, 0], x: p.x, y: p.y, scale: [1, 1.2, 0], rotate: p.rotate }}
+          transition={{ duration: 2, delay: p.delay, ease: 'easeOut' }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Pulsing ring effect during scan
+function PulseRings() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      {[0, 0.6, 1.2].map((delay, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full border"
+          style={{ borderColor: 'rgba(126,217,87,0.15)', width: 200, height: 200 }}
+          animate={{ scale: [0.8, 2], opacity: [0.4, 0] }}
+          transition={{ duration: 2.4, delay, repeat: Infinity, ease: 'easeOut' }}
         />
       ))}
     </div>
@@ -264,21 +309,29 @@ function preprocessReceiptImage(file: File): Promise<File> {
     const url = URL.createObjectURL(file)
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { resolve(file); return }
-      ctx.filter = 'contrast(1.4) grayscale(1) brightness(1.1)'
-      ctx.drawImage(img, 0, 0)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { resolve(file); return }
-          resolve(new File([blob], file.name, { type: 'image/jpeg' }))
-        },
-        'image/jpeg',
-        1.0 // full quality — compressImage handles final compression
-      )
+      try {
+        // Cap canvas size for mobile memory safety
+        const maxDim = 2048
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(file); return }
+        // Try CSS filter (may not work on older iOS)
+        try { ctx.filter = 'contrast(1.4) grayscale(1) brightness(1.1)' } catch { /* fallback: no filter */ }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { resolve(file); return }
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+          },
+          'image/jpeg',
+          1.0
+        )
+      } catch {
+        resolve(file)
+      }
     }
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
     img.src = url
@@ -600,7 +653,6 @@ export default function ScanPage() {
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
           postcode: postcode || null,
         }),
-        signal: AbortSignal.timeout(15000),
       })
 
       if (!submitRes.ok) {
@@ -627,7 +679,6 @@ export default function ScanPage() {
             images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
             postcode: postcode || null,
           }),
-          signal: AbortSignal.timeout(15000),
         })
         if (cachedRes.ok) {
           const result: ScanResult = await cachedRes.json()
@@ -963,85 +1014,134 @@ export default function ScanPage() {
             </motion.div>
           )}
 
-          {/* Parsing step */}
+          {/* Parsing step — immersive scanning experience */}
           {step === 'parsing' && (
             <motion.div
               key="parsing"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center py-16"
+              className="flex flex-col items-center justify-center py-12 relative"
             >
-              {imagePreview && (
-                <motion.div
-                  className="relative w-44 rounded-2xl overflow-hidden mb-8"
-                  style={{ border: '1px solid rgba(17,17,17,0.1)' }}
-                  animate={{ boxShadow: ['0 12px 40px rgba(126,217,87,0)', '0 12px 40px rgba(126,217,87,0.25)', '0 12px 40px rgba(126,217,87,0)'] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  <img src={imagePreview} alt="Ticket" className="w-full opacity-60" />
-                  {/* Scanning line */}
-                  <motion.div
-                    className="absolute left-0 right-0 h-0.5"
-                    style={{ background: 'linear-gradient(90deg, transparent, #7ed957, transparent)' }}
-                    animate={{ y: [0, 176, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                  {/* Glow overlay */}
-                  <motion.div
-                    className="absolute inset-0"
-                    style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(126,217,87,0.08) 100%)' }}
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                </motion.div>
-              )}
+              <PulseRings />
+              <ScanParticles />
 
-              {/* Cycling message */}
-              <div className="h-8 mb-4 overflow-hidden">
+              {/* Receipt card with scanning effect */}
+              <motion.div
+                className="relative w-48 rounded-2xl overflow-hidden mb-10"
+                style={{ border: '1px solid rgba(126,217,87,0.2)' }}
+                animate={{
+                  boxShadow: [
+                    '0 0 20px rgba(126,217,87,0)',
+                    '0 0 40px rgba(126,217,87,0.3), 0 0 80px rgba(126,217,87,0.1)',
+                    '0 0 20px rgba(126,217,87,0)',
+                  ],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                {imagePreview && (
+                  <img src={imagePreview} alt="Ticket" className="w-full" style={{ opacity: 0.5, filter: 'saturate(0.3)' }} />
+                )}
+
+                {/* Scanning laser line */}
+                <motion.div
+                  className="absolute left-0 right-0 h-1"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent 0%, #7ed957 20%, #00D09C 50%, #7ed957 80%, transparent 100%)',
+                    boxShadow: '0 0 20px rgba(126,217,87,0.6), 0 0 40px rgba(126,217,87,0.3)',
+                  }}
+                  animate={{ top: ['0%', '95%', '0%'] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                />
+
+                {/* Grid overlay */}
+                <div className="absolute inset-0" style={{
+                  backgroundImage: 'linear-gradient(rgba(126,217,87,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(126,217,87,0.05) 1px, transparent 1px)',
+                  backgroundSize: '20px 20px',
+                }} />
+
+                {/* Corner brackets */}
+                {[
+                  { top: 8, left: 8, borderTop: '2px solid #7ed957', borderLeft: '2px solid #7ed957' },
+                  { top: 8, right: 8, borderTop: '2px solid #7ed957', borderRight: '2px solid #7ed957' },
+                  { bottom: 8, left: 8, borderBottom: '2px solid #7ed957', borderLeft: '2px solid #7ed957' },
+                  { bottom: 8, right: 8, borderBottom: '2px solid #7ed957', borderRight: '2px solid #7ed957' },
+                ].map((style, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute w-5 h-5"
+                    style={style as React.CSSProperties}
+                    animate={{ opacity: [0.4, 1, 0.4] }}
+                    transition={{ duration: 1.5, delay: i * 0.15, repeat: Infinity }}
+                  />
+                ))}
+              </motion.div>
+
+              {/* Animated emoji + message */}
+              <div className="h-12 mb-5 flex flex-col items-center">
                 <AnimatePresence mode="wait">
-                  <motion.p
+                  <motion.div
                     key={parseMessageIdx}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.25 }}
-                    className="text-base font-semibold text-graphite text-center"
+                    initial={{ opacity: 0, y: 16, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -12, scale: 0.95 }}
+                    transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    className="flex flex-col items-center gap-1"
                   >
-                    {PARSE_MESSAGES[parseMessageIdx]}
-                  </motion.p>
+                    <motion.span
+                      className="text-2xl"
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      {PARSE_MESSAGES[parseMessageIdx].emoji}
+                    </motion.span>
+                    <p className="text-sm font-bold text-graphite text-center">
+                      {PARSE_MESSAGES[parseMessageIdx].text}
+                    </p>
+                  </motion.div>
                 </AnimatePresence>
               </div>
 
-              {/* Step progress dots */}
-              <div className="flex items-center gap-2 mb-5">
+              {/* Step indicators */}
+              <div className="flex items-center gap-1.5 mb-6">
                 {PARSE_MESSAGES.map((_, i) => (
                   <motion.div
                     key={i}
                     className="rounded-full"
                     animate={{
-                      width: i === parseMessageIdx ? 20 : 6,
+                      width: i === parseMessageIdx ? 24 : 8,
+                      height: 8,
                       backgroundColor:
                         i < parseMessageIdx
                           ? '#7ed957'
                           : i === parseMessageIdx
                           ? '#111111'
-                          : 'rgba(17,17,17,0.15)',
+                          : 'rgba(17,17,17,0.1)',
                     }}
-                    style={{ height: 6 }}
-                    transition={{ duration: 0.3 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 ))}
               </div>
 
               {/* Progress bar */}
-              <div className="w-48 h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'rgba(17,17,17,0.07)' }}>
-                <motion.div className="h-full rounded-full" style={{ background: '#7ed957' }}
+              <div className="w-56 h-2 rounded-full overflow-hidden mb-3 relative" style={{ background: 'rgba(17,17,17,0.06)' }}>
+                <motion.div
+                  className="h-full rounded-full relative"
+                  style={{ background: 'linear-gradient(90deg, #7ed957, #00D09C)' }}
                   animate={{ width: `${scanProgress}%` }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }} />
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                >
+                  <motion.div
+                    className="absolute inset-0 rounded-full"
+                    style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)' }}
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                  />
+                </motion.div>
               </div>
-              <p className="text-graphite/35 text-xs">
-                {Math.round(scanProgress)} % · Cela prend généralement 5–10 secondes
+
+              <p className="text-graphite/30 text-xs font-medium">
+                {Math.round(scanProgress)}% · Sonnet 4.6 analyse votre ticket
               </p>
             </motion.div>
           )}
@@ -1073,29 +1173,79 @@ export default function ScanPage() {
                 </motion.div>
               )}
 
-              {/* Savings banner */}
+              {/* Savings banner — dramatic reveal */}
               {step === 'comparison' && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  className="relative rounded-3xl p-6 mb-5 text-center overflow-hidden bg-white"
+                  initial={{ opacity: 0, scale: 0.85, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 250, damping: 22, delay: 0.1 }}
+                  className="relative rounded-3xl p-7 mb-5 text-center overflow-hidden"
                   style={{
-                    border: totalSavings > 0 ? '1px solid rgba(0,208,156,0.25)' : '1px solid rgba(17,17,17,0.08)',
+                    background: totalSavings > 0
+                      ? 'linear-gradient(135deg, rgba(0,208,156,0.08) 0%, rgba(126,217,87,0.06) 100%)'
+                      : '#fff',
+                    border: totalSavings > 0 ? '1px solid rgba(0,208,156,0.2)' : '1px solid rgba(17,17,17,0.08)',
                   }}
                 >
-                  {showConfetti && <ConfettiParticles />}
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: totalSavings > 0 ? '#00D09C' : 'rgba(17,17,17,0.4)' }}>
-                    {totalSavings > 0 ? 'Économies possibles' : 'Prix analysés'}
-                  </p>
-                  <motion.p className="text-5xl font-extrabold mb-1"
-                    style={{ color: totalSavings > 0 ? '#00D09C' : '#111111', fontVariantNumeric: 'tabular-nums' }}
-                    animate={totalSavings === 0 && step === 'comparison' ? { x: [0, -5, 5, -5, 5, 0] } : {}}
-                    transition={{ duration: 0.4, delay: 0.5 }}>
-                    {totalSavings > 0 ? `${animatedSavings.toFixed(2)} €` : '—'}
-                  </motion.p>
+                  {showConfetti && <ConfettiParticles count={50} />}
+
                   {totalSavings > 0 && (
-                    <p className="text-sm mt-1 text-graphite/50">en achetant ailleurs cette semaine</p>
+                    <motion.div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        background: 'radial-gradient(circle at 50% 30%, rgba(126,217,87,0.12) 0%, transparent 70%)',
+                      }}
+                      animate={{ opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 3, repeat: Infinity }}
+                    />
+                  )}
+
+                  <motion.p
+                    className="text-[10px] font-bold uppercase tracking-[0.2em] mb-3 relative"
+                    style={{ color: totalSavings > 0 ? '#00D09C' : 'rgba(17,17,17,0.4)' }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    {totalSavings > 0 ? '\u2728 \u00c9conomies d\u00e9tect\u00e9es \u2728' : 'Prix analys\u00e9s'}
+                  </motion.p>
+
+                  <motion.p
+                    className="text-5xl font-extrabold mb-2 relative"
+                    style={{
+                      color: totalSavings > 0 ? '#00D09C' : '#111111',
+                      fontVariantNumeric: 'tabular-nums',
+                      textShadow: totalSavings > 0 ? '0 2px 20px rgba(0,208,156,0.2)' : 'none',
+                    }}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.4 }}
+                  >
+                    {totalSavings > 0 ? `${animatedSavings.toFixed(2)}\u00a0\u20ac` : '\u2014'}
+                  </motion.p>
+
+                  {totalSavings > 0 && (
+                    <motion.p
+                      className="text-sm text-graphite/50"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.7 }}
+                    >
+                      en achetant ailleurs cette semaine
+                    </motion.p>
+                  )}
+
+                  {totalSavings > 0 && totalSavings >= 3 && (
+                    <motion.div
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                      style={{ background: 'rgba(0,208,156,0.12)', color: '#00D09C' }}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.9, type: 'spring' }}
+                    >
+                      <Zap className="w-3 h-3" />
+                      {totalSavings >= 10 ? 'Jackpot !' : totalSavings >= 5 ? 'Belle trouvaille !' : 'Bien jou\u00e9 !'}
+                    </motion.div>
                   )}
                 </motion.div>
               )}
