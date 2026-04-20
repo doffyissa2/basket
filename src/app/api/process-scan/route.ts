@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createHash } from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { checkRateLimit } from '@/lib/rate-limit'
-import { requireAuth } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
@@ -10,6 +7,8 @@ import { comparePrices, type ComparisonResult } from '@/lib/compare-prices'
 import type { ParsedItem, ParsedReceipt } from '@/types/api'
 
 export const maxDuration = 60
+
+const MODEL_ID = 'claude-sonnet-4-6'
 
 // ── Call Claude Vision ──────────────────────────────────────────────────────
 async function callClaude(
@@ -34,7 +33,7 @@ async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: MODEL_ID,
       max_tokens: 4096,
       messages: [{
         role: 'user',
@@ -49,7 +48,7 @@ async function callClaude(
 
   if (!response.ok) {
     const err = await response.text()
-    console.error(`[scan] Claude API error ${response.status}:`, err.slice(0, 500))
+    console.error(`[process-scan] Claude API error ${response.status}:`, err.slice(0, 500))
     throw new Error(`Erreur API Claude: ${response.status}`)
   }
 
@@ -167,7 +166,7 @@ function normaliseItems(items: ParsedItem[]): ParsedItem[] {
     }))
 }
 
-// ── Fetch price anchors from community_prices ───────────────────────────────
+// ── Fetch price anchors ─────────────────────────────────────────────────────
 async function fetchPriceAnchors(supabase: SupabaseClient): Promise<string> {
   try {
     const { data } = await supabase
@@ -260,7 +259,7 @@ async function validateItemPrices(
   }
 }
 
-// ── Store location resolution (deferred) ────────────────────────────────────
+// ── Store location resolution ───────────────────────────────────────────────
 async function resolveStoreLocation(
   supabase: SupabaseClient,
   parsed: ParsedReceipt,
@@ -304,7 +303,7 @@ async function resolveStoreLocation(
             accuracy: 'address',
             ...(claudeSiret ? { siret: claudeSiret } : {}),
           }, { onConflict: 'osm_id', ignoreDuplicates: false }).then(({ error }) => {
-            if (error) console.error('[scan] store_locations upsert failed:', error.message)
+            if (error) console.error('[process-scan] store_locations upsert failed:', error.message)
           })
           return
         }
@@ -344,111 +343,52 @@ async function resolveStoreLocation(
 // ── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
-  if (authResult instanceof NextResponse) return authResult
-  const userId = authResult.userId
-
-  const [dailyLimit, burstLimit] = await Promise.all([
-    checkRateLimit(request, 'parseReceipt', userId),
-    checkRateLimit(request, 'parseReceiptBurst', userId),
-  ])
-  if (dailyLimit) return dailyLimit
-  if (burstLimit) return burstLimit
-
-  const body = await request.json()
-  const images: Array<{ base64: string; mediaType: string }> = Array.isArray(body.images)
-    ? body.images.map((img: { image_base64: string; media_type?: string }) => ({
-        base64: img.image_base64,
-        mediaType: img.media_type ?? 'image/jpeg',
-      }))
-    : body.image_base64
-      ? [{ base64: body.image_base64, mediaType: body.media_type ?? 'image/jpeg' }]
-      : []
-
-  if (images.length === 0 || !images[0].base64) {
-    return NextResponse.json({ error: 'No image provided' }, { status: 400 })
-  }
-  if (images.length > 3) {
-    return NextResponse.json({ error: 'Maximum 3 images per receipt' }, { status: 400 })
+  // Verify internal secret
+  const auth = request.headers.get('authorization')?.replace('Bearer ', '').trim()
+  if (!auth || auth !== process.env.INTERNAL_API_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const MAX_BASE64_BYTES = 12 * 1024 * 1024
-  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-  for (const img of images) {
-    if (img.base64.length > MAX_BASE64_BYTES) {
-      return NextResponse.json({ error: 'Image trop grande (max 9 Mo)' }, { status: 413 })
-    }
-    if (!ALLOWED_TYPES.includes(img.mediaType)) {
-      return NextResponse.json({ error: 'Format non supporté' }, { status: 400 })
-    }
+  const { jobId } = await request.json()
+  if (!jobId) {
+    return NextResponse.json({ error: 'Missing jobId' }, { status: 400 })
   }
+
+  const supabase = getServiceClient()
+
+  // Fetch job
+  const { data: job, error: jobErr } = await supabase
+    .from('scan_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .single()
+
+  if (jobErr || !job) {
+    console.error('[process-scan] Job not found:', jobId)
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+  }
+
+  if (job.status !== 'pending') {
+    return NextResponse.json({ status: job.status })
+  }
+
+  // Mark as processing
+  await supabase.from('scan_jobs').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', jobId)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
+    await supabase.from('scan_jobs').update({ status: 'failed', error_msg: 'API key not configured', updated_at: new Date().toISOString() }).eq('id', jobId)
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
 
-  const imageHash = createHash('sha256').update(images[0].base64).digest('hex')
-  const supabase = getServiceClient()
-
-  // Postcode from request body (sent by frontend)
-  const postcode: string | null = typeof body.postcode === 'string' && body.postcode.length === 5
-    ? body.postcode : null
-  const dept = postcode ? postcode.slice(0, 2) : null
-
-  // ── Dedup: return cached result if same image was scanned before ─────
-  const { data: cachedReceipt } = await supabase
-    .from('receipts')
-    .select('id, store_chain, total_amount, raw_ocr_text, store_address, receipt_date, image_url')
-    .eq('user_id', userId)
-    .eq('image_hash', imageHash)
-    .maybeSingle()
-
-  if (cachedReceipt) {
-    const { data: cachedItems } = await supabase
-      .from('price_items')
-      .select('item_name, unit_price, quantity, is_promo, is_private_label, brand, volume_weight')
-      .eq('receipt_id', cachedReceipt.id)
-
-    if (cachedItems && cachedItems.length > 0) {
-      console.log(`[scan] cache hit (${cachedItems.length} items) for user ${userId}`)
-
-      const items = cachedItems.map(i => ({
-        name: i.item_name as string,
-        price: i.unit_price as number,
-        quantity: i.quantity as number,
-        is_promo: (i.is_promo as boolean) ?? false,
-        is_private_label: (i.is_private_label as boolean) ?? false,
-        brand: (i.brand as string) ?? null,
-        volume_weight: (i.volume_weight as string) ?? null,
-      }))
-
-      const storeChain = cachedReceipt.store_chain as string
-      const compResult = await comparePrices(supabase, items, storeChain, dept)
-
-      return NextResponse.json({
-        cached: true,
-        receipt_id: cachedReceipt.id,
-        store_name: storeChain,
-        total: cachedReceipt.total_amount,
-        items,
-        store_address: cachedReceipt.store_address ?? null,
-        image_hash: imageHash,
-        quality_warning: false,
-        comparisons: compResult.comparisons,
-        total_savings: compResult.total_savings,
-        best_store: compResult.best_store,
-        data_as_of: compResult.data_as_of,
-      })
-    }
-
-    await supabase.from('price_items').delete().eq('receipt_id', cachedReceipt.id)
-    await supabase.from('receipts').delete().eq('id', cachedReceipt.id)
-  }
-
-  // ── Claude Vision parse ───────────────────────────────────────────────
   try {
-    console.log(`[scan] Starting Claude Vision for user=${userId} (${images.length} image(s))`)
+    const images = (job.image_data as Array<{ base64: string; mediaType: string }>)
+    const userId = job.user_id as string
+    const imageHash = job.image_hash as string
+    const postcode = (job.postcode as string) ?? null
+    const dept = postcode ? postcode.slice(0, 2) : null
+
+    console.log(`[process-scan] Starting Claude Vision (${MODEL_ID}) for job=${jobId}, user=${userId}, images=${images.length}`)
 
     const [formatHints, priceAnchors, corrections] = await Promise.all([
       Promise.resolve(supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'))
@@ -468,9 +408,9 @@ export async function POST(request: NextRequest) {
     ])
 
     const textContent = await callClaude(apiKey, images, buildPrompt(formatHints, priceAnchors))
-    console.log(`[scan] Claude response: ${textContent.length} chars`)
+    console.log(`[process-scan] Claude response: ${textContent.length} chars`)
 
-    // ── Parse JSON response ──────────────────────────────────────────────
+    // Parse JSON
     let cleaned = textContent.trim()
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1')
@@ -488,19 +428,15 @@ export async function POST(request: NextRequest) {
       throw new Error('Structure de ticket invalide')
     }
 
-    // ── Normalise + enrich ───────────────────────────────────────────────
+    // Normalise + enrich
     parsed.items = normaliseItems(parsed.items)
-
     parsed.items = parsed.items.map(item => ({
       ...item,
       brand: item.brand ?? extractBrand(item.name) ?? null,
       volume_weight: item.volume_weight ?? extractWeight(item.name) ?? null,
     }))
 
-    parsed.total = Number(parsed.total) || parsed.items.reduce(
-      (s, i) => s + i.price * i.quantity, 0,
-    )
-
+    parsed.total = Number(parsed.total) || parsed.items.reduce((s, i) => s + i.price * i.quantity, 0)
     parsed.store_name = normalizeStoreChain(parsed.store_name)
 
     if (corrections.length > 0) {
@@ -519,9 +455,9 @@ export async function POST(request: NextRequest) {
       parsed.total = correctedTotal
     }
 
-    console.log(`[scan] Parsed: store="${parsed.store_name}", total=${parsed.total}, items=${parsed.items.length}`)
+    console.log(`[process-scan] Parsed: store="${parsed.store_name}", total=${parsed.total}, items=${parsed.items.length}`)
 
-    // ── Insert receipt + price_items ─────────────────────────────────────
+    // Insert receipt + price_items
     const { data: receiptRow, error: receiptErr } = await supabase
       .from('receipts')
       .insert({
@@ -539,8 +475,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (receiptErr || !receiptRow) {
-      console.error('[scan] receipt insert failed:', receiptErr?.message)
-      throw new Error('Erreur base de données')
+      throw new Error(`DB insert failed: ${receiptErr?.message}`)
     }
 
     const receiptId = receiptRow.id
@@ -561,11 +496,10 @@ export async function POST(request: NextRequest) {
       }))
 
       const { error: itemsErr } = await supabase.from('price_items').insert(priceItems)
-      if (itemsErr) console.error('[scan] price_items insert error:', itemsErr.message)
+      if (itemsErr) console.error('[process-scan] price_items insert error:', itemsErr.message)
     }
 
-    // ── Price comparison (inline — no second HTTP call) ──────────────────
-    const storeChain = parsed.store_name
+    // Price comparison
     const compItems = parsed.items.map(i => ({
       name: i.name,
       price: i.price,
@@ -575,27 +509,26 @@ export async function POST(request: NextRequest) {
 
     let compResult = { comparisons: [] as ComparisonResult[], total_savings: 0, best_store: null as { name: string; items_cheaper: number; total_savings: number } | null, data_as_of: null as string | null }
     try {
-      compResult = await comparePrices(supabase, compItems, storeChain, dept)
+      compResult = await comparePrices(supabase, compItems, parsed.store_name, dept)
     } catch (e) {
-      console.error('[scan] comparison failed (non-blocking):', e)
+      console.error('[process-scan] comparison failed (non-blocking):', e)
     }
 
-    // Save savings amount
     if (compResult.total_savings > 0) {
-      void supabase.from('receipts').update({ savings_amount: compResult.total_savings }).eq('id', receiptId).then(() => {})
+      void supabase.from('receipts').update({ savings_amount: compResult.total_savings }).eq('id', receiptId)
     }
 
-    // ── Deferred: resolve store location (non-blocking) ─────────────────
+    // Resolve store location (non-blocking)
     void resolveStoreLocation(supabase, parsed, receiptId).catch(err => {
-      console.error('[scan] Location resolution failed:', err)
+      console.error('[process-scan] Location resolution failed:', err)
     })
 
-    // ── Return complete result ──────────────────────────────────────────
     const qualityWarning = !parsed.items || parsed.items.length === 0 ||
       (parsed.total === 0 && parsed.items.length < 2) ||
       parsed.items.filter(i => i.price === 0).length > parsed.items.length * 0.4
 
-    return NextResponse.json({
+    // Build full result
+    const result = {
       receipt_id: receiptId,
       store_name: parsed.store_name,
       total: parsed.total,
@@ -618,10 +551,28 @@ export async function POST(request: NextRequest) {
       total_savings: compResult.total_savings,
       best_store: compResult.best_store,
       data_as_of: compResult.data_as_of,
-    })
+    }
+
+    // Update job as done, clear image data to save space
+    await supabase.from('scan_jobs').update({
+      status: 'done',
+      result,
+      image_data: [],
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId)
+
+    console.log(`[process-scan] Job ${jobId} completed: ${parsed.items.length} items, savings=${compResult.total_savings}`)
+    return NextResponse.json({ status: 'done' })
+
   } catch (error) {
-    console.error('[scan] Error:', error)
+    console.error('[process-scan] Error:', error)
     const msg = error instanceof Error ? error.message : 'Erreur inconnue'
+    await supabase.from('scan_jobs').update({
+      status: 'failed',
+      error_msg: msg,
+      image_data: [],
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

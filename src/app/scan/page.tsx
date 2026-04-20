@@ -509,6 +509,55 @@ export default function ScanPage() {
     }
   }
 
+  const handleScanResult = (result: ScanResult, _compressed?: Array<{ base64: string; mediaType: string }>) => {
+    const parsed: ParsedReceipt = result
+    setParsedReceipt(parsed)
+    setReceiptId(result.receipt_id ?? null)
+    setComparisons(result.comparisons || [])
+    setBestStore(result.best_store || null)
+    if (result.data_as_of) setDataAsOf(result.data_as_of)
+
+    if (!parsed.items || parsed.items.length === 0) {
+      setLowQualityWarning(true)
+      setScanProgress(100)
+      setStep('comparison')
+      return
+    }
+
+    const qualityWarning = result.quality_warning === true
+    const avgConf = parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
+    setLowQualityWarning(qualityWarning || parsed.items.length < 3 || avgConf < 0.5)
+
+    const storeChain = normalizeStoreChain(parsed.store_name)
+
+    // Fire-and-forget: log unknown store
+    if (!isKnownStore(parsed.store_name) && accessToken) {
+      void fetch('/api/log-unknown-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ raw_name: parsed.store_name, lat: userCoords?.lat ?? null, lon: userCoords?.lon ?? null }),
+      }).catch(() => {})
+    }
+
+    // Fire-and-forget: learn receipt format
+    if (accessToken && parsed.items.length > 0) {
+      void fetch('/api/learn-receipt-format', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ store_chain: storeChain, sample_items: parsed.items.slice(0, 15).map(i => i.name) }),
+      }).catch(() => {})
+    }
+
+    setScanProgress(100)
+    setStep('comparison')
+
+    const savings = result.total_savings ?? 0
+    if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
+    void awardScanXP(savings, storeChain)
+    emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
+    void ctx.refresh(['recentStores', 'profile'])
+  }
+
   const handleScan = async () => {
     if (imageFiles.length === 0 || !user) return
     haptic()
@@ -538,10 +587,10 @@ export default function ScanPage() {
       const compressed = await Promise.all(preprocessed.map(f => compressImage(f)))
 
       // Stage 1: "Analyse par l'IA…"
-      setStage(1, 25)
+      setStage(1, 15)
 
-      // ── Single synchronous call — returns EVERYTHING ──────────────────
-      const response = await fetch('/api/scan', {
+      // ── Phase 1: Submit job (fast) ────────────────────────────────────
+      const submitRes = await fetch('/api/parse-receipt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -551,66 +600,103 @@ export default function ScanPage() {
           images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
           postcode: postcode || null,
         }),
-        signal: AbortSignal.timeout(55000),
+        signal: AbortSignal.timeout(15000),
       })
 
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => null)
-        throw new Error(errBody?.error ?? 'Erreur analyse du ticket')
+      if (!submitRes.ok) {
+        const errBody = await submitRes.json().catch(() => null)
+        throw new Error(errBody?.error ?? 'Erreur lors de la soumission')
       }
 
-      const result: ScanResult = await response.json()
+      const submitData = await submitRes.json()
 
-      // Stage 3: "Calcul de vos économies…"
-      setStage(3, 85)
-
-      // ── Handle complete result ────────────────────────────────────────
-      const parsed: ParsedReceipt = result
-      setParsedReceipt(parsed)
-      setReceiptId(result.receipt_id ?? null)
-      setComparisons(result.comparisons || [])
-      setBestStore(result.best_store || null)
-      if (result.data_as_of) setDataAsOf(result.data_as_of)
-
-      if (!parsed.items || parsed.items.length === 0) {
-        setLowQualityWarning(true)
-        clearProgress()
-        setStep('comparison')
-        return
-      }
-
-      const qualityWarning = result.quality_warning === true
-      const avgConf = parsed.items.reduce((s, i) => s + (i.confidence ?? 1), 0) / parsed.items.length
-      setLowQualityWarning(qualityWarning || parsed.items.length < 3 || avgConf < 0.5)
-
-      const storeChain = normalizeStoreChain(parsed.store_name)
-
-      // Fire-and-forget: log unknown store
-      if (!isKnownStore(parsed.store_name) && accessToken) {
-        void fetch('/api/log-unknown-store', {
+      // Handle dedup cache hit (no polling needed)
+      if (submitData.status === 'done' && submitData.cached) {
+        setStage(3, 90)
+        const statusRes = await fetch(`/api/scan-status/${submitData.receipt_id}`, {
+          headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+        })
+        // For cached results, re-fetch full data via the old scan endpoint as fallback
+        const cachedRes = await fetch('/api/scan', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ raw_name: parsed.store_name, lat: userCoords?.lat ?? null, lon: userCoords?.lon ?? null }),
-        }).catch(() => {})
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
+            postcode: postcode || null,
+          }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (cachedRes.ok) {
+          const result: ScanResult = await cachedRes.json()
+          handleScanResult(result, compressed)
+          return
+        }
+        // If cache fallback fails, ignore statusRes and fall through to error
+        void statusRes
+        throw new Error('Erreur lors du chargement du cache')
       }
 
-      // Fire-and-forget: learn receipt format
-      if (accessToken && parsed.items.length > 0) {
-        void fetch('/api/learn-receipt-format', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ store_chain: storeChain, sample_items: parsed.items.slice(0, 15).map(i => i.name) }),
-        }).catch(() => {})
-      }
+      const jobId = submitData.jobId as string
+      if (!jobId) throw new Error('Pas de jobId reçu')
 
-      clearProgress()
-      setStep('comparison')
+      // ── Phase 2: Poll for completion ──────────────────────────────────
+      setStage(1, 25)
 
-      const savings = result.total_savings ?? 0
-      if (savings > 5) setTimeout(() => setShowConfetti(true), 300)
-      void awardScanXP(savings, storeChain)
-      emit('receipt:scanned', { storeChain, savings, itemCount: parsed.items.length })
-      void ctx.refresh(['recentStores', 'profile'])
+      const result = await new Promise<ScanResult>((resolve, reject) => {
+        let attempts = 0
+        const maxAttempts = 30 // 60 seconds max
+
+        const poll = setInterval(async () => {
+          attempts++
+
+          // Progress animation during polling
+          const progress = Math.min(85, 25 + (attempts / maxAttempts) * 60)
+          if (attempts <= 5) setStage(1, progress)
+          else if (attempts <= 15) setStage(2, progress)
+          else setStage(3, progress)
+
+          if (attempts >= maxAttempts) {
+            clearInterval(poll)
+            reject(new Error('L\'analyse prend trop de temps. Réessayez.'))
+            return
+          }
+
+          try {
+            const res = await fetch(`/api/scan-status/${jobId}`, {
+              headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+            })
+
+            if (!res.ok) {
+              if (attempts > 3) {
+                clearInterval(poll)
+                reject(new Error('Erreur de communication avec le serveur'))
+              }
+              return
+            }
+
+            const data = await res.json()
+
+            if (data.status === 'done') {
+              clearInterval(poll)
+              resolve(data.result as ScanResult)
+            } else if (data.status === 'failed') {
+              clearInterval(poll)
+              reject(new Error(data.error ?? 'L\'analyse a échoué'))
+            }
+          } catch {
+            if (attempts > 5) {
+              clearInterval(poll)
+              reject(new Error('Connexion perdue'))
+            }
+          }
+        }, 2000)
+      })
+
+      handleScanResult(result, compressed)
+
     } catch (err) {
       clearProgress()
       const isAbort = err instanceof DOMException && err.name === 'AbortError'

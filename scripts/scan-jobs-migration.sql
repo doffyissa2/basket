@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
               CHECK (status IN ('pending', 'processing', 'done', 'failed')),
   image_hash TEXT NOT NULL,
   image_data JSONB NOT NULL,            -- [{base64, mediaType}], cleared after processing
-  result     JSONB,                     -- full ParsedReceipt when status = 'done'
+  postcode   TEXT,                      -- user's postcode for regional price comparison
+  result     JSONB,                     -- full ScanResult when status = 'done'
   error_msg  TEXT,                      -- populated when status = 'failed'
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
