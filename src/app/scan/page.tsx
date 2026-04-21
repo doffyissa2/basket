@@ -642,104 +642,38 @@ export default function ScanPage() {
       // Stage 1: "Analyse par l'IA…"
       setStage(1, 15)
 
-      // ── Phase 1: Submit job (fast) ────────────────────────────────────
-      const submitRes = await fetch('/api/parse-receipt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({
-          images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
-          postcode: postcode || null,
-        }),
-      })
+      // ── Single synchronous call to /api/scan ─────────────────────────
+      // Animate progress stages while waiting
+      let fakeProgress = 15
+      const progressTimer = setInterval(() => {
+        if (fakeProgress < 40) { fakeProgress += 2; setStage(1, fakeProgress) }
+        else if (fakeProgress < 70) { fakeProgress += 1; setStage(2, fakeProgress) }
+        else if (fakeProgress < 85) { fakeProgress += 0.5; setStage(3, fakeProgress) }
+      }, 800)
 
-      if (!submitRes.ok) {
-        const errBody = await submitRes.json().catch(() => null)
-        throw new Error(errBody?.error ?? 'Erreur lors de la soumission')
-      }
-
-      const submitData = await submitRes.json()
-
-      // Handle dedup cache hit — receipt already exists, skip to comparison
-      if (submitData.status === 'done' && submitData.cached && submitData.receipt_id) {
-        setStage(2, 60)
-        const compRes = await fetch('/api/compare-prices', {
+      let scanRes: Response
+      try {
+        scanRes = await fetch('/api/scan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
-          body: JSON.stringify({ receipt_id: submitData.receipt_id, postcode: postcode || null }),
+          body: JSON.stringify({
+            images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
+            postcode: postcode || null,
+          }),
         })
-        if (compRes.ok) {
-          const result: ScanResult = await compRes.json()
-          handleScanResult(result)
-          return
-        }
-        // If comparison fails, just show a basic success
-        toast.success('Ticket déjà analysé')
-        setStep('upload')
-        return
+      } finally {
+        clearInterval(progressTimer)
       }
 
-      const jobId = submitData.jobId as string
-      if (!jobId) throw new Error('Pas de jobId reçu')
+      if (!scanRes.ok) {
+        const errBody = await scanRes.json().catch(() => null)
+        throw new Error(errBody?.error ?? 'Erreur lors de l\'analyse')
+      }
 
-      // ── Phase 2: Poll for completion ──────────────────────────────────
-      setStage(1, 25)
-
-      const result = await new Promise<ScanResult>((resolve, reject) => {
-        let attempts = 0
-        const maxAttempts = 30 // 60 seconds max
-
-        const poll = setInterval(async () => {
-          attempts++
-
-          // Progress animation during polling
-          const progress = Math.min(85, 25 + (attempts / maxAttempts) * 60)
-          if (attempts <= 5) setStage(1, progress)
-          else if (attempts <= 15) setStage(2, progress)
-          else setStage(3, progress)
-
-          if (attempts >= maxAttempts) {
-            clearInterval(poll)
-            reject(new Error('L\'analyse prend trop de temps. Réessayez.'))
-            return
-          }
-
-          try {
-            const res = await fetch(`/api/scan-status/${jobId}`, {
-              headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-            })
-
-            if (!res.ok) {
-              if (attempts > 3) {
-                clearInterval(poll)
-                reject(new Error('Erreur de communication avec le serveur'))
-              }
-              return
-            }
-
-            const data = await res.json()
-
-            if (data.status === 'done') {
-              clearInterval(poll)
-              resolve(data.result as ScanResult)
-            } else if (data.status === 'failed') {
-              clearInterval(poll)
-              reject(new Error(data.error ?? 'L\'analyse a échoué'))
-            }
-          } catch {
-            if (attempts > 5) {
-              clearInterval(poll)
-              reject(new Error('Connexion perdue'))
-            }
-          }
-        }, 2000)
-      })
-
+      const result: ScanResult = await scanRes.json()
       handleScanResult(result, compressed)
 
     } catch (err) {
