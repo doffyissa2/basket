@@ -33,21 +33,27 @@ export interface ParsedReceipt {
 // ── Price comparison ──────────────────────────────────────────────────────────
 
 export interface ComparisonItem {
-  name:                 string
-  your_price:           number
-  avg_price:            number
-  savings:              number
-  cheaper_store:        string | null
-  normalized_price:     string | null
-  avg_normalized_price: string | null
-  is_local:             boolean
-  sample_count:         number
+  name:                    string
+  your_price:              number
+  avg_price:               number
+  savings:                 number
+  cheaper_store:           string | null
+  cheaper_store_name:      string | null
+  cheaper_store_address:   string | null
+  cheaper_store_distance:  number | null
+  normalized_price:        string | null
+  avg_normalized_price:    string | null
+  is_local:                boolean
+  sample_count:            number
 }
 
 export interface BestStore {
-  name:           string
-  items_cheaper:  number
-  total_savings:  number
+  name:              string
+  items_cheaper:     number
+  total_savings:     number
+  nearest_name:      string | null
+  nearest_address:   string | null
+  nearest_distance:  number | null
 }
 
 // ── Shopping list ─────────────────────────────────────────────────────────────
@@ -96,10 +102,12 @@ export interface LeaderboardRow {
 // ── Scan result (single synchronous endpoint) ───────────────────────────────
 
 export interface ScanResult extends ParsedReceipt {
-  receipt_id:       string
-  quality_warning:  boolean
-  comparisons:      ComparisonItem[]
-  total_savings:    number
-  best_store:       BestStore | null
-  data_as_of:       string | null
+  receipt_id:         string
+  store_display_name: string
+  quality_warning:    boolean
+  total_mismatch:     boolean
+  comparisons:        ComparisonItem[]
+  total_savings:      number
+  best_store:         BestStore | null
+  data_as_of:         string | null
 }

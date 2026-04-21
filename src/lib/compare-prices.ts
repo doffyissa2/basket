@@ -25,6 +25,9 @@ export interface ComparisonResult {
   avg_price: number
   savings: number
   cheaper_store: string | null
+  cheaper_store_name: string | null
+  cheaper_store_address: string | null
+  cheaper_store_distance: number | null
   normalized_price: string | null
   avg_normalized_price: string | null
   is_local: boolean
@@ -40,11 +43,45 @@ export interface CompareOutput {
   data_as_of: string | null
 }
 
+async function resolveNearestStore(
+  supabase: SupabaseClient,
+  chain: string,
+  lat: number,
+  lon: number,
+): Promise<{ name: string; address: string; distance_km: number } | null> {
+  try {
+    const { data } = await supabase
+      .from('store_locations')
+      .select('name, address, latitude, longitude')
+      .eq('chain', chain)
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .limit(50)
+
+    if (!data || data.length === 0) return null
+
+    let best: { name: string; address: string; distance_km: number } | null = null
+    for (const row of data) {
+      const dLat = ((row.latitude as number) - lat) * 111.32
+      const dLon = ((row.longitude as number) - lon) * 111.32 * Math.cos(lat * Math.PI / 180)
+      const dist = Math.sqrt(dLat * dLat + dLon * dLon)
+      if (!best || dist < best.distance_km) {
+        best = { name: row.name as string, address: row.address as string, distance_km: Math.round(dist * 10) / 10 }
+      }
+    }
+    return best
+  } catch {
+    return null
+  }
+}
+
 export async function comparePrices(
   supabase: SupabaseClient,
   items: Array<{ name: string; price: number; brand?: string | null; volume_weight?: string | null }>,
   storeChain: string,
   dept: string | null,
+  userLat?: number | null,
+  userLon?: number | null,
 ): Promise<CompareOutput> {
   const matchCache = new Map<string, string | null>()
 
@@ -139,6 +176,9 @@ export async function comparePrices(
           avg_price: item.price,
           savings: 0,
           cheaper_store: null,
+          cheaper_store_name: null,
+          cheaper_store_address: null,
+          cheaper_store_distance: null,
           normalized_price: normalized?.label ?? null,
           avg_normalized_price: null,
           is_local: false,
@@ -166,6 +206,9 @@ export async function comparePrices(
           avg_price: item.price,
           savings: 0,
           cheaper_store: null,
+          cheaper_store_name: null,
+          cheaper_store_address: null,
+          cheaper_store_distance: null,
           normalized_price: normalized?.label ?? null,
           avg_normalized_price: null,
           is_local: false,
@@ -212,6 +255,9 @@ export async function comparePrices(
         avg_price: Math.round((isSane ? weightedAvg : item.price) * 100) / 100,
         savings: Math.round(rawSavings * 100) / 100,
         cheaper_store: rawSavings > 0 ? cheapestOther!.store_chain : null,
+        cheaper_store_name: null,
+        cheaper_store_address: null,
+        cheaper_store_distance: null,
         normalized_price: normalized?.label ?? null,
         avg_normalized_price: isSane ? (avgNormalized?.label ?? null) : null,
         is_local: useLocal,
@@ -221,6 +267,27 @@ export async function comparePrices(
       }
     }),
   )
+
+  // Resolve nearest stores for each cheaper_store chain
+  const hasCoords = typeof userLat === 'number' && typeof userLon === 'number'
+  const nearestCache = new Map<string, { name: string; address: string; distance_km: number } | null>()
+
+  if (hasCoords) {
+    const chains = new Set(comparisons.map(c => c.cheaper_store).filter((s): s is string => !!s))
+    await Promise.all(
+      Array.from(chains).map(async (chain) => {
+        const nearest = await resolveNearestStore(supabase, chain, userLat!, userLon!)
+        nearestCache.set(chain, nearest)
+      })
+    )
+  }
+
+  for (const c of comparisons) {
+    const nearest = c.cheaper_store ? nearestCache.get(c.cheaper_store) ?? null : null
+    c.cheaper_store_name = nearest?.name ?? null
+    c.cheaper_store_address = nearest?.address ?? null
+    c.cheaper_store_distance = nearest?.distance_km ?? null
+  }
 
   const totalSavings = comparisons.reduce(
     (sum, item) => sum + Math.max(0, item.savings),
@@ -236,11 +303,15 @@ export async function comparePrices(
     }
   }
   const bestEntry = Object.entries(storeTally).sort((a, b) => b[1].savings - a[1].savings)[0]
+  const bestNearest = bestEntry ? nearestCache.get(bestEntry[0]) ?? null : null
   const best_store = bestEntry
     ? {
         name: bestEntry[0],
         items_cheaper: bestEntry[1].count,
         total_savings: Math.round(bestEntry[1].savings * 100) / 100,
+        nearest_name: bestNearest?.name ?? null,
+        nearest_address: bestNearest?.address ?? null,
+        nearest_distance: bestNearest?.distance_km ?? null,
       }
     : null
 

@@ -653,6 +653,8 @@ export default function ScanPage() {
           body: JSON.stringify({
             images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
             postcode: postcode || null,
+            lat: location?.lat ?? null,
+            lon: location?.lon ?? null,
           }),
         })
       } finally {
@@ -1183,12 +1185,21 @@ export default function ScanPage() {
                     <Store className="w-5 h-5" style={{ color: '#7ed957' }} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-graphite">Chez {bestStore.name}</p>
+                    <p className="text-sm font-bold text-graphite">
+                      Chez {bestStore.nearest_name || bestStore.name}
+                    </p>
                     <p className="text-xs text-graphite/50">
                       vous auriez économisé{' '}
                       <span style={{ color: '#00D09C' }}>€{bestStore.total_savings.toFixed(2)}</span>
                       {' '}sur {bestStore.items_cheaper} articles
                     </p>
+                    {(bestStore.nearest_address || bestStore.nearest_distance != null) && (
+                      <p className="text-[10px] text-graphite/40 flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-2.5 h-2.5" />
+                        {bestStore.nearest_address}
+                        {bestStore.nearest_distance != null && ` · ${bestStore.nearest_distance} km`}
+                      </p>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -1196,7 +1207,9 @@ export default function ScanPage() {
               {/* Receipt header */}
               <div className="glass rounded-2xl p-5 mb-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h2 className="font-bold text-lg text-graphite">{parsedReceipt.store_name}</h2>
+                  <h2 className="font-bold text-lg text-graphite">
+                    {(parsedReceipt as ScanResult).store_display_name || parsedReceipt.store_name}
+                  </h2>
                   <p className="text-xl font-extrabold text-graphite">{parsedReceipt.total.toFixed(2)} €</p>
                 </div>
                 {parsedReceipt.store_address && (
@@ -1206,6 +1219,14 @@ export default function ScanPage() {
                   </p>
                 )}
                 <p className="text-xs text-graphite/40 mt-0.5">{parsedReceipt.items.length} articles détectés</p>
+                {(parsedReceipt as ScanResult).total_mismatch && (
+                  <div className="mt-2 rounded-lg px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <p className="text-xs text-amber-700">
+                      <AlertCircle className="w-3 h-3 inline mr-1" />
+                      Le total calculé ({parsedReceipt.items.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)} €) diffère du total imprimé ({parsedReceipt.total.toFixed(2)} €). Vérifiez les articles.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* No items detected — retry prompt */}
@@ -1352,7 +1373,10 @@ export default function ScanPage() {
                             </div>
                             {hasSaving && comparison && (
                               <p className="text-xs mt-0.5" style={{ color: '#00D09C' }}>
-                                Moins cher chez {comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                                Moins cher chez {comparison.cheaper_store_name || comparison.cheaper_store || 'une autre enseigne'} · {comparison.avg_price.toFixed(2)} €
+                                {comparison.cheaper_store_distance != null && (
+                                  <span className="text-graphite/35"> · {comparison.cheaper_store_distance} km</span>
+                                )}
                                 {comparison.avg_normalized_price && (
                                   <span className="text-graphite/35"> · {comparison.avg_normalized_price}</span>
                                 )}

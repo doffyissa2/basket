@@ -147,7 +147,10 @@ Ces champs permettent de localiser le magasin précisément via les APIs gouvern
 
 ── VÉRIFICATION ARITHMÉTIQUE ────────────────────────────────────────────────
 Après avoir extrait tous les articles, calcule : somme = Σ(price × quantity) pour chaque article.
-Si |somme - total| > total × 0.10, revérifie chaque prix et corrige-les si nécessaire. Ne supprime PAS d'articles.${formatHints}${priceAnchors}`
+Si |somme - total| > total × 0.03, revérifie chaque prix CARACTÈRE PAR CARACTÈRE sur l'image et corrige.
+Si l'écart persiste, tu as probablement oublié un article ou compté une ligne non-article — relis le ticket.
+Le total imprimé sur le ticket est TOUJOURS correct. Ne le modifie JAMAIS.
+Ne supprime PAS d'articles.${formatHints}${priceAnchors}`
 }
 
 // ── Normalise raw Claude output ─────────────────────────────────────────────
@@ -393,10 +396,12 @@ export async function POST(request: NextRequest) {
   const imageHash = createHash('sha256').update(images[0].base64).digest('hex')
   const supabase = getServiceClient()
 
-  // Postcode from request body (sent by frontend)
+  // Postcode + coords from request body (sent by frontend)
   const postcode: string | null = typeof body.postcode === 'string' && body.postcode.length === 5
     ? body.postcode : null
   const dept = postcode ? postcode.slice(0, 2) : null
+  const userLat: number | null = typeof body.lat === 'number' ? body.lat : null
+  const userLon: number | null = typeof body.lon === 'number' ? body.lon : null
 
   // ── Dedup: return cached result if same image was scanned before ─────
   const { data: cachedReceipt } = await supabase
@@ -426,13 +431,15 @@ export async function POST(request: NextRequest) {
       }))
 
       const storeChain = cachedReceipt.store_chain as string
-      const compResult = await comparePrices(supabase, items, storeChain, dept)
+      const compResult = await comparePrices(supabase, items, storeChain, dept, userLat, userLon)
 
       return NextResponse.json({
         cached: true,
         receipt_id: cachedReceipt.id,
         store_name: storeChain,
+        store_display_name: storeChain,
         total: cachedReceipt.total_amount,
+        total_mismatch: false,
         items,
         store_address: cachedReceipt.store_address ?? null,
         image_hash: imageHash,
@@ -503,6 +510,7 @@ export async function POST(request: NextRequest) {
       (s, i) => s + i.price * i.quantity, 0,
     )
 
+    const storeDisplayName = parsed.store_name
     parsed.store_name = normalizeStoreChain(parsed.store_name)
 
     if (corrections.length > 0) {
@@ -517,7 +525,9 @@ export async function POST(request: NextRequest) {
     parsed.items = await validateItemPrices(parsed.items, supabase)
 
     const correctedTotal = parsed.items.reduce((s, i) => s + i.price * i.quantity, 0)
-    if (Math.abs(correctedTotal - parsed.total) / (parsed.total || 1) < 0.15) {
+    const totalDiff = Math.abs(correctedTotal - parsed.total) / (parsed.total || 1)
+    const totalMismatch = totalDiff > 0.03 && Math.abs(correctedTotal - parsed.total) > 1.0
+    if (!totalMismatch) {
       parsed.total = correctedTotal
     }
 
@@ -577,7 +587,7 @@ export async function POST(request: NextRequest) {
 
     let compResult = { comparisons: [] as ComparisonResult[], total_savings: 0, best_store: null as { name: string; items_cheaper: number; total_savings: number } | null, data_as_of: null as string | null }
     try {
-      compResult = await comparePrices(supabase, compItems, storeChain, dept)
+      compResult = await comparePrices(supabase, compItems, storeChain, dept, userLat, userLon)
     } catch (e) {
       console.error('[scan] comparison failed (non-blocking):', e)
     }
@@ -587,20 +597,34 @@ export async function POST(request: NextRequest) {
       void supabase.from('receipts').update({ savings_amount: compResult.total_savings }).eq('id', receiptId).then(() => {})
     }
 
-    // ── Deferred: resolve store location (non-blocking) ─────────────────
-    void resolveStoreLocation(supabase, parsed, receiptId).catch(err => {
+    // ── Resolve store location (semi-blocking, 3.5s timeout) ────────────
+    const locationPromise = resolveStoreLocation(supabase, parsed, receiptId).catch(err => {
       console.error('[scan] Location resolution failed:', err)
     })
+    await Promise.race([locationPromise, new Promise(r => setTimeout(r, 3500))])
+
+    // Re-read resolved address
+    const { data: resolvedReceipt } = await supabase
+      .from('receipts')
+      .select('store_address, store_latitude, store_longitude')
+      .eq('id', receiptId)
+      .maybeSingle()
+    const resolvedAddress = resolvedReceipt?.store_address as string | null
 
     // ── Return complete result ──────────────────────────────────────────
     const qualityWarning = !parsed.items || parsed.items.length === 0 ||
       (parsed.total === 0 && parsed.items.length < 2) ||
       parsed.items.filter(i => i.price === 0).length > parsed.items.length * 0.4
 
+    const claudeAddress = typeof (parsed as unknown as Record<string, unknown>).store_address === 'string'
+      ? (parsed as unknown as Record<string, unknown>).store_address as string : null
+
     return NextResponse.json({
       receipt_id: receiptId,
       store_name: parsed.store_name,
+      store_display_name: storeDisplayName,
       total: parsed.total,
+      total_mismatch: totalMismatch,
       items: parsed.items.map(i => ({
         name: i.name,
         price: i.price,
@@ -611,9 +635,7 @@ export async function POST(request: NextRequest) {
         volume_weight: i.volume_weight ?? null,
         confidence: i.confidence ?? 1,
       })),
-      store_address: typeof (parsed as unknown as Record<string, unknown>).store_address === 'string'
-        ? (parsed as unknown as Record<string, unknown>).store_address as string
-        : null,
+      store_address: resolvedAddress ?? claudeAddress,
       image_hash: imageHash,
       quality_warning: qualityWarning,
       comparisons: compResult.comparisons,
