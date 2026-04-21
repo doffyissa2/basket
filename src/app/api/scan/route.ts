@@ -49,8 +49,10 @@ async function callClaude(
 
   if (!response.ok) {
     const err = await response.text()
-    console.error(`[scan] Claude API error ${response.status}:`, err.slice(0, 500))
-    throw new Error(`Erreur API Claude: ${response.status}`)
+    console.error(`[scan] Claude API error ${response.status}:`, err.slice(0, 1000))
+    let detail = ''
+    try { detail = JSON.parse(err)?.error?.message ?? '' } catch {}
+    throw new Error(`Erreur API Claude: ${response.status}${detail ? ' — ' + detail : ''}`)
   }
 
   const data = await response.json()
