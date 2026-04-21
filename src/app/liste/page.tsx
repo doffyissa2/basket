@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
   Plus, X, Check, ShoppingCart, ArrowLeft, Loader2, Store,
-  Receipt, Minus, ChevronRight, Share2, Sparkles,
+  Receipt, Minus, ChevronRight, Share2, Sparkles, MapPin, Navigation,
 } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import type { BestStoreResult } from '@/types/api'
@@ -46,12 +46,10 @@ export default function ListePage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestRef = useRef<HTMLDivElement>(null)
 
-  // Redirect if not authenticated once context resolves
   useEffect(() => {
     if (!ctxLoading && !user) window.location.href = '/login'
   }, [ctxLoading, user])
 
-  // Load list items once we have a user
   useEffect(() => {
     if (!user) return
     supabase
@@ -65,7 +63,6 @@ export default function ListePage() {
       })
   }, [user])
 
-  // Auto-suggest as user types (300ms debounce)
   useEffect(() => {
     if (inputValue.length < 2) {
       setSuggestions([])
@@ -86,7 +83,6 @@ export default function ListePage() {
     return () => clearTimeout(timer)
   }, [inputValue])
 
-  // Close suggestions on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) {
@@ -120,7 +116,6 @@ export default function ListePage() {
       setResult(null)
       setRecommendation(null)
 
-      // Fire-and-forget: fetch best price for just this item
       if (accessToken) {
         fetch('/api/shopping-list/best-store', {
           method: 'POST',
@@ -238,7 +233,6 @@ export default function ListePage() {
       setResult(data)
       setShowComparison(true)
 
-      // Build recommendation text client-side
       if (data.best_store && data.estimated_savings > 0.5) {
         const pricier = data.store_comparison[1]
         const cheapCount = data.per_item.filter(p => p.best_store === data.best_store).length
@@ -248,7 +242,6 @@ export default function ListePage() {
         setRecommendation(rec)
       }
 
-      // Update per-item best store in local state + DB (parallel)
       const dbUpdates: PromiseLike<unknown>[] = []
       for (const pi of data.per_item) {
         const item = unchecked.find((i) => i.item_name === pi.name)
@@ -293,6 +286,14 @@ export default function ListePage() {
   const estimatedTotal = pricedItems.reduce((s, i) => s + (i.best_price! * (i.qty || 1)), 0)
   const unpricedCount = unchecked.length - pricedItems.length
 
+  // Group items by best_store for the smart view
+  const storeGroups = new Map<string, ListItem[]>()
+  for (const item of unchecked) {
+    const store = item.best_store || 'Recherche en cours…'
+    if (!storeGroups.has(store)) storeGroups.set(store, [])
+    storeGroups.get(store)!.push(item)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
@@ -305,31 +306,29 @@ export default function ListePage() {
   return (
     <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-14 pb-3 flex-shrink-0">
-        <a href="/dashboard" className="w-9 h-9 rounded-full flex items-center justify-center glass">
-          <ArrowLeft className="w-4 h-4 text-graphite/50" />
-        </a>
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="w-4 h-4" style={{ color: '#7ed957' }} />
-          <h1 className="text-base font-bold text-graphite">Ma liste</h1>
-          {items.length > 0 && (
-            <span className="text-xs text-graphite/35 font-medium">({items.length})</span>
-          )}
+      <div className="px-5 pt-14 pb-2 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <a href="/dashboard" className="w-9 h-9 rounded-full flex items-center justify-center glass">
+            <ArrowLeft className="w-4 h-4 text-graphite/50" />
+          </a>
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="w-4 h-4" style={{ color: '#7ed957' }} />
+            <h1 className="text-base font-bold text-graphite">Ma liste</h1>
+            {items.length > 0 && (
+              <span className="text-xs text-graphite/35 font-medium">({items.length})</span>
+            )}
+          </div>
+          <button
+            onClick={importLastReceipt}
+            className="w-9 h-9 rounded-full flex items-center justify-center glass"
+            title="Importer le dernier ticket"
+          >
+            <Receipt className="w-4 h-4 text-graphite/50" />
+          </button>
         </div>
-        <button
-          onClick={importLastReceipt}
-          className="w-9 h-9 rounded-full flex items-center justify-center glass"
-          title="Importer le dernier ticket"
-        >
-          <Receipt className="w-4 h-4 text-graphite/50" />
-        </button>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-5 pb-48">
 
         {/* Input bar + suggestions */}
-        <div ref={suggestRef} className="relative mb-4">
+        <div ref={suggestRef} className="relative">
           <div className="flex gap-2">
             <input
               ref={inputRef}
@@ -339,17 +338,17 @@ export default function ListePage() {
               onKeyDown={(e) => { if (e.key === 'Enter') addItem() }}
               placeholder="Ajouter un article…"
               className="flex-1 h-12 rounded-2xl px-4 text-sm text-graphite placeholder:text-graphite/30 focus:outline-none transition-all"
-              style={{ background: 'rgba(255,255,255,0.85)', border: '1.5px solid rgba(17,17,17,0.1)' }}
+              style={{ background: 'rgba(255,255,255,0.85)', border: '1.5px solid rgba(17,17,17,0.08)' }}
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = '#7ed957'
                 if (suggestions.length > 0) setShowSuggestions(true)
               }}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.1)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.08)')}
             />
             <motion.button
               onClick={() => addItem()}
               whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.92 }}
               className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
               style={{ background: '#111111' }}
             >
@@ -357,7 +356,6 @@ export default function ListePage() {
             </motion.button>
           </div>
 
-          {/* Suggestions dropdown */}
           <AnimatePresence>
             {showSuggestions && suggestions.length > 0 && (
               <motion.div
@@ -365,15 +363,15 @@ export default function ListePage() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.98 }}
                 transition={{ duration: 0.15 }}
-                className="absolute left-0 right-12 top-14 z-30 rounded-2xl overflow-hidden shadow-lg"
-                style={{ background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(17,17,17,0.08)' }}
+                className="absolute left-0 right-14 top-14 z-30 rounded-2xl overflow-hidden shadow-lg"
+                style={{ background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(17,17,17,0.06)' }}
               >
                 {suggestions.map((s, i) => (
                   <button
                     key={i}
                     onMouseDown={() => addItem(s.name)}
                     className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-black/[0.03] transition-colors"
-                    style={{ borderBottom: i < suggestions.length - 1 ? '1px solid rgba(17,17,17,0.05)' : 'none' }}
+                    style={{ borderBottom: i < suggestions.length - 1 ? '1px solid rgba(17,17,17,0.04)' : 'none' }}
                   >
                     <span className="text-sm font-medium text-graphite truncate flex-1 pr-3">
                       {s.name}
@@ -382,7 +380,7 @@ export default function ListePage() {
                       <span className="text-xs font-bold" style={{ color: '#00D09C' }}>
                         €{s.best_price.toFixed(2)}
                       </span>
-                      <span className="text-[10px] text-graphite/35">{s.best_store}</span>
+                      <span className="text-[10px] text-graphite/30">{s.best_store}</span>
                     </div>
                   </button>
                 ))}
@@ -390,6 +388,10 @@ export default function ListePage() {
             )}
           </AnimatePresence>
         </div>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto px-5 pb-48 pt-3">
 
         {/* Store comparison result */}
         <AnimatePresence>
@@ -398,28 +400,38 @@ export default function ListePage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="rounded-2xl overflow-hidden mb-4"
+              className="rounded-2xl overflow-hidden mb-5"
               style={{ border: '1px solid rgba(0,208,156,0.2)', background: 'rgba(0,208,156,0.04)' }}
             >
-              <div className="px-4 py-3 flex items-center justify-between"
-                style={{ borderBottom: '1px solid rgba(0,208,156,0.12)' }}>
-                <div className="flex items-center gap-2">
-                  <Store className="w-4 h-4" style={{ color: '#00D09C' }} />
-                  <p className="text-sm font-bold text-graphite">
-                    Allez chez <span style={{ color: '#00D09C' }}>{result.best_store}</span>
-                  </p>
+              {/* Header */}
+              <div className="px-4 py-3.5 flex items-center justify-between"
+                style={{ borderBottom: '1px solid rgba(0,208,156,0.1)' }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,208,156,0.12)' }}>
+                    <Navigation className="w-4 h-4" style={{ color: '#00D09C' }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-graphite">
+                      Allez chez <span style={{ color: '#00D09C' }}>{result.best_store}</span>
+                    </p>
+                    {result.estimated_savings > 0 && (
+                      <p className="text-[11px] text-graphite/40">
+                        Économisez <span className="font-semibold" style={{ color: '#00D09C' }}>€{result.estimated_savings.toFixed(2)}</span> sur votre liste
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={shareOnWhatsApp}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold"
-                    style={{ background: '#25D366', color: '#fff' }}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center"
+                    style={{ background: '#25D366' }}
                   >
-                    <Share2 className="w-3 h-3" />
-                    Partager
+                    <Share2 className="w-3.5 h-3.5 text-white" />
                   </button>
-                  <button onClick={() => setShowComparison(false)}>
-                    <X className="w-4 h-4 text-graphite/30" />
+                  <button onClick={() => setShowComparison(false)}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center glass">
+                    <X className="w-3.5 h-3.5 text-graphite/30" />
                   </button>
                 </div>
               </div>
@@ -427,119 +439,144 @@ export default function ListePage() {
               {/* AI recommendation */}
               {recommendation && (
                 <div className="px-4 py-3 flex items-start gap-2.5"
-                  style={{ background: 'rgba(126,217,87,0.05)', borderBottom: '1px solid rgba(0,208,156,0.1)' }}>
+                  style={{ background: 'rgba(126,217,87,0.04)', borderBottom: '1px solid rgba(0,208,156,0.08)' }}>
                   <Sparkles className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#7ed957' }} />
-                  <p className="text-xs text-graphite/70 leading-relaxed">
+                  <p className="text-xs text-graphite/60 leading-relaxed">
                     {recommendation.replace(/\*\*(.*?)\*\*/g, '$1')}
                   </p>
                 </div>
               )}
 
-              {result.store_comparison.slice(0, 4).map((s, i) => {
-                const cheapest = result.store_comparison[0].total
-                const barPct = cheapest > 0 ? (cheapest / s.total) * 100 : 100
-                return (
-                  <div key={i} className="px-4 py-2.5"
-                    style={{ borderBottom: i < Math.min(3, result.store_comparison.length - 1) ? '1px solid rgba(17,17,17,0.04)' : 'none' }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        {i === 0 && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                            style={{ background: 'rgba(126,217,87,0.15)', color: '#7ed957' }}>
-                            MEILLEUR
+              {/* Store ranking */}
+              <div className="px-4 py-2">
+                {result.store_comparison.slice(0, 4).map((s, i) => {
+                  const cheapest = result.store_comparison[0].total
+                  const barPct = cheapest > 0 ? (cheapest / s.total) * 100 : 100
+                  return (
+                    <div key={i} className="py-2.5"
+                      style={{ borderBottom: i < Math.min(3, result.store_comparison.length - 1) ? '1px solid rgba(17,17,17,0.04)' : 'none' }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          {i === 0 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                              style={{ background: 'rgba(126,217,87,0.15)', color: '#7ed957' }}>
+                              MEILLEUR
+                            </span>
+                          )}
+                          <span className={`text-xs font-semibold ${i === 0 ? 'text-graphite' : 'text-graphite/60'}`}>{s.store}</span>
+                          <span className="text-[10px] text-graphite/25">
+                            {s.items_found} article{s.items_found !== 1 ? 's' : ''}
                           </span>
-                        )}
-                        <span className="text-xs font-semibold text-graphite">{s.store}</span>
-                        <span className="text-[10px] text-graphite/35">
-                          {s.items_found} article{s.items_found !== 1 ? 's' : ''}
-                        </span>
+                        </div>
+                        <span className={`text-sm font-bold ${i === 0 ? 'text-graphite' : 'text-graphite/50'}`}>€{s.total.toFixed(2)}</span>
                       </div>
-                      <span className="text-sm font-bold text-graphite">€{s.total.toFixed(2)}</span>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(17,17,17,0.04)' }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${barPct}%` }}
+                          transition={{ duration: 0.5, delay: i * 0.1 }}
+                          style={{ background: i === 0 ? '#7ed957' : 'rgba(17,17,17,0.12)' }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(17,17,17,0.06)' }}>
-                      <div className="h-full rounded-full"
-                        style={{ width: `${barPct}%`, background: i === 0 ? '#7ed957' : 'rgba(17,17,17,0.15)' }} />
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Empty state */}
         {items.length === 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
-            <div className="w-16 h-16 rounded-3xl glass flex items-center justify-center mx-auto mb-4">
-              <ShoppingCart className="w-8 h-8 text-graphite/20" />
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-5"
+              style={{ background: 'rgba(126,217,87,0.08)' }}>
+              <ShoppingCart className="w-9 h-9" style={{ color: 'rgba(126,217,87,0.4)' }} />
             </div>
-            <p className="text-sm font-semibold text-graphite mb-1">Votre liste est vide</p>
-            <p className="text-xs text-graphite/40 mb-5">Tapez un article ou importez votre dernier ticket</p>
-            <button
-              onClick={importLastReceipt}
-              className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl"
-              style={{ background: 'rgba(126,217,87,0.12)', color: '#7ed957' }}
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              Importer depuis le dernier ticket
-            </button>
+            <p className="text-base font-bold text-graphite mb-1.5">Votre liste est vide</p>
+            <p className="text-sm text-graphite/40 mb-6 max-w-[250px] mx-auto leading-relaxed">
+              Ajoutez des articles et on vous dira où acheter moins cher
+            </p>
+            <div className="flex flex-col gap-2.5 items-center">
+              <button
+                onClick={() => inputRef.current?.focus()}
+                className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-3 rounded-2xl"
+                style={{ background: '#111', color: '#fff' }}
+              >
+                <Plus className="w-4 h-4" />
+                Ajouter un article
+              </button>
+              <button
+                onClick={importLastReceipt}
+                className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl"
+                style={{ background: 'rgba(126,217,87,0.1)', color: '#7ed957' }}
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                Importer depuis le dernier ticket
+              </button>
+            </div>
           </motion.div>
         )}
 
         {/* Unchecked items */}
         <AnimatePresence initial={false}>
-          {unchecked.map((item) => (
+          {unchecked.map((item, idx) => (
             <motion.div
               key={item.id}
               layout
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 16, height: 0, marginBottom: 0 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-              className="glass rounded-2xl px-3 py-3 flex items-center gap-2.5 mb-2"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, x: -80, height: 0, marginBottom: 0 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 30, delay: idx * 0.02 }}
+              className="rounded-2xl px-4 py-3.5 flex items-center gap-3 mb-2"
+              style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(17,17,17,0.04)' }}
             >
               <motion.button
                 onClick={() => toggleItem(item.id, item.checked)}
-                whileTap={{ scale: 0.85 }}
-                className="w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                style={{ borderColor: 'rgba(17,17,17,0.2)' }}
+                whileTap={{ scale: 0.8 }}
+                className="w-7 h-7 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+                style={{ borderColor: 'rgba(17,17,17,0.15)' }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-graphite truncate">{item.item_name}</p>
+                <p className="text-[15px] font-medium text-graphite truncate leading-tight">{item.item_name}</p>
                 {item.best_store ? (
-                  <p className="text-[11px] mt-0.5 font-semibold" style={{ color: '#00D09C' }}>
-                    {item.best_store}
-                    {item.best_price != null && ` · €${(item.best_price * (item.qty || 1)).toFixed(2)}`}
-                    {(item.qty || 1) > 1 && item.best_price != null && (
-                      <span className="text-graphite/35"> (€{item.best_price.toFixed(2)}×{item.qty})</span>
-                    )}
-                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    <MapPin className="w-2.5 h-2.5 flex-shrink-0" style={{ color: '#00D09C' }} />
+                    <p className="text-[11px] font-semibold truncate" style={{ color: '#00D09C' }}>
+                      {item.best_store}
+                      {item.best_price != null && ` · €${(item.best_price * (item.qty || 1)).toFixed(2)}`}
+                      {(item.qty || 1) > 1 && item.best_price != null && (
+                        <span className="text-graphite/30"> (€{item.best_price.toFixed(2)}/u)</span>
+                      )}
+                    </p>
+                  </div>
                 ) : (
-                  <p className="text-[10px] mt-0.5 text-graphite/30 flex items-center gap-1">
-                    <span className="inline-block w-3 h-1 rounded-full bg-graphite/10 animate-pulse" />
-                    Recherche du meilleur prix…
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'rgba(126,217,87,0.3)' }} />
+                    <p className="text-[10px] text-graphite/25">Recherche du meilleur prix…</p>
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-0.5 flex-shrink-0">
+              <div className="flex items-center gap-1 flex-shrink-0">
                 <motion.button
                   onClick={() => setQty(item.id, -1)}
                   whileTap={{ scale: 0.85 }}
-                  className="w-6 h-6 rounded-full flex items-center justify-center"
+                  className="w-7 h-7 rounded-full flex items-center justify-center"
                   style={{
-                    background: (item.qty || 1) > 1 ? 'rgba(17,17,17,0.07)' : 'transparent',
-                    opacity: (item.qty || 1) > 1 ? 1 : 0.3,
+                    background: (item.qty || 1) > 1 ? 'rgba(17,17,17,0.06)' : 'transparent',
+                    opacity: (item.qty || 1) > 1 ? 1 : 0.2,
                   }}
                   disabled={(item.qty || 1) <= 1}
                 >
                   <Minus className="w-3 h-3 text-graphite" />
                 </motion.button>
-                <span className="w-5 text-center text-xs font-bold text-graphite">{item.qty || 1}</span>
+                <span className="w-6 text-center text-xs font-bold text-graphite tabular-nums">{item.qty || 1}</span>
                 <motion.button
                   onClick={() => setQty(item.id, 1)}
                   whileTap={{ scale: 0.85 }}
-                  className="w-6 h-6 rounded-full flex items-center justify-center"
-                  style={{ background: 'rgba(17,17,17,0.07)' }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(17,17,17,0.06)' }}
                 >
                   <Plus className="w-3 h-3 text-graphite" />
                 </motion.button>
@@ -548,7 +585,7 @@ export default function ListePage() {
                 onClick={() => deleteItem(item.id)}
                 whileTap={{ scale: 0.85 }}
                 className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ color: 'rgba(17,17,17,0.2)' }}
+                style={{ color: 'rgba(17,17,17,0.15)' }}
               >
                 <X className="w-3.5 h-3.5" />
               </motion.button>
@@ -559,15 +596,15 @@ export default function ListePage() {
         {/* Checked items */}
         <AnimatePresence initial={false}>
           {checked.length > 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4">
-              <div className="flex items-center justify-between mb-2 px-1">
-                <p className="text-[11px] text-graphite/35 font-semibold uppercase tracking-wider">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-5">
+              <div className="flex items-center justify-between mb-2.5 px-1">
+                <p className="text-[11px] text-graphite/30 font-semibold uppercase tracking-wider">
                   Dans le panier ({checked.length})
                 </p>
                 <button
                   onClick={clearChecked}
-                  className="text-[11px] font-semibold"
-                  style={{ color: '#EF4444' }}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg"
+                  style={{ color: '#EF4444', background: 'rgba(239,68,68,0.06)' }}
                 >
                   Tout vider
                 </button>
@@ -577,21 +614,22 @@ export default function ListePage() {
                   key={item.id}
                   layout
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.45 }}
+                  animate={{ opacity: 0.4 }}
                   exit={{ opacity: 0 }}
-                  className="glass rounded-2xl px-3 py-3 flex items-center gap-2.5 mb-2"
+                  className="rounded-2xl px-4 py-3 flex items-center gap-3 mb-1.5"
+                  style={{ background: 'rgba(255,255,255,0.4)' }}
                 >
                   <motion.button
                     onClick={() => toggleItem(item.id, item.checked)}
                     whileTap={{ scale: 0.85 }}
-                    className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
+                    className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
                     style={{ background: '#7ed957' }}
                   >
                     <Check className="w-3.5 h-3.5 text-white" />
                   </motion.button>
-                  <p className="text-sm text-graphite/50 line-through flex-1 truncate">{item.item_name}</p>
+                  <p className="text-sm text-graphite/40 line-through flex-1 truncate">{item.item_name}</p>
                   <motion.button onClick={() => deleteItem(item.id)} whileTap={{ scale: 0.85 }}>
-                    <X className="w-3.5 h-3.5 text-graphite/25" />
+                    <X className="w-3.5 h-3.5 text-graphite/15" />
                   </motion.button>
                 </motion.div>
               ))}
@@ -602,19 +640,21 @@ export default function ListePage() {
 
       {/* Sticky bottom bar */}
       <div
-        className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 flex flex-col gap-2"
+        className="fixed bottom-0 left-0 right-0 px-5 flex flex-col gap-2"
         style={{
-          background: 'linear-gradient(to top, #E8E4DD 70%, transparent)',
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+          background: 'linear-gradient(to top, #E8E4DD 60%, transparent)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
+          paddingTop: '16px',
         }}
       >
         {unchecked.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 rounded-2xl glass text-xs">
-            <span className="text-graphite/50 font-medium">
+          <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl text-xs"
+            style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(17,17,17,0.04)' }}>
+            <span className="text-graphite/40 font-medium">
               {pricedItems.length > 0 ? `Estimation (${pricedItems.length} articles)` : 'Total estimé'}
-              {unpricedCount > 0 && <span className="text-graphite/30"> · {unpricedCount} sans prix</span>}
+              {unpricedCount > 0 && <span className="text-graphite/25"> · {unpricedCount} sans prix</span>}
             </span>
-            <span className="font-bold text-graphite">
+            <span className="font-bold text-graphite text-sm">
               {pricedItems.length > 0 ? `€${estimatedTotal.toFixed(2)}` : '—'}
             </span>
           </div>
@@ -624,17 +664,16 @@ export default function ListePage() {
           <motion.button
             onClick={findBestStore}
             disabled={computing}
-            whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
-            className="w-full h-14 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2"
-            style={{ background: '#111111', boxShadow: '0 6px 24px rgba(17,17,17,0.2)' }}
+            className="w-full h-13 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2.5"
+            style={{ background: '#111111', boxShadow: '0 4px 20px rgba(17,17,17,0.15)', height: 52 }}
           >
             {computing ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Calcul en cours…</>
+              <><Loader2 className="w-4.5 h-4.5 animate-spin" /> Calcul en cours…</>
             ) : result ? (
-              <><Store className="w-5 h-5" /> Recalculer le meilleur magasin<ChevronRight className="w-4 h-4 opacity-50 ml-auto" /></>
+              <><Store className="w-4.5 h-4.5" /> Recalculer le meilleur magasin<ChevronRight className="w-4 h-4 opacity-40 ml-1" /></>
             ) : (
-              <><Store className="w-5 h-5" /> Trouver le meilleur magasin<ChevronRight className="w-4 h-4 opacity-50 ml-auto" /></>
+              <><Store className="w-4.5 h-4.5" /> Trouver le meilleur magasin<ChevronRight className="w-4 h-4 opacity-40 ml-1" /></>
             )}
           </motion.button>
         )}
