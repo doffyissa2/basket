@@ -662,32 +662,26 @@ export default function ScanPage() {
 
       const submitData = await submitRes.json()
 
-      // Handle dedup cache hit (no polling needed)
-      if (submitData.status === 'done' && submitData.cached) {
-        setStage(3, 90)
-        const statusRes = await fetch(`/api/scan-status/${submitData.receipt_id}`, {
-          headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-        })
-        // For cached results, re-fetch full data via the old scan endpoint as fallback
-        const cachedRes = await fetch('/api/scan', {
+      // Handle dedup cache hit — receipt already exists, skip to comparison
+      if (submitData.status === 'done' && submitData.cached && submitData.receipt_id) {
+        setStage(2, 60)
+        const compRes = await fetch('/api/compare-prices', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
-          body: JSON.stringify({
-            images: compressed.map(c => ({ image_base64: c.base64, media_type: c.mediaType })),
-            postcode: postcode || null,
-          }),
+          body: JSON.stringify({ receipt_id: submitData.receipt_id, postcode: postcode || null }),
         })
-        if (cachedRes.ok) {
-          const result: ScanResult = await cachedRes.json()
-          handleScanResult(result, compressed)
+        if (compRes.ok) {
+          const result: ScanResult = await compRes.json()
+          handleScanResult(result)
           return
         }
-        // If cache fallback fails, ignore statusRes and fall through to error
-        void statusRes
-        throw new Error('Erreur lors du chargement du cache')
+        // If comparison fails, just show a basic success
+        toast.success('Ticket déjà analysé')
+        setStep('upload')
+        return
       }
 
       const jobId = submitData.jobId as string

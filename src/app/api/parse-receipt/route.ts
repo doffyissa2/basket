@@ -79,14 +79,14 @@ export async function POST(request: NextRequest) {
     await supabase.from('receipts').delete().eq('id', cachedReceipt.id)
   }
 
-  // Create scan job
+  // Create scan job (no image data — passed directly to worker)
   const jobId = crypto.randomUUID()
   const { error: jobErr } = await supabase.from('scan_jobs').insert({
     id: jobId,
     user_id: userId,
     status: 'pending',
     image_hash: imageHash,
-    image_data: images.map(img => ({ base64: img.base64, mediaType: img.mediaType })),
+    image_data: [],
     postcode: postcode,
   })
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Erreur base de données' }, { status: 500 })
   }
 
-  // Trigger background worker (fire-and-forget)
+  // Trigger background worker — pass images directly via HTTP body (not via DB)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
@@ -108,7 +108,10 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.INTERNAL_API_SECRET}`,
     },
-    body: JSON.stringify({ jobId }),
+    body: JSON.stringify({
+      jobId,
+      images: images.map(img => ({ base64: img.base64, mediaType: img.mediaType })),
+    }),
   }).catch(err => {
     console.error('[parse-receipt] Failed to trigger worker:', err)
   })

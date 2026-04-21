@@ -349,7 +349,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { jobId } = await request.json()
+  const body = await request.json()
+  const { jobId, images: bodyImages } = body as {
+    jobId: string
+    images?: Array<{ base64: string; mediaType: string }>
+  }
+
   if (!jobId) {
     return NextResponse.json({ error: 'Missing jobId' }, { status: 400 })
   }
@@ -359,7 +364,7 @@ export async function POST(request: NextRequest) {
   // Fetch job
   const { data: job, error: jobErr } = await supabase
     .from('scan_jobs')
-    .select('*')
+    .select('id, user_id, status, image_hash, postcode')
     .eq('id', jobId)
     .single()
 
@@ -382,13 +387,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const images = (job.image_data as Array<{ base64: string; mediaType: string }>)
+    // Images come directly from the HTTP body (not stored in DB)
+    const images = bodyImages
+    if (!images || images.length === 0) {
+      throw new Error('No images provided to worker')
+    }
     const userId = job.user_id as string
     const imageHash = job.image_hash as string
     const postcode = (job.postcode as string) ?? null
     const dept = postcode ? postcode.slice(0, 2) : null
 
-    console.log(`[process-scan] Starting Claude Vision (${MODEL_ID}) for job=${jobId}, user=${userId}, images=${images.length}`)
+    console.log(`[process-scan] Starting Claude Vision (${MODEL_ID}) for job=${jobId}, user=${userId}, images=${images.length}, sizes=${images.map(i => Math.round(i.base64.length / 1024) + 'kB').join(',')}, types=${images.map(i => i.mediaType).join(',')}`)
 
     const [formatHints, priceAnchors, corrections] = await Promise.all([
       Promise.resolve(supabase.from('receipt_formats').select('store_chain, format_hints').order('store_chain'))
