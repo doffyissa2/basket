@@ -249,7 +249,7 @@ function compressImage(
   file: File,
   maxPx = 1568,
   quality = 0.80
-): Promise<{ base64: string; mediaType: 'image/jpeg' | 'image/webp' }> {
+): Promise<{ base64: string; mediaType: 'image/jpeg' }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -263,29 +263,20 @@ function compressImage(
       if (!ctx) { reject(new Error('canvas unavailable')); return }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
-      // Try WebP first (smaller payload, same quality), fall back to JPEG
-      const tryFormat = (format: 'image/webp' | 'image/jpeg') => {
-        canvas.toBlob(
-          (blob) => {
-            if (!blob && format === 'image/webp') {
-              // Browser doesn't support WebP encoding — fall back to JPEG
-              tryFormat('image/jpeg')
-              return
-            }
-            if (!blob) { reject(new Error('compression failed')); return }
-            const reader = new FileReader()
-            reader.onloadend = () => {
-              const result = reader.result as string
-              const mediaType = format === 'image/webp' ? 'image/webp' as const : 'image/jpeg' as const
-              resolve({ base64: result.split(',')[1], mediaType })
-            }
-            reader.readAsDataURL(blob)
-          },
-          format,
-          quality
-        )
-      }
-      tryFormat('image/webp')
+      // Always use JPEG — universally supported, no media-type mismatch on mobile
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error('compression failed')); return }
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            const result = reader.result as string
+            resolve({ base64: result.split(',')[1], mediaType: 'image/jpeg' as const })
+          }
+          reader.readAsDataURL(blob)
+        },
+        'image/jpeg',
+        quality
+      )
     }
     img.onerror = () => {
       // Browser can't decode this format (e.g. HEIC on Chrome) — send raw bytes
