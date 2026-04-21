@@ -46,21 +46,13 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
   const hasBadge = profileMeta?.hasNewBadge ?? localBadge
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
-      style={{
-        background:           'rgba(245,243,238,0.92)',
-        backdropFilter:       'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        borderTop:            '1px solid rgba(17,17,17,0.06)',
-      }}
-    >
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden glass-dock">
       <LayoutGroup>
         <div
           className="flex items-end justify-around"
           style={{
             paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
-            paddingTop: '8px',
+            paddingTop: '6px',
           }}
         >
           {TABS.map((tab) => {
@@ -73,24 +65,18 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                   key={tab.id}
                   href={tab.href}
                   prefetch
-                  className="flex flex-col items-center -mt-5"
+                  className="flex flex-col items-center -mt-4"
                   onClick={() => haptic(50)}
                 >
                   <motion.div
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="flex items-center justify-center rounded-full"
-                    style={{
-                      width:      52,
-                      height:     52,
-                      background: '#111111',
-                      boxShadow:  '0 4px 20px rgba(17,17,17,0.25)',
-                    }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    whileTap={{ scale: 0.88 }}
+                    className="flex items-center justify-center rounded-full glass-fab"
+                    style={{ width: 52, height: 52 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                   >
-                    <tab.icon className="w-5.5 h-5.5 text-white" strokeWidth={2.2} />
+                    <tab.icon className="w-[22px] h-[22px] text-white" strokeWidth={2.2} />
                   </motion.div>
-                  <span className="text-[10px] font-semibold mt-1 text-graphite/50">{tab.label}</span>
+                  <span className="text-[10px] font-semibold mt-1 text-graphite/40">{tab.label}</span>
                 </Link>
               )
             }
@@ -106,7 +92,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
               >
                 <motion.div
                   whileTap={{ scale: 0.85 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                   className="flex flex-col items-center relative"
                 >
                   {isProfileTab && (
@@ -115,16 +101,14 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 20 }}
                           className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full z-10"
-                          style={{ background: '#EF4444', border: '2px solid rgba(245,243,238,0.92)' }}
+                          style={{ background: '#EF4444', border: '2px solid rgba(245,243,238,0.75)' }}
                         />
                       )}
                       {level && level > 1 && !hasBadge && (
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 20 }}
                           className="absolute -top-1 -right-2.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold z-10 leading-none"
                           style={{ background: '#7ed957', color: '#111' }}
                         >
@@ -137,14 +121,21 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                     </>
                   )}
 
-                  <tab.icon
-                    className="w-[22px] h-[22px] transition-colors"
-                    strokeWidth={isActive ? 2.2 : 1.8}
-                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.3)' }}
-                  />
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
+                    style={{
+                      background: isActive ? 'rgba(126, 217, 87, 0.1)' : 'transparent',
+                    }}
+                  >
+                    <tab.icon
+                      className="w-[20px] h-[20px]"
+                      strokeWidth={isActive ? 2.2 : 1.7}
+                      style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.28)' }}
+                    />
+                  </div>
                   <span
-                    className="text-[10px] font-semibold mt-1 transition-colors"
-                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.3)' }}
+                    className="text-[10px] font-semibold transition-colors"
+                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.28)' }}
                   >
                     {tab.label}
                   </span>
@@ -152,10 +143,10 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
 
                 {isActive && (
                   <motion.div
-                    layoutId="activeTabIndicator"
+                    layoutId="navPill"
                     className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full"
                     style={{ width: 20, height: 3, background: '#7ed957', borderRadius: 2 }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
                 )}
               </Link>

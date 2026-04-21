@@ -58,18 +58,15 @@ function formatLastUpdated(d: Date): string {
 function SkeletonRow({ delay = 0 }: { delay?: number }) {
   return (
     <div className="flex items-center gap-4 px-5 py-3.5"
-      style={{ borderBottom: '1px solid rgba(17,17,17,0.05)' }}>
-      <div className="w-9 h-9 rounded-xl flex-shrink-0 animate-pulse"
-        style={{ background: 'rgba(17,17,17,0.07)' }} />
+      style={{ borderBottom: '1px solid rgba(17,17,17,0.03)' }}>
+      <div className="w-9 h-9 rounded-xl flex-shrink-0 skeleton" />
       <div className="flex-1 space-y-1.5">
-        <div className="h-3 rounded-full animate-pulse"
-          style={{ background: 'rgba(17,17,17,0.07)', width: `${45 + (delay * 37) % 30}%` }} />
-        <div className="h-2.5 rounded-full animate-pulse"
-          style={{ background: 'rgba(17,17,17,0.05)', width: `${25 + (delay * 19) % 15}%` }} />
+        <div className="skeleton skeleton-text" style={{ width: `${45 + (delay * 37) % 30}%` }} />
+        <div className="skeleton skeleton-text-sm" style={{ width: `${25 + (delay * 19) % 15}%` }} />
       </div>
       <div className="flex flex-col items-end gap-1.5">
-        <div className="h-3 w-12 rounded-full animate-pulse" style={{ background: 'rgba(17,17,17,0.07)' }} />
-        <div className="h-2.5 w-9 rounded-full animate-pulse" style={{ background: 'rgba(17,17,17,0.05)' }} />
+        <div className="skeleton" style={{ width: 48, height: 12, borderRadius: 6 }} />
+        <div className="skeleton" style={{ width: 36, height: 10, borderRadius: 5 }} />
       </div>
     </div>
   )

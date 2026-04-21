@@ -195,10 +195,34 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-8 h-8 rounded-full border-2 border-t-transparent"
-          style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
+      <div className="min-h-[100dvh] bg-paper px-5 pt-14">
+        <div className="flex flex-col items-center gap-4 mb-8">
+          <div className="w-20 h-20 rounded-full skeleton" />
+          <div className="skeleton" style={{ width: 140, height: 16 }} />
+          <div className="skeleton" style={{ width: 100, height: 12 }} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="glass-card p-4" style={{ borderRadius: 20 }}>
+              <div className="skeleton" style={{ width: 40, height: 24, marginBottom: 8 }} />
+              <div className="skeleton skeleton-text-sm" style={{ width: '60%' }} />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="glass-card p-4" style={{ borderRadius: 20 }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl skeleton" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton skeleton-text" style={{ width: `${50 + i * 15}%` }} />
+                  <div className="skeleton skeleton-text-sm" style={{ width: `${30 + i * 10}%` }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <BottomNav active="profile" />
       </div>
     )
   }

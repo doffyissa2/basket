@@ -296,9 +296,33 @@ export default function ListePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <div className="w-6 h-6 rounded-full border-2 animate-spin"
-          style={{ borderColor: '#7ed957', borderTopColor: 'transparent' }} />
+      <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col">
+        <div className="px-5 pt-14 pb-2 flex-shrink-0">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-9 h-9 rounded-full skeleton" />
+            <div className="w-24 h-5 skeleton" />
+            <div className="w-9 h-9 rounded-full skeleton" />
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1 h-12 rounded-2xl skeleton" />
+            <div className="w-12 h-12 rounded-2xl skeleton" />
+          </div>
+        </div>
+        <div className="flex-1 px-5 pt-3 space-y-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="glass-card px-4 py-4" style={{ borderRadius: 20 }}>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full skeleton" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton skeleton-text" style={{ width: `${50 + (i * 17) % 30}%` }} />
+                  <div className="skeleton skeleton-text-sm" style={{ width: `${30 + (i * 13) % 20}%` }} />
+                </div>
+                <div className="skeleton" style={{ width: 80, height: 28, borderRadius: 14 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <BottomNav active="liste" />
       </div>
     )
   }
@@ -337,13 +361,12 @@ export default function ListePage() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') addItem() }}
               placeholder="Ajouter un article…"
-              className="flex-1 h-12 rounded-2xl px-4 text-sm text-graphite placeholder:text-graphite/30 focus:outline-none transition-all"
-              style={{ background: 'rgba(255,255,255,0.85)', border: '1.5px solid rgba(17,17,17,0.08)' }}
+              className="flex-1 h-12 rounded-2xl px-4 text-sm text-graphite placeholder:text-graphite/30 focus:outline-none glass-input"
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = '#7ed957'
                 if (suggestions.length > 0) setShowSuggestions(true)
               }}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(17,17,17,0.08)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)')}
             />
             <motion.button
               onClick={() => addItem()}
@@ -529,8 +552,7 @@ export default function ListePage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -80, height: 0, marginBottom: 0 }}
               transition={{ type: 'spring', stiffness: 350, damping: 30, delay: idx * 0.02 }}
-              className="rounded-2xl px-4 py-3.5 flex items-center gap-3 mb-2"
-              style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(17,17,17,0.04)' }}
+              className="glass-card px-4 py-3.5 flex items-center gap-3 mb-2"
             >
               <motion.button
                 onClick={() => toggleItem(item.id, item.checked)}
@@ -616,8 +638,8 @@ export default function ListePage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 0.4 }}
                   exit={{ opacity: 0 }}
-                  className="rounded-2xl px-4 py-3 flex items-center gap-3 mb-1.5"
-                  style={{ background: 'rgba(255,255,255,0.4)' }}
+                  className="glass-card px-4 py-3 flex items-center gap-3 mb-1.5"
+                  style={{ opacity: 0.5 }}
                 >
                   <motion.button
                     onClick={() => toggleItem(item.id, item.checked)}
@@ -648,8 +670,7 @@ export default function ListePage() {
         }}
       >
         {unchecked.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl text-xs"
-            style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(17,17,17,0.04)' }}>
+          <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl text-xs glass">
             <span className="text-graphite/40 font-medium">
               {pricedItems.length > 0 ? `Estimation (${pricedItems.length} articles)` : 'Total estimé'}
               {unpricedCount > 0 && <span className="text-graphite/25"> · {unpricedCount} sans prix</span>}
