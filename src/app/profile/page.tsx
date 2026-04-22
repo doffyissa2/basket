@@ -230,10 +230,10 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-paper text-graphite pb-28">
 
-      {/* ── Dark header ─────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden pt-14 pb-8 px-5 text-center" style={{ background: '#111' }}>
+      {/* ── Profile header (Waze-style light) ──────────────────────────── */}
+      <div className="relative overflow-hidden pt-14 pb-8 px-5 text-center" style={{ background: '#fff', borderBottom: '1px solid rgba(17,17,17,0.06)' }}>
         <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.08) 0%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.06) 0%, transparent 70%)' }} />
 
         {/* Avatar */}
         <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
@@ -241,7 +241,7 @@ export default function ProfilePage() {
           className="inline-flex mb-4 relative">
           <AvatarRing frame={frame} size={80}>
             <div className="w-full h-full rounded-full flex items-center justify-center text-3xl font-extrabold text-white"
-              style={{ background: 'linear-gradient(135deg, #1e1e1e, #2a2a2a)' }}>
+              style={{ background: 'linear-gradient(135deg, #7ed957, #5bc43a)' }}>
               {initial}
             </div>
           </AvatarRing>
@@ -249,13 +249,13 @@ export default function ProfilePage() {
           <motion.div
             initial={{ scale: 0 }} animate={{ scale: 1 }}
             transition={{ delay: 0.3, type: 'spring', stiffness: 400, damping: 20 }}
-            className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold text-graphite"
-            style={{ background: '#7ed957', border: '2px solid #111' }}>
+            className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold"
+            style={{ background: '#111', color: '#7ed957', border: '2px solid #fff' }}>
             {gam?.level ?? 1}
           </motion.div>
         </motion.div>
 
-        <h1 className="text-xl font-extrabold text-white">{username}</h1>
+        <h1 className="text-xl font-extrabold text-graphite">{username}</h1>
         <p className="text-sm mt-0.5 font-semibold" style={{ color: '#7ed957' }}>{gam?.title ?? 'Débutant'}</p>
 
         {/* Streak */}
@@ -277,14 +277,14 @@ export default function ProfilePage() {
               {Math.round(xpVal).toLocaleString('fr-FR')} XP
             </span>
             {gam?.next_level ? (
-              <span className="text-[10px] text-white/30 font-medium">
+              <span className="text-[10px] text-graphite/30 font-medium">
                 {(gam.next_level.xp_required - (gam.xp ?? 0)).toLocaleString('fr-FR')} XP → Nv.{gam.next_level.level}
               </span>
             ) : (
-              <span className="text-[10px] text-white/30">Niveau max</span>
+              <span className="text-[10px] text-graphite/30">Niveau max</span>
             )}
           </div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(17,17,17,0.06)' }}>
             <motion.div className="h-full rounded-full"
               style={{ background: 'linear-gradient(90deg, #7ed957, #00D09C)' }}
               initial={{ width: 0 }}
@@ -293,7 +293,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <p className="text-[10px] text-white/20 mt-3">
+        <p className="text-[10px] text-graphite/20 mt-3">
           Membre depuis {user?.created_at
             ? new Date(user.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
             : '—'}
@@ -331,23 +331,23 @@ export default function ProfilePage() {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, ease: EASE }}
             className="rounded-2xl p-4 flex items-center gap-4"
-            style={{ background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
+            style={{ background: '#fff', border: '1px solid rgba(17,17,17,0.07)' }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(126,217,87,0.12)' }}>
+              style={{ background: 'rgba(126,217,87,0.1)' }}>
               <Lock className="w-5 h-5" style={{ color: '#7ed957' }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-white/35 uppercase tracking-wider font-bold mb-0.5">
+              <p className="text-[10px] text-graphite/35 uppercase tracking-wider font-bold mb-0.5">
                 Prochaine récompense — Nv.{gam.next_level.level}
               </p>
-              <p className="text-sm font-semibold text-white/80 truncate">{gam.next_level.unlock}</p>
-              <p className="text-[10px] text-white/30 mt-0.5">{gam.next_level.title}</p>
+              <p className="text-sm font-semibold text-graphite truncate">{gam.next_level.unlock}</p>
+              <p className="text-[10px] text-graphite/30 mt-0.5">{gam.next_level.title}</p>
             </div>
             <div className="flex-shrink-0 text-right">
               <p className="text-sm font-extrabold" style={{ color: '#7ed957' }}>
                 {(gam.next_level.xp_required - (gam.xp ?? 0)).toLocaleString('fr-FR')}
               </p>
-              <p className="text-[9px] text-white/30">XP restants</p>
+              <p className="text-[9px] text-graphite/30">XP restants</p>
             </div>
           </motion.div>
         )}

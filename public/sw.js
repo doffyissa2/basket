@@ -198,7 +198,8 @@ async function replayPendingReceipts() {
             result,
           }))
         } else if (res.status === 401) {
-          // Auth expired — stop trying, wait for user to refresh
+          // Auth expired — remove entry, user must re-authenticate
+          try { await deletePending(db, entry.id) } catch { /* ignore */ }
           break
         }
         // On 429, 500: leave in queue, try next entry
@@ -230,9 +231,19 @@ self.addEventListener('sync', (e) => {
 self.addEventListener('message', (e) => {
   if (e.data === 'skipWaiting') self.skipWaiting()
 
-  // Client asks for current queue count
+  // Client asks for current queue count — clean stale entries first
   if (e.data === 'getOfflineQueueCount') {
     openOfflineDB().then(async (db) => {
+      const STALE_MS = 24 * 60 * 60 * 1000 // 24 hours
+      const now = Date.now()
+      try {
+        const all = await getAllPending(db)
+        for (const entry of all) {
+          if (entry.timestamp && now - entry.timestamp > STALE_MS) {
+            await deletePending(db, entry.id)
+          }
+        }
+      } catch { /* ignore cleanup errors */ }
       const count = await countPending(db)
       db.close()
       e.source.postMessage({ type: 'offline-queue-count', count })

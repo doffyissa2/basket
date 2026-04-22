@@ -46,13 +46,14 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
   const hasBadge = profileMeta?.hasNewBadge ?? localBadge
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden glass-dock">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
+      style={{ background: '#fff', borderTop: '1px solid rgba(17,17,17,0.06)', boxShadow: '0 -2px 20px rgba(17,17,17,0.03)' }}>
       <LayoutGroup>
         <div
           className="flex items-end justify-around"
           style={{
             paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
-            paddingTop: '6px',
+            paddingTop: '8px',
           }}
         >
           {TABS.map((tab) => {
@@ -65,18 +66,18 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                   key={tab.id}
                   href={tab.href}
                   prefetch
-                  className="flex flex-col items-center -mt-4"
+                  className="flex flex-col items-center -mt-5"
                   onClick={() => haptic(50)}
                 >
                   <motion.div
                     whileTap={{ scale: 0.88 }}
-                    className="flex items-center justify-center rounded-full glass-fab"
-                    style={{ width: 52, height: 52 }}
+                    className="flex items-center justify-center rounded-full"
+                    style={{ width: 54, height: 54, background: '#7ed957', boxShadow: '0 4px 16px rgba(126,217,87,0.3)' }}
                     transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                   >
-                    <tab.icon className="w-[22px] h-[22px] text-white" strokeWidth={2.2} />
+                    <tab.icon className="w-[22px] h-[22px]" strokeWidth={2.2} style={{ color: '#111' }} />
                   </motion.div>
-                  <span className="text-[10px] font-semibold mt-1 text-graphite/40">{tab.label}</span>
+                  <span className="text-[10px] font-semibold mt-1" style={{ color: '#7ed957' }}>{tab.label}</span>
                 </Link>
               )
             }
@@ -87,7 +88,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                 href={tab.href}
                 prefetch
                 className="flex flex-col items-center justify-end py-1 relative"
-                style={{ minWidth: 56 }}
+                style={{ minWidth: 60 }}
                 onClick={() => haptic()}
               >
                 <motion.div
@@ -102,7 +103,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
                           className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full z-10"
-                          style={{ background: '#EF4444', border: '2px solid rgba(245,243,238,0.75)' }}
+                          style={{ background: '#EF4444', border: '2px solid #fff' }}
                         />
                       )}
                       {level && level > 1 && !hasBadge && (
@@ -122,20 +123,20 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                   )}
 
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
                     style={{
                       background: isActive ? 'rgba(126, 217, 87, 0.1)' : 'transparent',
                     }}
                   >
                     <tab.icon
-                      className="w-[20px] h-[20px]"
+                      className="w-[22px] h-[22px]"
                       strokeWidth={isActive ? 2.2 : 1.7}
-                      style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.28)' }}
+                      style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.3)' }}
                     />
                   </div>
                   <span
-                    className="text-[10px] font-semibold transition-colors"
-                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.28)' }}
+                    className="text-[10px] font-semibold transition-colors mt-0.5"
+                    style={{ color: isActive ? '#7ed957' : 'rgba(17,17,17,0.3)' }}
                   >
                     {tab.label}
                   </span>
@@ -145,7 +146,7 @@ export default function BottomNav({ active, profileMeta }: BottomNavProps) {
                   <motion.div
                     layoutId="navPill"
                     className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full"
-                    style={{ width: 20, height: 3, background: '#7ed957', borderRadius: 2 }}
+                    style={{ width: 22, height: 3, background: '#7ed957', borderRadius: 2 }}
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
                 )}

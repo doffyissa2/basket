@@ -286,14 +286,6 @@ export default function ListePage() {
   const estimatedTotal = pricedItems.reduce((s, i) => s + (i.best_price! * (i.qty || 1)), 0)
   const unpricedCount = unchecked.length - pricedItems.length
 
-  // Group items by best_store for the smart view
-  const storeGroups = new Map<string, ListItem[]>()
-  for (const item of unchecked) {
-    const store = item.best_store || 'Recherche en cours…'
-    if (!storeGroups.has(store)) storeGroups.set(store, [])
-    storeGroups.get(store)!.push(item)
-  }
-
   if (loading) {
     return (
       <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col">
@@ -373,9 +365,9 @@ export default function ListePage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.92 }}
               className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-              style={{ background: '#111111' }}
+              style={{ background: '#7ed957' }}
             >
-              <Plus className="w-5 h-5 text-white" />
+              <Plus className="w-5 h-5" style={{ color: '#111' }} />
             </motion.button>
           </div>
 
@@ -686,13 +678,13 @@ export default function ListePage() {
             onClick={findBestStore}
             disabled={computing}
             whileTap={{ scale: 0.98 }}
-            className="w-full h-13 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2.5"
-            style={{ background: '#111111', boxShadow: '0 4px 20px rgba(17,17,17,0.15)', height: 52 }}
+            className="w-full h-13 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5"
+            style={{ background: '#7ed957', color: '#111', boxShadow: '0 4px 20px rgba(126,217,87,0.25)', height: 52 }}
           >
             {computing ? (
               <><Loader2 className="w-4.5 h-4.5 animate-spin" /> Calcul en cours…</>
             ) : result ? (
-              <><Store className="w-4.5 h-4.5" /> Recalculer le meilleur magasin<ChevronRight className="w-4 h-4 opacity-40 ml-1" /></>
+              <><Store className="w-4.5 h-4.5" /> Recalculer<ChevronRight className="w-4 h-4 opacity-40 ml-1" /></>
             ) : (
               <><Store className="w-4.5 h-4.5" /> Trouver le meilleur magasin<ChevronRight className="w-4 h-4 opacity-40 ml-1" /></>
             )}

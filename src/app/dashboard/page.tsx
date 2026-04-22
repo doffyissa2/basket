@@ -382,11 +382,11 @@ function DashboardPage() {
               transition={{ duration: 0.6, ease: EASE }}
               whileTap={{ scale: 0.98 }}
               className="relative overflow-hidden rounded-3xl p-6 md:p-8 cursor-default"
-              style={{ background: '#111' }}>
+              style={{ background: '#fff', border: '1px solid rgba(17,17,17,0.06)', boxShadow: '0 2px 20px rgba(17,17,17,0.04)' }}>
               <div className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.12) 0%, transparent 70%)' }} />
+                style={{ background: 'radial-gradient(circle, rgba(126,217,87,0.08) 0%, transparent 70%)' }} />
               <div className="absolute top-0 left-0 right-0 h-px"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(126,217,87,0.4), transparent)' }} />
+                style={{ background: 'linear-gradient(90deg, transparent, rgba(126,217,87,0.25), transparent)' }} />
 
               <div className="flex items-center justify-between mb-6">
                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
@@ -407,7 +407,7 @@ function DashboardPage() {
                 )}
               </div>
 
-              <p className="text-sm font-medium mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="text-sm font-medium mb-3" style={{ color: 'rgba(17,17,17,0.4)' }}>
                 Bonjour, {username} 👋
               </p>
 
@@ -419,13 +419,13 @@ function DashboardPage() {
                     fontSize: 'clamp(3rem,8vw,4.5rem)',
                     color: '#7ed957',
                     fontVariantNumeric: 'tabular-nums',
-                    textShadow: '0 0 40px rgba(126,217,87,0.35)',
+                    textShadow: '0 0 40px rgba(126,217,87,0.15)',
                     letterSpacing: '-0.02em',
                   }}>
                   €{savingsVal.toFixed(2)}
                 </p>
-                <p className="text-sm mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                  économisés · <span style={{ color: 'rgba(255,255,255,0.25)' }}>€{spentVal.toFixed(2)} dépensés</span>
+                <p className="text-sm mb-1" style={{ color: 'rgba(17,17,17,0.35)' }}>
+                  économisés · <span style={{ color: 'rgba(17,17,17,0.25)' }}>€{spentVal.toFixed(2)} dépensés</span>
                 </p>
               </motion.div>
 
@@ -433,7 +433,7 @@ function DashboardPage() {
                 <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.4, ease: EASE }}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full mb-5"
-                  style={{ background: 'rgba(0,208,156,0.12)', border: '1px solid rgba(0,208,156,0.2)' }}>
+                  style={{ background: 'rgba(0,208,156,0.08)', border: '1px solid rgba(0,208,156,0.15)' }}>
                   <TrendingDown className="w-3 h-3" style={{ color: '#00D09C' }} />
                   <span className="text-xs font-bold" style={{ color: '#00D09C' }}>
                     Taux d'économie : {savingsRate.toFixed(1)} %
@@ -445,14 +445,14 @@ function DashboardPage() {
                 <div className={savingsRate > 0 ? '' : 'mt-4'}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider"
-                      style={{ color: 'rgba(255,255,255,0.2)' }}>
+                      style={{ color: 'rgba(17,17,17,0.25)' }}>
                       {level.next - receiptsCount} ticket{level.next - receiptsCount !== 1 ? 's' : ''} vers {nextLabel}
                     </span>
                     <span className="text-[10px] font-bold" style={{ color: level.color }}>
                       {Math.round(level.progress)} %
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(17,17,17,0.06)' }}>
                     <motion.div className="h-full rounded-full" style={{ background: level.color }}
                       initial={{ width: 0 }} animate={{ width: `${level.progress}%` }}
                       transition={{ delay: 0.65, duration: 1.2, ease: EASE }} />
@@ -462,7 +462,7 @@ function DashboardPage() {
 
               {/* Last updated timestamp (desktop) */}
               {lastUpdatedStr && (
-                <p className="hidden md:block text-[10px] mt-4" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                <p className="hidden md:block text-[10px] mt-4" style={{ color: 'rgba(17,17,17,0.2)' }}>
                   Dernière mise à jour : {lastUpdatedStr}
                 </p>
               )}
@@ -479,7 +479,7 @@ function DashboardPage() {
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'Tickets',   val: receiptsCount, unit: '',  Icon: Receipt,      color: '#7ed957' },
-                { label: 'Ce mois',   val: monthVal,      unit: '€', Icon: ShoppingBag,  color: '#fff' },
+                { label: 'Ce mois',   val: monthVal,      unit: '€', Icon: ShoppingBag,  color: '#111' },
                 { label: 'Économisé', val: savingsVal,    unit: '€', Icon: TrendingDown, color: '#00D09C' },
               ].map((s, i) => (
                 <motion.div key={s.label}
@@ -487,14 +487,20 @@ function DashboardPage() {
                   transition={{ delay: 0.18 + i * 0.07, ease: EASE }}
                   whileTap={{ scale: 0.97 }}
                   className="rounded-2xl p-3 md:p-4"
-                  style={{ background: '#1A1A1A', borderLeft: `3px solid ${s.color}` }}>
+                  style={{
+                    background: '#fff',
+                    borderTop: '1px solid rgba(17,17,17,0.06)',
+                    borderRight: '1px solid rgba(17,17,17,0.06)',
+                    borderBottom: '1px solid rgba(17,17,17,0.06)',
+                    borderLeft: `3px solid ${s.color}`,
+                  }}>
                   <s.Icon className="w-3.5 h-3.5 mb-2" style={{ color: s.color, opacity: 0.5 }} />
                   <p className="text-base md:text-lg font-extrabold leading-tight"
                     style={{ color: s.color, fontVariantNumeric: 'tabular-nums' }}>
                     {s.unit}{s.unit ? (s.val as number).toFixed(2) : s.val}
                   </p>
                   <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider mt-0.5"
-                    style={{ color: 'rgba(255,255,255,0.25)' }}>{s.label}</p>
+                    style={{ color: 'rgba(17,17,17,0.35)' }}>{s.label}</p>
                 </motion.div>
               ))}
             </div>
@@ -558,7 +564,7 @@ function DashboardPage() {
                     <motion.div whileTap={{ scale: 0.95 }} transition={SPRING}>
                       <Link href="/scan"
                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white"
-                        style={{ background: '#111', textDecoration: 'none' }}>
+                        style={{ background: '#7ed957', color: '#111', textDecoration: 'none' }}>
                         <Camera className="w-4 h-4" /> Scanner maintenant
                       </Link>
                     </motion.div>
@@ -644,21 +650,21 @@ function DashboardPage() {
               <motion.div whileTap={{ scale: 0.97 }} transition={SPRING}>
                 <Link href="/bilan"
                   className="rounded-2xl p-5 flex flex-col gap-3 hover:opacity-90 transition-all block"
-                  style={{ background: '#111', textDecoration: 'none' }}>
+                  style={{ background: '#fff', border: '1px solid rgba(17,17,17,0.06)', textDecoration: 'none' }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(126,217,87,0.15)' }}>
+                    style={{ background: 'rgba(126,217,87,0.1)' }}>
                     <BarChart2 className="w-5 h-5" style={{ color: '#7ed957' }} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white">Mon bilan</p>
-                    <p className="text-xs text-white/40 mt-0.5">Mois en cours</p>
+                    <p className="text-sm font-bold text-graphite">Mon bilan</p>
+                    <p className="text-xs text-graphite/40 mt-0.5">Mois en cours</p>
                   </div>
                 </Link>
               </motion.div>
               <motion.div whileTap={{ scale: 0.97 }} transition={SPRING}>
                 <Link href="/liste"
-                  className="rounded-2xl p-5 flex flex-col gap-3 glass hover:bg-black/[0.03] transition-all block"
-                  style={{ textDecoration: 'none' }}>
+                  className="rounded-2xl p-5 flex flex-col gap-3 hover:bg-black/[0.03] transition-all block"
+                  style={{ background: '#fff', border: '1px solid rgba(17,17,17,0.06)', textDecoration: 'none' }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                     style={{ background: 'rgba(17,17,17,0.07)' }}>
                     <ShoppingCart className="w-5 h-5 text-graphite/60" />
@@ -695,9 +701,9 @@ function DashboardPage() {
                 whileTap={{ scale: 0.97 }} style={{ cursor: 'pointer' }}>
                 <Link href="/scan"
                   className="flex items-center gap-4 rounded-2xl p-5 hover:opacity-90 transition-all"
-                  style={{ background: '#111', textDecoration: 'none' }}>
+                  style={{ background: '#fff', border: '1px solid rgba(126,217,87,0.2)', textDecoration: 'none' }}>
                   <div className="relative w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'rgba(126,217,87,0.15)' }}>
+                    style={{ background: 'rgba(126,217,87,0.1)' }}>
                     <Camera className="w-6 h-6" style={{ color: '#7ed957' }} />
                     <motion.div className="absolute inset-0 rounded-xl"
                       style={{ border: '2px solid #7ed957' }}
@@ -705,8 +711,8 @@ function DashboardPage() {
                       transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }} />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-white text-sm">Scanner un ticket</p>
-                    <p className="text-xs text-white/40 mt-0.5">Chaque centime économisé compte</p>
+                    <p className="font-bold text-graphite text-sm">Scanner un ticket</p>
+                    <p className="text-xs text-graphite/40 mt-0.5">Chaque centime économisé compte</p>
                   </div>
                   <Zap className="w-5 h-5 flex-shrink-0" style={{ color: '#7ed957' }} />
                 </Link>
