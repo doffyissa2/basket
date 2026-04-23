@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const { id: jobId } = await params

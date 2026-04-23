@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import BetaGate from '@/components/BetaGate'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
@@ -160,6 +161,7 @@ export default function AlertesPage() {
   }
 
   return (
+    <BetaGate>
     <div className="min-h-screen bg-paper text-graphite pb-28">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-14 pb-6">
@@ -349,5 +351,6 @@ export default function AlertesPage() {
 
       <BottomNav active="profile" />
     </div>
+    </BetaGate>
   )
 }

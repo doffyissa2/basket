@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { getServiceClient } from '@/lib/supabase-service'
 
 /**
  * Verify a Bearer JWT from the Authorization header.
@@ -29,4 +30,26 @@ export async function requireAuth(
   }
 
   return { userId: user.id }
+}
+
+export async function requireBetaAccess(
+  request: NextRequest
+): Promise<{ userId: string } | NextResponse> {
+  const authResult = await requireAuth(request)
+  if (authResult instanceof NextResponse) return authResult
+
+  const { data: profile } = await getServiceClient()
+    .from('profiles')
+    .select('beta_approved')
+    .eq('id', authResult.userId)
+    .single()
+
+  if (!profile?.beta_approved) {
+    return NextResponse.json(
+      { error: 'Beta access required', code: 'BETA_NOT_APPROVED' },
+      { status: 403 }
+    )
+  }
+
+  return { userId: authResult.userId }
 }

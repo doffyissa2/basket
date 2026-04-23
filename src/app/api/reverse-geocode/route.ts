@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const rlResponse = await checkRateLimit(request, 'reverseGeocode', authResult.userId)

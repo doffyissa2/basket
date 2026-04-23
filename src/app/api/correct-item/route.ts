@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
 
@@ -12,7 +12,7 @@ import { getServiceClient } from '@/lib/supabase-service'
  * Body: { receipt_id, original_name, corrected_name, original_price, corrected_price }
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const rlResponse = await checkRateLimit(request, 'correctItem', authResult.userId)

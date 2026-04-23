@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import BetaGate from '@/components/BetaGate'
 import {
   LogOut, MapPin, Bell, Trash2, Receipt, Package, TrendingDown,
   Store, AlertTriangle, Loader2, Lock, Check, ChevronRight, Trophy,
@@ -228,6 +229,7 @@ export default function ProfilePage() {
   }
 
   return (
+    <BetaGate>
     <div className="min-h-screen bg-paper text-graphite pb-28">
 
       {/* ── Profile header (Waze-style light) ──────────────────────────── */}
@@ -634,5 +636,6 @@ export default function ProfilePage() {
         }}
       />
     </div>
+    </BetaGate>
   )
 }

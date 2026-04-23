@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import BetaGate from '@/components/BetaGate'
 import { Bell, ArrowLeft, TrendingDown, Check, Sparkles, ShoppingBag } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import BottomNav from '@/components/BottomNav'
@@ -94,6 +95,7 @@ export default function NotificationsPage() {
   }
 
   return (
+    <BetaGate>
     <div className="min-h-screen bg-paper text-graphite pb-28">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-14 pb-5"
@@ -204,5 +206,6 @@ export default function NotificationsPage() {
 
       <BottomNav active="home" />
     </div>
+    </BetaGate>
   )
 }

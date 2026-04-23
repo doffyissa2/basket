@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import {
   calculateLevel, getLevelProgress, getWeeklyChallenges,
@@ -8,7 +8,7 @@ import {
 import { getServiceClient } from '@/lib/supabase-service'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
   const { userId } = authResult
 

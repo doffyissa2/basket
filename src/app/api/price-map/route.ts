@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
 
@@ -51,7 +51,7 @@ function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
 }
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const rlResponse = await checkRateLimit(request, 'priceMap', authResult.userId)

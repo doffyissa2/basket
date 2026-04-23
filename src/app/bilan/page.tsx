@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import BetaGate from '@/components/BetaGate'
 import {
   ArrowLeft, Share2, TrendingDown, TrendingUp, ShoppingBag,
   Sparkles, Receipt, ChevronDown,
@@ -281,6 +282,7 @@ export default function BilanPage() {
   const catMax = categoryData[0]?.amount ?? 1
 
   return (
+    <BetaGate>
     <div className="min-h-screen text-graphite pb-28" style={{ background: '#F5F3EE' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-14 pb-5">
@@ -578,5 +580,6 @@ export default function BilanPage() {
 
       <BottomNav active="home" />
     </div>
+    </BetaGate>
   )
 }

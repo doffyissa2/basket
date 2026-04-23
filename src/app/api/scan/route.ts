@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 import { normalizeStoreChain } from '@/lib/store-chains'
 import { normalizeProductName, extractBrand, extractWeight } from '@/lib/normalize'
@@ -349,7 +349,7 @@ async function resolveStoreLocation(
 // ── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
   const userId = authResult.userId
 

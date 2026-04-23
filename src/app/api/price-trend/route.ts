@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
 
@@ -13,7 +13,7 @@ import { getServiceClient } from '@/lib/supabase-service'
  *   weeks – number of weeks to return, default 12, max 52
  */
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const rlResponse = await checkRateLimit(request, 'priceTrend', authResult.userId)

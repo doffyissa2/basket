@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getServiceClient } from '@/lib/supabase-service'
 
@@ -11,7 +11,7 @@ import { getServiceClient } from '@/lib/supabase-service'
  * Used for autocomplete in the shopping list input.
  */
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
 
   const rlResponse = await checkRateLimit(request, 'shoppingListSuggest', authResult.userId)

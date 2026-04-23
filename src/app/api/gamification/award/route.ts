@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireBetaAccess } from '@/lib/auth'
 import {
   calculateLevel, calcScanXP, getNewBadges, getISOWeekString,
   XP_EVENTS, BadgeCheckStats, XPAwardResult, BadgeDef,
@@ -53,7 +53,7 @@ interface AwardBody {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request)
+  const authResult = await requireBetaAccess(request)
   if (authResult instanceof NextResponse) return authResult
   const { userId } = authResult
 

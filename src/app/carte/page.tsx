@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import BetaGate from '@/components/BetaGate'
 import dynamic from 'next/dynamic'
 import BottomNav from '@/components/BottomNav'
 import { useUserContext } from '@/lib/user-context'
@@ -53,6 +54,7 @@ export default function CartePage() {
     })
 
   return (
+    <BetaGate>
     <div style={{ height: '100dvh', background: '#111', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Desktop: side-by-side layout. Mobile: map only. */}
       <div className="flex flex-1 min-h-0">
@@ -129,5 +131,6 @@ export default function CartePage() {
       </div>
       <BottomNav active="carte" />
     </div>
+    </BetaGate>
   )
 }

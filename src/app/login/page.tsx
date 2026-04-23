@@ -48,7 +48,7 @@ export default function LoginPage() {
         if (postcode) {
           await supabase.from('profiles').update({ postcode }).eq('id', data.user.id)
         }
-        window.location.href = '/dashboard'
+        window.location.href = '/waitlist'
       }
     } else {
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })

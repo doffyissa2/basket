@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import BetaGate from '@/components/BetaGate'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -178,6 +179,7 @@ export default function ReceiptDetailPage() {
   const hasSavings = (receipt?.savings_amount ?? 0) > 0
 
   return (
+    <BetaGate>
     <div className="min-h-[100dvh] bg-paper text-graphite pb-16">
       {/* Sticky header */}
       <div className="flex items-center gap-3 px-5 pt-14 pb-4 bg-paper sticky top-0 z-10"
@@ -424,5 +426,6 @@ export default function ReceiptDetailPage() {
         </motion.div>
       </main>
     </div>
+    </BetaGate>
   )
 }

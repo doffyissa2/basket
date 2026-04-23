@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import BetaGate from '@/components/BetaGate'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
@@ -320,6 +321,7 @@ export default function ListePage() {
   }
 
   return (
+    <BetaGate>
     <div className="min-h-[100dvh] bg-paper text-graphite flex flex-col">
       {/* Header */}
       <div className="px-5 pt-14 pb-2 flex-shrink-0">
@@ -694,5 +696,6 @@ export default function ListePage() {
 
       <BottomNav active="liste" />
     </div>
+    </BetaGate>
   )
 }

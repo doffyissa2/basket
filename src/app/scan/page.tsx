@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import BetaGate from '@/components/BetaGate'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -772,6 +773,7 @@ export default function ScanPage() {
   }
 
   return (
+    <BetaGate>
     <div className="min-h-screen bg-paper text-graphite pb-28 md:pb-0">
       {/* Location gate */}
       {!locationReady && user && (
@@ -1680,5 +1682,6 @@ export default function ScanPage() {
 
       <BottomNav active="scan" />
     </div>
+    </BetaGate>
   )
 }

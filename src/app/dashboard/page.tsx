@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useRef, useCallback } from 'react'
+import BetaGate from '@/components/BetaGate'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -730,8 +731,10 @@ function DashboardPage() {
 
 export default function DashboardPageWrapper() {
   return (
-    <Suspense>
-      <DashboardPage />
-    </Suspense>
+    <BetaGate>
+      <Suspense>
+        <DashboardPage />
+      </Suspense>
+    </BetaGate>
   )
 }

@@ -30,6 +30,7 @@ export interface UserProfile {
   dept:          string | null   // postcode.slice(0, 2) — derived, not a DB column
   onboarded:     boolean
   total_savings: number
+  beta_approved: boolean
 }
 
 export interface CachedLocation {
@@ -199,7 +200,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
         userId
           ? supabase
               .from('profiles')
-              .select('postcode, onboarded, total_savings')
+              .select('postcode, onboarded, total_savings, beta_approved')
               .eq('id', userId)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
@@ -243,6 +244,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
           dept:          pc ? pc.slice(0, 2) : null,
           onboarded:     Boolean(profileRes.data.onboarded),
           total_savings: Number(profileRes.data.total_savings ?? 0),
+          beta_approved: Boolean(profileRes.data.beta_approved),
         })
       }
 
@@ -295,7 +297,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
             case 'profile': {
               const { data } = await supabase
                 .from('profiles')
-                .select('postcode, onboarded, total_savings')
+                .select('postcode, onboarded, total_savings, beta_approved')
                 .eq('id', userId)
                 .maybeSingle()
               if (data) {
@@ -305,6 +307,7 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
                   dept:          pc ? pc.slice(0, 2) : null,
                   onboarded:     Boolean(data.onboarded),
                   total_savings: Number(data.total_savings ?? 0),
+                  beta_approved: Boolean(data.beta_approved),
                 })
               }
               break
