@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import BetaGate from '@/components/BetaGate'
 import dynamic from 'next/dynamic'
 import BottomNav from '@/components/BottomNav'
 import { useUserContext } from '@/lib/user-context'
@@ -46,15 +45,14 @@ export default function CartePage() {
     : null
 
   // Show top 50 stores sorted by data quality for desktop sidebar
-  const sidebarStores = visibleStores
-    .slice(0, 50)
+  const sidebarStores = [...visibleStores]
     .sort((a, b) => {
       const tierOrder = { cheap: 0, mid: 1, expensive: 2 }
       return (tierOrder[a.price_tier] ?? 2) - (tierOrder[b.price_tier] ?? 2)
     })
+    .slice(0, 50)
 
   return (
-    <BetaGate>
     <div style={{ height: '100dvh', background: '#111', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Desktop: side-by-side layout. Mobile: map only. */}
       <div className="flex flex-1 min-h-0">
@@ -75,7 +73,7 @@ export default function CartePage() {
           <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-white">Magasins visibles</h2>
-              <p className="text-[11px] text-gray-500 mt-0.5">{visibleStores.length.toLocaleString()} résultats</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{visibleStores.length.toLocaleString()} résultats dans cette zone</p>
             </div>
             {selectedStore && (
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
@@ -131,6 +129,5 @@ export default function CartePage() {
       </div>
       <BottomNav active="carte" />
     </div>
-    </BetaGate>
   )
 }

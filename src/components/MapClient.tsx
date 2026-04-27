@@ -327,8 +327,22 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [],
     [pins, chainFilter, tierFilter]
   )
 
-  // Notify parent of visible stores for desktop sidebar
-  useEffect(() => { onVisibleStoresChange?.(visible) }, [visible, onVisibleStoresChange])
+  const updateSidebarStores = useCallback(() => {
+    if (!mapRef.current || !mapLoaded) return
+    const bounds = mapRef.current.getMap().getBounds()
+    if (!bounds) {
+      onVisibleStoresChange?.(visible)
+      return
+    }
+    const inBounds = visible.filter(p => bounds.contains([p.lon, p.lat]))
+    onVisibleStoresChange?.(inBounds)
+  }, [visible, mapLoaded, onVisibleStoresChange])
+
+  // Update sidebar when filters change or map initially loads
+  useEffect(() => {
+    updateSidebarStores()
+  }, [updateSidebarStores])
+
   useEffect(() => { onStoreSelect?.(selectedPin) }, [selectedPin, onStoreSelect])
 
   const cheapestNearby = useMemo(() => {
@@ -468,6 +482,7 @@ export default function MapClient({ userCoords, accessToken, visitedChains = [],
         mapStyle="mapbox://styles/mapbox/standard"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
         onClick={handleMapClick}
+        onMoveEnd={updateSidebarStores}
         onLoad={() => setMapLoaded(true)}
         interactiveLayerIds={['clusters', 'unclustered-point']}
       >

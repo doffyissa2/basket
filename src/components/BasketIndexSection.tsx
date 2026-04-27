@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { ChainRanking, CategoryStat } from '@/app/api/store-rankings/route'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -191,14 +192,15 @@ export default function BasketIndexSection() {
         {CATEGORIES.map(cat => {
           const active = category === cat
           return (
-            <button key={cat} onClick={() => { setCategory(cat); setExpanded(null) }}
-              className="px-3 py-1.5 rounded-full font-mono text-xs transition-all duration-200 hover:scale-105"
-              style={{
-                background: active ? '#7ed957' : 'rgba(255,255,255,0.07)',
-                color:      active ? '#111'    : 'rgba(255,255,255,0.45)',
-                border:     active ? 'none'    : '1px solid rgba(255,255,255,0.1)',
-                fontWeight: active ? 700       : 500,
-              }}>
+            <button 
+              key={cat} 
+              onClick={() => { setCategory(cat); setExpanded(null) }}
+              className={`px-4 py-2 rounded-full font-mono text-[10px] md:text-xs transition-all duration-200 hover:scale-105 border ${
+                active 
+                  ? 'bg-signal text-graphite border-transparent font-bold' 
+                  : 'bg-white/5 text-white/40 border-white/10 font-medium hover:bg-white/10'
+              }`}
+            >
               {cat}
             </button>
           )
@@ -222,74 +224,102 @@ export default function BasketIndexSection() {
           const bw         = barW(r.avg_price)
 
           return (
-            <div key={r.chain}
+            <motion.div 
+              key={r.chain}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
               onClick={() => setExpanded(isExpanded ? null : r.chain)}
+              className={`group transition-all duration-300 ${
+                isExpanded ? 'bg-signal/10 ring-1 ring-signal/20' : 'bg-white/[0.03] hover:bg-white/[0.06]'
+              }`}
               style={{
-                background:    isExpanded ? 'rgba(126,217,87,0.06)' : 'rgba(255,255,255,0.03)',
-                border:        `1px solid ${isExpanded ? 'rgba(126,217,87,0.18)' : 'transparent'}`,
                 borderRadius:  14,
                 padding:       '10px 14px',
                 cursor:        'pointer',
-                transition:    'all 0.2s',
               }}
             >
               {/* Main row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="flex items-center gap-2 md:gap-4">
                 {/* Rank */}
-                <span style={{ fontFamily: 'monospace', fontSize: 10, width: 22, textAlign: 'right', flexShrink: 0,
-                  color: isTop3 ? color : 'rgba(255,255,255,0.2)', fontWeight: isTop3 ? 700 : 400 }}>
+                <span className={`font-mono text-[10px] w-6 md:w-8 text-right shrink-0 transition-colors ${
+                  isTop3 ? '' : 'text-white/20'
+                }`} style={{ color: isTop3 ? color : undefined, fontWeight: isTop3 ? 700 : 400 }}>
                   #{r.rank}
                 </span>
+                
                 {/* Tier dot */}
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0,
-                  boxShadow: isTop3 ? `0 0 8px ${color}88` : 'none' }} />
+                <div className="w-1.5 h-1.5 rounded-full shrink-0" 
+                  style={{ 
+                    background: color, 
+                    boxShadow: isTop3 ? `0 0 8px ${color}88` : 'none' 
+                  }} />
+                
                 {/* Name */}
-                <span style={{ fontWeight: 700, fontSize: 13, width: 104, flexShrink: 0,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  color: isTop3 ? color : '#fff' }}>
+                <span className={`font-bold text-xs md:text-sm shrink-0 w-24 md:w-32 truncate transition-colors ${
+                  isTop3 ? '' : 'text-white'
+                }`} style={{ color: isTop3 ? color : undefined }}>
                   {r.chain}
                 </span>
+                
                 {/* Bar track */}
-                <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', minWidth: 40 }}>
-                  <div style={{
-                    height: '100%', borderRadius: 99, background: color,
-                    width:      animated ? `${bw}%` : '0%',
-                    transition: `width 0.9s cubic-bezier(0.16,1,0.3,1) ${i * 55}ms`,
-                    boxShadow:  isTop3 ? `0 0 10px ${color}55` : 'none',
-                  }} />
+                <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden min-w-[40px] relative">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: animated ? `${bw}%` : 0 }}
+                    transition={{ 
+                      type: "spring",
+                      stiffness: 50,
+                      damping: 15,
+                      delay: 0.2 + (i * 0.05)
+                    }}
+                    className="h-full rounded-full relative"
+                    style={{ 
+                      background: color,
+                      boxShadow: isTop3 ? `0 0 10px ${color}44` : 'none',
+                    }}
+                  />
                 </div>
-                {/* Avg price */}
-                <span style={{ fontFamily: 'monospace', fontSize: 12, flexShrink: 0, minWidth: 50, textAlign: 'right',
-                  color: isTop3 ? color : 'rgba(255,255,255,0.5)', fontWeight: isTop3 ? 700 : 400 }}>
+                
+                {/* Price */}
+                <span className={`font-mono text-[11px] md:text-xs shrink-0 min-w-[55px] md:min-w-[65px] text-right transition-colors ${
+                  isTop3 ? '' : 'text-white/50'
+                }`} style={{ color: isTop3 ? color : undefined, fontWeight: isTop3 ? 700 : 400 }}>
                   {r.avg_price.toFixed(2)} €
                 </span>
+                
                 {/* Index — desktop */}
-                <span className="hidden md:block" style={{ fontFamily: 'monospace', fontSize: 10, flexShrink: 0, width: 46, textAlign: 'right',
-                  color: 'rgba(255,255,255,0.18)' }}>
-                  {r.rank === 1 ? '— base' : `+${r.index - 100}%`}
+                <span className="hidden md:block font-mono text-[10px] shrink-0 w-12 text-right text-white/20">
+                  {r.rank === 1 ? 'base' : `+${r.index - 100}%`}
                 </span>
               </div>
 
               {/* Expanded: category breakdown */}
-              {isExpanded && Object.keys(r.categories).length > 0 && (
-                <div style={{
-                  marginTop: 10, paddingTop: 10,
-                  borderTop: '1px solid rgba(255,255,255,0.07)',
-                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8,
-                }}>
-                  {(Object.entries(r.categories) as Array<[string, CategoryStat]>)
-                    .sort(([, a], [, b]) => a.avg - b.avg)
-                    .map(([cat, stat]) => (
-                      <div key={cat} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '8px 10px' }}>
-                        <p style={{ fontFamily: 'monospace', fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{cat}</p>
-                        <p style={{ fontWeight: 800, fontSize: 15, color, fontFamily: '"Plus Jakarta Sans", sans-serif', margin: 0 }}>{stat.avg.toFixed(2)} €</p>
-                        <p style={{ fontFamily: 'monospace', fontSize: 9, color: 'rgba(255,255,255,0.22)', marginTop: 2 }}>{stat.count} prix</p>
-                      </div>
-                    ))
-                  }
-                </div>
-              )}
-            </div>
+              <AnimatePresence>
+                {isExpanded && Object.keys(r.categories).length > 0 && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {(Object.entries(r.categories) as Array<[string, CategoryStat]>)
+                        .sort(([, a], [, b]) => a.avg - b.avg)
+                        .map(([cat, stat]) => (
+                          <div key={cat} className="bg-white/5 rounded-xl p-3 flex flex-col gap-1">
+                            <p className="font-mono text-[8px] text-white/30 uppercase tracking-wider truncate">{cat}</p>
+                            <p className="font-extrabold text-sm md:text-lg" style={{ color }}>{stat.avg.toFixed(2)} €</p>
+                            <p className="font-mono text-[8px] text-white/20">{stat.count} prix</p>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           )
         })}
       </div>
@@ -306,31 +336,29 @@ export default function BasketIndexSection() {
 
       {/* ── Social sharing ─────────────────────────────────────────────────── */}
       <div className="relative z-10">
-        <p className="font-mono text-[10px] uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <p className="font-mono text-[10px] uppercase tracking-widest mb-4 text-white/25">
           Partager ce classement
         </p>
         <div className="flex flex-wrap gap-2">
           {SHARE_BTNS.map(({ id, label, bg, border, Icon }) => (
-            <button key={id} onClick={() => share(id)}
+            <motion.button 
+              key={id} 
+              onClick={() => share(id)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors"
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 10,
                 background: bg,
                 border: border ?? 'none',
                 color: (id === 'copy' && !copied) ? 'rgba(255,255,255,0.6)' : '#fff',
-                fontFamily: '"Plus Jakarta Sans", sans-serif',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                transition: 'transform 0.15s',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.06)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
             >
               <Icon />
-              {label}
-            </button>
+              <span>{label}</span>
+            </motion.button>
           ))}
         </div>
-        <p className="font-mono text-[10px] mt-2" style={{ color: 'rgba(255,255,255,0.18)' }}>
+        <p className="font-mono text-[9px] mt-3 text-white/20">
           Instagram : le texte est copié dans votre presse-papiers — collez-le dans votre story ou votre bio.
         </p>
       </div>

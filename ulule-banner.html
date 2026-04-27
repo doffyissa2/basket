@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Basket — Ulule Banner</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 680px;
+    height: 380px;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #ffffff;
+  }
+
+  .banner {
+    width: 680px;
+    height: 380px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(150deg, #f0fdf4 0%, #ffffff 35%, #fff 55%, #f0fdf4 100%);
+  }
+
+  /* Dotted grid pattern for texture */
+  .banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(34,197,94,0.07) 1px, transparent 1px);
+    background-size: 24px 24px;
+    z-index: 0;
+  }
+
+  /* Decorative blobs */
+  .deco-circle { position: absolute; border-radius: 50%; z-index: 0; }
+
+  .deco-1 {
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.14) 0%, transparent 65%);
+    top: -100px; right: -80px;
+  }
+  .deco-2 {
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.10) 0%, transparent 65%);
+    bottom: -80px; left: -50px;
+  }
+  .deco-3 {
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.06) 0%, transparent 70%);
+    top: 50%; left: 38%;
+  }
+
+  /* Layout */
+  .content-wrap {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    height: 100%;
+    padding: 32px 38px;
+  }
+
+  .left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-right: 16px;
+  }
+
+  .right {
+    width: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* Logo */
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .logo-img {
+    width: 50px; height: 50px;
+    border-radius: 14px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgba(34, 197, 94, 0.3));
+  }
+
+  .logo-text {
+    font-size: 34px;
+    font-weight: 900;
+    color: #111;
+    letter-spacing: -1px;
+  }
+
+  /* Headline */
+  .headline {
+    font-size: 25px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.25;
+    margin-bottom: 10px;
+  }
+
+  .headline .green {
+    color: #16a34a;
+    position: relative;
+    display: inline-block;
+  }
+
+  .headline .green::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 3px;
+    background: #22c55e;
+    border-radius: 2px;
+  }
+
+  .subtitle {
+    font-size: 12.5px;
+    color: #666;
+    line-height: 1.55;
+    max-width: 310px;
+    margin-bottom: 18px;
+    font-weight: 400;
+  }
+
+  /* Feature pills */
+  .features { display: flex; gap: 8px; }
+
+  .pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 100px;
+    padding: 6px 13px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  .pill-icon {
+    width: 20px; height: 20px;
+    background: #dcfce7;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .pill-icon svg {
+    width: 11px; height: 11px;
+    stroke: #16a34a; fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pill-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #333;
+  }
+
+  /* ---- PHONE MOCKUP ---- */
+  .phone {
+    width: 170px;
+    height: 300px;
+    background: #fff;
+    border-radius: 24px;
+    border: 2.5px solid #e0e0e0;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.10),
+      0 4px 16px rgba(0,0,0,0.05);
+    transform: translateY(30px);
+  }
+
+  .phone-notch {
+    width: 65px; height: 18px;
+    background: #f3f4f6;
+    border-radius: 0 0 12px 12px;
+    margin: 0 auto;
+  }
+
+  .phone-screen { padding: 6px 12px; }
+
+  .phone-header {
+    text-align: center;
+    padding: 4px 0 6px;
+  }
+  .phone-header-text {
+    font-size: 10px;
+    font-weight: 700;
+    color: #16a34a;
+  }
+
+  /* Product card in phone */
+  .phone-card {
+    background: #fafafa;
+    border-radius: 10px;
+    padding: 8px 10px;
+    border: 1px solid #f0f0f0;
+    margin-bottom: 6px;
+  }
+
+  .phone-card-title {
+    font-size: 7.5px;
+    font-weight: 700;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 5px;
+  }
+
+  .price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3.5px 0;
+  }
+
+  .store-name { font-size: 9px; font-weight: 600; color: #333; }
+  .store-price { font-size: 9.5px; font-weight: 800; }
+
+  .price-best { color: #16a34a; }
+  .price-ok { color: #65a30d; }
+  .price-mid { color: #ca8a04; }
+  .price-high { color: #dc2626; }
+
+  .divider { height: 1px; background: #f0f0f0; }
+
+  /* Receipt preview card */
+  .receipt-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 7px 10px;
+    border: 1px solid #e5e7eb;
+    position: relative;
+  }
+
+  .receipt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+
+  .receipt-store {
+    font-size: 8px;
+    font-weight: 700;
+    color: #333;
+  }
+
+  .receipt-date {
+    font-size: 7px;
+    color: #999;
+    font-weight: 500;
+  }
+
+  .receipt-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .receipt-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5px;
+    color: #666;
+  }
+
+  .receipt-item-price {
+    font-weight: 700;
+    color: #333;
+  }
+
+  .receipt-total {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed #ddd;
+    font-size: 8.5px;
+    font-weight: 800;
+    color: #111;
+  }
+
+  .receipt-scan-badge {
+    position: absolute;
+    top: -6px;
+    right: -4px;
+    background: #22c55e;
+    color: #fff;
+    font-size: 6.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 100px;
+    letter-spacing: 0.3px;
+  }
+
+  /* Savings card */
+  .savings-card {
+    margin-top: 6px;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border-radius: 10px;
+    padding: 9px;
+    text-align: center;
+  }
+
+  .savings-amount {
+    font-size: 18px;
+    font-weight: 900;
+    color: #fff;
+  }
+
+  .savings-label {
+    font-size: 7px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 1px;
+  }
+
+  /* ---- FLOATING BADGES ---- */
+  .float-badge {
+    position: absolute;
+    background: #fff;
+    border-radius: 100px;
+    padding: 5px 12px;
+    font-size: 9px;
+    font-weight: 700;
+    z-index: 5;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.03);
+  }
+
+  .badge-best {
+    bottom: 80px;
+    left: -40px;
+    color: #16a34a;
+    border: 1.5px solid #dcfce7;
+  }
+
+  .badge-best::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: #22c55e;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  .badge-stores {
+    top: 20px;
+    left: -28px;
+    color: #333;
+    border: 1.5px solid #e5e7eb;
+  }
+
+  .badge-stores span { color: #16a34a; font-weight: 800; }
+
+  .badge-alert {
+    bottom: 38px;
+    right: -10px;
+    color: #ca8a04;
+    border: 1.5px solid #fef3c7;
+    background: #fffbeb;
+    font-size: 8px;
+  }
+
+  .badge-alert::before {
+    content: '';
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: #f59e0b;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* Store logo strip */
+  .store-strip {
+    position: absolute;
+    bottom: 16px;
+    left: 38px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .store-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7px;
+    font-weight: 800;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border: 1.5px solid rgba(255,255,255,0.8);
+  }
+
+  .store-leclerc { background: #005baa; }
+  .store-carrefour { background: #004e9a; }
+  .store-lidl { background: #0050aa; font-size: 5.5px; }
+  .store-aldi { background: #00487c; }
+  .store-inter { background: #cc0000; font-size: 5px; }
+  .store-more {
+    background: #f3f4f6;
+    color: #666;
+    font-size: 7px;
+    border-color: #e5e7eb;
+  }
+
+  /* CTA badge */
+  .crowdfund-badge {
+    position: absolute;
+    top: 22px; right: 26px;
+    z-index: 10;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 8px 18px;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    box-shadow: 0 4px 16px rgba(34, 197, 94, 0.35);
+  }
+
+  /* Accent bar */
+  .accent-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #22c55e, #16a34a, #15803d);
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="banner">
+  <div class="deco-circle deco-1"></div>
+  <div class="deco-circle deco-2"></div>
+  <div class="deco-circle deco-3"></div>
+
+  <div class="crowdfund-badge">Soutenez-nous</div>
+
+  <div class="content-wrap">
+    <div class="left">
+      <div class="logo-row">
+        <img class="logo-img" src="public/basket_logo.png" alt="Basket">
+        <span class="logo-text">Basket</span>
+      </div>
+
+      <div class="headline">
+        Payez <span class="green">moins</span> pour<br>vos courses.
+      </div>
+
+      <div class="subtitle">
+        Scannez vos tickets de caisse, comparez les prix de 15 enseignes et trouvez le magasin le moins cher pres de chez vous.
+      </div>
+
+      <div class="features">
+        <div class="pill">
+          <div class="pill-icon">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+          <span class="pill-label">Scanner</span>
+        </div>
+        <div class="pill">
+          <div class="pill-icon">
+            <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          </div>
+          <span class="pill-label">Comparer</span>
+        </div>
+        <div class="pill">
+          <div class="pill-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <span class="pill-label">Economiser</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="float-badge badge-stores"><span>15</span> enseignes</div>
+
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-header">
+            <div class="phone-header-text">Comparaison des prix</div>
+          </div>
+
+          <!-- Receipt scan preview -->
+          <div class="receipt-card">
+            <div class="receipt-scan-badge">Scanne</div>
+            <div class="receipt-header">
+              <span class="receipt-store">Carrefour City</span>
+              <span class="receipt-date">22 avr. 2026</span>
+            </div>
+            <div class="receipt-items">
+              <div class="receipt-item">
+                <span>Lait 1L</span>
+                <span class="receipt-item-price">1,15</span>
+              </div>
+              <div class="receipt-item">
+                <span>Beurre 250g</span>
+                <span class="receipt-item-price">2,30</span>
+              </div>
+              <div class="receipt-item">
+                <span>Pates 500g</span>
+                <span class="receipt-item-price">1,45</span>
+              </div>
+            </div>
+            <div class="receipt-total">
+              <span>Total</span>
+              <span>4,90 &euro;</span>
+            </div>
+          </div>
+
+          <!-- Price comparison -->
+          <div class="phone-card">
+            <div class="phone-card-title">Moins cher ailleurs</div>
+            <div class="price-row">
+              <span class="store-name">E.Leclerc</span>
+              <span class="store-price price-best">3,89 &euro;</span>
+            </div>
+            <div class="divider"></div>
+            <div class="price-row">
+              <span class="store-name">Lidl</span>
+              <span class="store-price price-ok">4,10 &euro;</span>
+            </div>
+            <div class="divider"></div>
+            <div class="price-row">
+              <span class="store-name">Carrefour</span>
+              <span class="store-price price-high">4,90 &euro;</span>
+            </div>
+          </div>
+
+          <!-- Savings -->
+          <div class="savings-card">
+            <div class="savings-amount">-127 &euro;/mois</div>
+            <div class="savings-label">d'economies en moyenne</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float-badge badge-best">Meilleur prix</div>
+      <div class="float-badge badge-alert">Alerte baisse de prix</div>
+    </div>
+  </div>
+
+  <!-- Store logo strip at bottom -->
+  <div class="store-strip">
+    <div class="store-dot store-leclerc">EL</div>
+    <div class="store-dot store-carrefour">C</div>
+    <div class="store-dot store-lidl">LIDL</div>
+    <div class="store-dot store-aldi">A</div>
+    <div class="store-dot store-inter">INTER</div>
+    <div class="store-dot store-more">+10</div>
+  </div>
+
+  <div class="accent-bar"></div>
+</div>
+</body>
+</html>
