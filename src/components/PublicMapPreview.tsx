@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import Map, { Source, Layer, NavigationControl } from 'react-map-gl/mapbox'
 import type { MapRef, MapMouseEvent } from 'react-map-gl/mapbox'
 import type { GeoJSONSource } from 'mapbox-gl'
@@ -30,10 +30,23 @@ function chainColor(chain: string): string {
   return CHAIN_COLORS[chain] ?? '#9CA3AF'
 }
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 768 || 'ontouchstart' in window)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return mobile
+}
+
 export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = 'Explorer' }: { ctaHref?: string; ctaLabel?: string }) {
   const mapRef = useRef<MapRef>(null)
   const [pins, setPins] = useState<PublicStorePin[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [unlocked, setUnlocked] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     fetch('/api/public-map')
@@ -60,7 +73,7 @@ export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = '
     })),
   }), [pins])
 
-  const handleClick = (e: MapMouseEvent) => {
+  const handleClick = useCallback((e: MapMouseEvent) => {
     if (!mapRef.current) return
     const clusterHits = mapRef.current.queryRenderedFeatures(e.point, { layers: ['pub-clusters'] })
     if (clusterHits.length > 0) {
@@ -72,7 +85,9 @@ export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = '
         mapRef.current.flyTo({ center: coords, zoom, duration: 600 })
       })
     }
-  }
+  }, [])
+
+  const mobileInteractive = isMobile && unlocked
 
   return (
     <div className="relative w-full h-full rounded-[2rem] md:rounded-[3rem] overflow-hidden">
@@ -82,13 +97,17 @@ export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = '
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/standard"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
-        onClick={handleClick}
+        onClick={!isMobile || mobileInteractive ? handleClick : undefined}
         onLoad={() => setLoaded(true)}
-        interactiveLayerIds={['pub-clusters']}
+        interactiveLayerIds={!isMobile || mobileInteractive ? ['pub-clusters'] : []}
         attributionControl={false}
         dragRotate={false}
         pitchWithRotate={false}
-        cooperativeGestures
+        dragPan={!isMobile || mobileInteractive}
+        scrollZoom={!isMobile || mobileInteractive}
+        touchZoomRotate={!isMobile || mobileInteractive}
+        touchPitch={false}
+        doubleClickZoom={!isMobile || mobileInteractive}
       >
         <NavigationControl position="top-right" showCompass={false} />
 
@@ -112,6 +131,28 @@ export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = '
           </Source>
         )}
       </Map>
+
+      {/* Mobile touch shield — tap to unlock map interaction */}
+      {isMobile && !unlocked && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center"
+          onClick={() => setUnlocked(true)}
+        >
+          <div className="bg-graphite/70 backdrop-blur-sm text-white font-sans text-xs font-semibold px-4 py-2 rounded-full shadow-lg">
+            Appuyez pour explorer la carte
+          </div>
+        </div>
+      )}
+
+      {/* Re-lock after scrolling away */}
+      {isMobile && unlocked && (
+        <button
+          className="absolute top-3 left-3 z-20 bg-graphite/70 backdrop-blur-sm text-white font-mono text-[10px] font-bold px-3 py-1.5 rounded-full"
+          onClick={() => setUnlocked(false)}
+        >
+          Verrouiller
+        </button>
+      )}
 
       <div className="absolute bottom-0 left-0 right-0 p-5 z-10" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.6))' }}>
         <div className="flex items-end justify-between gap-4">
