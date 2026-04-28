@@ -88,6 +88,7 @@ export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = '
         attributionControl={false}
         dragRotate={false}
         pitchWithRotate={false}
+        cooperativeGestures
       >
         <NavigationControl position="top-right" showCompass={false} />
 
