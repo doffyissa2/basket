@@ -30,7 +30,7 @@ function chainColor(chain: string): string {
   return CHAIN_COLORS[chain] ?? '#9CA3AF'
 }
 
-export default function PublicMapPreview() {
+export default function PublicMapPreview({ ctaHref = '/carte-info', ctaLabel = 'Explorer' }: { ctaHref?: string; ctaLabel?: string }) {
   const mapRef = useRef<MapRef>(null)
   const [pins, setPins] = useState<PublicStorePin[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -121,11 +121,11 @@ export default function PublicMapPreview() {
             <p className="font-mono text-[10px] text-white/70 mt-0.5">15 enseignes en France</p>
           </div>
           <Link
-            href="/carte"
+            href={ctaHref}
             className="flex items-center gap-2 rounded-full px-4 py-2 font-sans text-sm font-bold text-graphite transition-all hover:scale-105 active:scale-95"
             style={{ background: '#7ed957', boxShadow: '0 2px 12px rgba(126,217,87,0.4)' }}
           >
-            Explorer
+            {ctaLabel}
             <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
               <path d="M3 8h10m0 0L9.5 4.5M13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

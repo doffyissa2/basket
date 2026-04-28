@@ -480,7 +480,7 @@ export default function HomePage() {
             <Link href="/basket-ai" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Basket AI</Link>
             <Link href="/vision" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Vision</Link>
             <Link href="/comment-ca-marche" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Comment ça marche</Link>
-            <Link href="/carte" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</Link>
+            <Link href="/carte-info" className="hover:text-signal transition-colors duration-200 py-1 border-b border-transparent hover:border-signal">Carte</Link>
           </div>
 
           {/* CTA */}
@@ -1171,7 +1171,7 @@ export default function HomePage() {
               <li><Link href="/vision" className="hover:text-signal transition-colors hover-trigger">Vision</Link></li>
             </ul>
             <ul className="space-y-[2vh] font-mono text-xs text-paper/60">
-              <li><Link href="/carte" className="hover:text-signal transition-colors hover-trigger">Carte des prix</Link></li>
+              <li><Link href="/carte-info" className="hover:text-signal transition-colors hover-trigger">Carte des prix</Link></li>
               <li><Link href="/contact" className="hover:text-signal transition-colors hover-trigger">Contact</Link></li>
               <li><Link href="/privacy" className="hover:text-signal transition-colors hover-trigger">Politique de confidentialité</Link></li>
               <li><Link href="/terms" className="hover:text-signal transition-colors hover-trigger">{"Conditions d'utilisation"}</Link></li>
