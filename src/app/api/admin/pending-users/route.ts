@@ -1,31 +1,16 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 
-const ADMIN_EMAILS = ['angelo.maniraguha@gmail.com']
-
-async function verifyAdmin(request: NextRequest) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '').trim()
-  if (!token) return null
-
-  const { data: { user } } = await createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ).auth.getUser(token)
-
-  if (!user || !ADMIN_EMAILS.includes(user.email ?? '')) return null
-  return user
-}
+const PROFILES_QUERY_CAP = 1000
 
 export async function GET(request: NextRequest) {
-  const admin = await verifyAdmin(request)
-  if (!admin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const adminResult = await requireAdmin(request)
+  if (adminResult instanceof NextResponse) return adminResult
 
   const supabase = getServiceClient()
 
-  const [{ count: approvedCount }, { data: pending }] = await Promise.all([
+  const [approvedRes, pendingRes] = await Promise.all([
     supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true })
@@ -33,12 +18,15 @@ export async function GET(request: NextRequest) {
     supabase
       .from('profiles')
       .select('id, postcode, beta_approved, beta_approved_at, created_at')
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(PROFILES_QUERY_CAP),
   ])
 
+  const approvedCount = approvedRes.count
+  const pending = pendingRes.data
   const userIds = (pending ?? []).map((p: { id: string }) => p.id)
 
-  let emailMap: Record<string, string> = {}
+  const emailMap: Record<string, string> = {}
   if (userIds.length > 0) {
     const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 })
     for (const u of users ?? []) {

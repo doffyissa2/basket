@@ -283,18 +283,44 @@ export default function HomePage() {
         }, 1500)
       }
 
-      // Product counter
-      const counterObj = { val: 0 }
+      // Live stats counters — fetch real counts from /api/public-stats then
+      // animate each from 0 to its target on scroll-into-view.
+      const animateCounter = (id: string, target: number) => {
+        const obj = { val: 0 }
+        gsap.to(obj, {
+          val: target,
+          duration: 2.5,
+          ease: 'power4.out',
+          onUpdate: () => {
+            const el = document.getElementById(id)
+            if (el) el.innerText = Math.round(obj.val).toLocaleString('fr-FR')
+          },
+        })
+      }
+
+      let statsTriggered = false
+      let liveStores = 0
+      let liveReceipts = 0
+      let liveProducts = 0
+
+      fetch('/api/public-stats')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return
+          liveStores   = data.stores   ?? 0
+          liveReceipts = data.receipts ?? 0
+          liveProducts = data.products ?? 0
+        })
+        .catch(() => {})
+
       ScrollTrigger.create({
-        trigger: '#uptime-counter', start: 'top 85%',
+        trigger: '#stats-card', start: 'top 85%',
         onEnter: () => {
-          gsap.to(counterObj, {
-            val: 3000, duration: 2.5, ease: 'power4.out',
-            onUpdate: () => {
-              const el = document.getElementById('uptime-counter')
-              if (el) el.innerText = Math.round(counterObj.val).toLocaleString('fr-FR')
-            },
-          })
+          if (statsTriggered) return
+          statsTriggered = true
+          animateCounter('stat-stores',   liveStores)
+          animateCounter('stat-receipts', liveReceipts)
+          animateCounter('stat-products', liveProducts)
         },
       })
 
@@ -584,6 +610,40 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ==================== ULULE PROMO ==================== */}
+      <section className="px-5 md:px-[5vw] pt-6 pb-0 relative z-10">
+        <a
+          href="https://www.ulule.com/basketbeta/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block max-w-4xl mx-auto rounded-2xl px-6 py-5 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          style={{ background: 'linear-gradient(135deg, #7ed957 0%, #5cb840 100%)', boxShadow: '0 4px 24px rgba(126,217,87,0.25)' }}
+        >
+          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-white" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 2L3.5 5.5v4.5c0 4.14 2.72 7.5 6.5 8.5 3.78-1 6.5-4.36 6.5-8.5V5.5L10 2z" fill="currentColor" opacity="0.3" />
+                  <path d="M10 6v5m0 0v2m0-2h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M7 10h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-sans text-sm font-bold text-white leading-tight">Soutenez Basket sur Ulule</p>
+                <p className="font-mono text-[10px] text-white/75 uppercase tracking-wider mt-0.5">Campagne de financement participatif</p>
+              </div>
+            </div>
+            <div className="flex-1 hidden sm:block" />
+            <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-2 flex-shrink-0">
+              <span className="font-sans text-sm font-bold text-white">Contribuer</span>
+              <svg className="w-4 h-4 text-white" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8h10m0 0L9.5 4.5M13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>
+        </a>
+      </section>
+
       {/* ==================== FEATURES ==================== */}
       <section className="py-12 md:py-[15vh] px-5 md:px-[5vw] grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-[2vw] relative z-10" id="features">
         {/* Card 1 — Basket AI */}
@@ -598,18 +658,30 @@ export default function HomePage() {
           </h3>
         </div>
 
-        {/* Card 2 — Base de données */}
-        <div className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] h-auto min-h-[280px] md:h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
+        {/* Card 2 — Base de données (live stats) */}
+        <div id="stats-card" className="bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[2.5vw] h-auto min-h-[280px] md:h-[50vh] flex flex-col justify-between group border border-graphite/10 hover-trigger feature-card">
           <div className="flex justify-between items-start">
             <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">02 // Base de données</span>
             <iconify-icon icon="solar:database-linear" className="text-2xl text-signal" />
           </div>
-          <div className="flex-1 flex items-end mb-4 md:mb-[2vh] relative">
-            <span className="font-sans text-5xl md:text-[5vw] leading-none tracking-tighter font-extrabold text-graphite" id="uptime-counter">0</span>
-            <span className="font-mono text-lg text-signal mb-1 md:mb-[1vh] ml-2">produits</span>
+
+          <div className="flex-1 flex flex-col justify-end gap-3 md:gap-[1.2vh] mb-3 md:mb-[1.5vh]">
+            <div className="flex items-baseline justify-between gap-3 border-b border-graphite/10 pb-2">
+              <span className="font-sans text-3xl md:text-[2.6vw] leading-none tracking-tighter font-extrabold text-graphite" id="stat-stores">0</span>
+              <span className="font-mono text-[10px] md:text-xs text-graphite/55 uppercase tracking-tight">magasins</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-3 border-b border-graphite/10 pb-2">
+              <span className="font-sans text-3xl md:text-[2.6vw] leading-none tracking-tighter font-extrabold text-graphite" id="stat-receipts">0</span>
+              <span className="font-mono text-[10px] md:text-xs text-graphite/55 uppercase tracking-tight">tickets scannés</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-sans text-3xl md:text-[2.6vw] leading-none tracking-tighter font-extrabold text-signal" id="stat-products">0</span>
+              <span className="font-mono text-[10px] md:text-xs text-graphite/55 uppercase tracking-tight">produits comparables</span>
+            </div>
           </div>
+
           <h3 className="font-sans text-xl md:text-[2vw] leading-none tracking-tighter font-bold text-graphite">
-            +9 000 prix<br />comparés en temps réel
+            Comparés en<br />temps réel
           </h3>
         </div>
 

@@ -60,13 +60,17 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Defensive caps — public endpoint, even with rate limiting we don't want
+  // a single request to pull a giant payload from the DB. 10k per source is
+  // plenty for chain-level ranking aggregation.
+  const ROW_CAP = 10000
   const [mpRes, cpRes] = await Promise.all([
     supabase
       .from('market_prices')
       .select('store_chain, product_name_normalised, unit_price')
       .gt('unit_price', 0.1)
       .lt('unit_price', 150)
-      .limit(30000),
+      .limit(ROW_CAP),
     supabase
       .from('community_prices')
       .select('store_chain, item_name_normalised, unit_price')
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
       .not('item_name_normalised', 'is', null)
       .gt('unit_price', 0.1)
       .lt('unit_price', 150)
-      .limit(30000),
+      .limit(ROW_CAP),
   ])
 
   const chainMap = new Map<string, ChainData>()

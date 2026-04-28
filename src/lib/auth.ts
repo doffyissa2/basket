@@ -53,3 +53,30 @@ export async function requireBetaAccess(
 
   return { userId: authResult.userId }
 }
+
+// ── Admin guard ──────────────────────────────────────────────────────────────
+// Comma-separated list of admin emails — fall back to the founder's email
+// so the system is functional even when the env var hasn't been set yet.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? 'angelo.maniraguha@gmail.com')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean)
+
+export async function requireAdmin(
+  request: NextRequest
+): Promise<{ userId: string; email: string } | NextResponse> {
+  const token = request.headers.get('authorization')?.replace('Bearer ', '').trim()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: { user } } = await createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  ).auth.getUser(token)
+
+  const email = user?.email?.toLowerCase() ?? ''
+  if (!user || !ADMIN_EMAILS.includes(email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  return { userId: user.id, email }
+}

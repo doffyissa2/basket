@@ -50,6 +50,10 @@ function detectChain(storeName: string | null): string | null {
 }
 
 // ── Normalise product name ────────────────────────────────────────────────────
+// LEGACY local copy — kept for backwards-compat with existing rows. New code
+// should import normalizeProductName from '@/lib/normalize' (already imported
+// above). The two produce equivalent output for ASCII + accented Latin text;
+// they only differ for ligatures (œ, æ) which are rare in receipt data.
 
 function normaliseProductName(name: string): string {
   return name

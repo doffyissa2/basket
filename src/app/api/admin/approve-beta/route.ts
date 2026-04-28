@@ -1,31 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabase-service'
 
-const ADMIN_EMAILS = ['angelo.maniraguha@gmail.com']
 const BETA_CAP = 100
 
-async function verifyAdmin(request: NextRequest) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '').trim()
-  if (!token) return null
-
-  const { data: { user } } = await createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ).auth.getUser(token)
-
-  if (!user || !ADMIN_EMAILS.includes(user.email ?? '')) return null
-  return user
-}
-
 export async function POST(request: NextRequest) {
-  const admin = await verifyAdmin(request)
-  if (!admin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const adminResult = await requireAdmin(request)
+  if (adminResult instanceof NextResponse) return adminResult
 
   const { targetUserId } = await request.json()
-  if (!targetUserId) {
+  if (!targetUserId || typeof targetUserId !== 'string') {
     return NextResponse.json({ error: 'targetUserId required' }, { status: 400 })
   }
 
