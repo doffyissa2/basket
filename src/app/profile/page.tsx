@@ -188,7 +188,7 @@ export default function ProfilePage() {
     setEditingPostcode(false)
   }
 
-  const username    = user?.email?.split('@')[0] ?? ''
+  const username    = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
   const initial     = username[0]?.toUpperCase() ?? '?'
   const frame       = gam?.frame ?? 'default'
   const earnedIds   = new Set((gam?.badges ?? []).map((b) => b.id))

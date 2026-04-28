@@ -248,7 +248,7 @@ function DashboardPage() {
   const level       = getLevel(receiptsCount)
   const nextLabel   = NEXT_LEVEL[level.label]
   const savingsRate = totalSpent > 0 ? (totalSavings / (totalSpent + totalSavings) * 100) : 0
-  const username    = user?.email?.split('@')[0] ?? ''
+  const username    = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
 
   return (
     <>
