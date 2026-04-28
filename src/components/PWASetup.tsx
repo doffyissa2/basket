@@ -15,9 +15,23 @@ export default function PWASetup() {
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    // Register service worker
+    // Register service worker + listen for updates
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {})
+
+      // When the new SW activates and clears old caches, it tells us to reload
+      // so we pick up the fresh build immediately. Without this, mobile keeps
+      // running the previous deploy until manual refresh.
+      const reloadHandler = (e: MessageEvent) => {
+        if (e.data?.type === 'sw-updated') {
+          // Avoid reload loops — only reload once per session
+          if (!sessionStorage.getItem('basket-sw-reloaded')) {
+            sessionStorage.setItem('basket-sw-reloaded', '1')
+            window.location.reload()
+          }
+        }
+      }
+      navigator.serviceWorker.addEventListener('message', reloadHandler)
     }
 
     // Check if already dismissed

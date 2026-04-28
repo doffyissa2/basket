@@ -1,8 +1,8 @@
-const CACHE = 'basket-v4'
+const CACHE = 'basket-v5'
+// Only static, immutable assets — never cache app pages, since their HTML
+// references hashed JS chunks that change on every deploy. Caching HTML
+// pages caused mobile to keep running stale builds.
 const STATIC = [
-  '/',
-  '/dashboard',
-  '/login',
   '/offline.html',
   '/manifest.json',
   '/icon-192.png',
@@ -72,6 +72,12 @@ self.addEventListener('activate', (e) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(async () => {
+        // Tell every open window to reload so they pick up the new build
+        // immediately instead of running stale cached chunks.
+        const clients = await self.clients.matchAll({ type: 'window' })
+        clients.forEach((client) => client.postMessage({ type: 'sw-updated' }))
+      })
   )
 })
 
@@ -141,7 +147,7 @@ self.addEventListener('fetch', (e) => {
   // Skip API routes — always go to network
   if (url.pathname.startsWith('/api/')) return
 
-  // Cache-first for Next.js static chunks (they have content hashes)
+  // Cache-first for Next.js static chunks (they have content hashes — safe to cache forever)
   if (url.pathname.startsWith('/_next/static/')) {
     e.respondWith(
       caches.match(request).then((cached) => {
@@ -156,17 +162,13 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // Network-first for pages, fallback to cache then offline
+  // For HTML pages and everything else: network only, fallback to offline
+  // page if the network is down. Do NOT cache HTML — it references hashed
+  // chunks that change on every deploy, causing stale-build bugs on mobile.
   e.respondWith(
-    fetch(request)
-      .then((res) => {
-        const clone = res.clone()
-        caches.open(CACHE).then((c) => c.put(request, clone))
-        return res
-      })
-      .catch(() =>
-        caches.match(request).then((cached) => cached || caches.match('/offline.html'))
-      )
+    fetch(request).catch(() =>
+      caches.match('/offline.html').then((cached) => cached || new Response('Offline', { status: 503 }))
+    )
   )
 })
 
