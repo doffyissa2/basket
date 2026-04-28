@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import NewsletterSection, { PWAGuide } from '@/components/NewsletterSection'
 import BasketIndexSection from '@/components/BasketIndexSection'
+
+const PublicMapPreview = dynamic(() => import('@/components/PublicMapPreview'), { ssr: false })
 
 declare module 'react' {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -853,31 +856,9 @@ export default function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-[2vw]">
-          {/* Large Map Card */}
-          <div className="md:col-span-2 md:row-span-2 bg-offwhite rounded-[2rem] md:rounded-[3rem] p-5 md:p-[3vw] flex flex-col justify-between group border border-graphite/10 hover-trigger topology-card overflow-hidden relative min-h-[280px] md:min-h-[50vh]">
-            <div className="flex justify-between items-start relative z-10">
-              <span className="font-mono text-xs text-graphite/50 uppercase tracking-tight">Magasins à proximité</span>
-              <iconify-icon icon="solar:map-point-wave-linear" className="text-2xl text-signal" />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none mt-[4vh]">
-              <div className="w-[120%] h-[120%] md:w-[80%] md:h-[120%] border-[1px] border-graphite/20 rounded-full absolute animate-[spin_60s_linear_infinite]" />
-              <div className="w-[80%] h-[80%] md:w-[60%] md:h-[90%] border-[1px] border-graphite/20 rounded-full absolute animate-[spin_40s_linear_infinite_reverse] border-dashed" />
-              <div className="absolute w-3 h-3 bg-signal rounded-full top-[25%] left-[35%] shadow-[0_0_12px_rgba(126,217,87,0.8)]">
-                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Lidl</span>
-              </div>
-              <div className="absolute w-2.5 h-2.5 bg-orange-400 rounded-full top-[55%] left-[65%] shadow-[0_0_10px_rgba(251,146,60,0.6)]">
-                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Carrefour</span>
-              </div>
-              <div className="absolute w-2.5 h-2.5 bg-blue-400 rounded-full top-[45%] left-[25%] shadow-[0_0_10px_rgba(96,165,250,0.6)]">
-                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Leclerc</span>
-              </div>
-              <div className="absolute w-2 h-2 bg-red-400 rounded-full top-[70%] left-[45%] shadow-[0_0_10px_rgba(248,113,113,0.6)]">
-                <span className="absolute -top-5 left-3 font-mono text-[0.5rem] text-graphite/60 whitespace-nowrap">Auchan</span>
-              </div>
-            </div>
-            <h3 className="font-sans text-base md:text-[2vw] leading-none tracking-tighter font-bold text-graphite mt-8 md:mt-[30vh] relative z-10">
-              Carte interactive<br />de votre quartier
-            </h3>
+          {/* Large Map Card — live read-only map */}
+          <div className="md:col-span-2 md:row-span-2 rounded-[2rem] md:rounded-[3rem] overflow-hidden border border-graphite/10 topology-card min-h-[350px] md:min-h-[50vh]">
+            <PublicMapPreview />
           </div>
 
           {/* Price Comparison Card */}
