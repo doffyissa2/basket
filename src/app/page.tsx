@@ -611,37 +611,104 @@ export default function HomePage() {
       </section>
 
       {/* ==================== ULULE PROMO ==================== */}
-      <section className="px-5 md:px-[5vw] pt-6 pb-0 relative z-10">
-        <a
-          href="https://www.ulule.com/basketbeta/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block max-w-4xl mx-auto rounded-2xl px-6 py-5 transition-transform hover:scale-[1.01] active:scale-[0.99]"
-          style={{ background: 'linear-gradient(135deg, #7ed957 0%, #5cb840 100%)', boxShadow: '0 4px 24px rgba(126,217,87,0.25)' }}
+      <section className="px-5 md:px-[5vw] pt-10 md:pt-16 pb-0 relative z-10">
+        <div
+          className="max-w-5xl mx-auto rounded-[2rem] md:rounded-[3rem] overflow-hidden relative"
+          style={{ background: 'linear-gradient(145deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%)', boxShadow: '0 8px 40px rgba(0,0,0,0.3), 0 0 80px rgba(126,217,87,0.08)' }}
         >
-          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-white" viewBox="0 0 20 20" fill="none">
-                  <path d="M10 2L3.5 5.5v4.5c0 4.14 2.72 7.5 6.5 8.5 3.78-1 6.5-4.36 6.5-8.5V5.5L10 2z" fill="currentColor" opacity="0.3" />
-                  <path d="M10 6v5m0 0v2m0-2h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <path d="M7 10h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+          <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(126,217,87,0.4), transparent)' }} />
+
+          <div className="relative px-6 md:px-12 py-10 md:py-14">
+            <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-center">
+
+              <div className="flex-1 text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 bg-signal/15 rounded-full px-4 py-1.5 mb-5">
+                  <span className="w-2 h-2 rounded-full bg-signal animate-pulse" />
+                  <span className="font-mono text-[11px] text-signal font-bold uppercase tracking-wider">Campagne en cours</span>
+                </div>
+
+                <h2 className="font-sans text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-[1.1] tracking-tight mb-4">
+                  Aidez-nous a rendre<br />
+                  <span style={{ color: '#7ed957' }}>les courses moins cheres</span><br />
+                  pour tout le monde.
+                </h2>
+
+                <p className="font-sans text-base md:text-lg text-white/60 leading-relaxed max-w-xl mb-6">
+                  Basket compare les prix de <strong className="text-white/80">15 enseignes</strong> pour trouver ou votre panier coute le moins cher.
+                  Pour rester independant, gratuit et sans pub, on a besoin de vous.
+                </p>
+
+                <div className="grid grid-cols-3 gap-3 md:gap-5 mb-8 max-w-md mx-auto lg:mx-0">
+                  <div className="text-center lg:text-left">
+                    <div className="font-sans text-2xl md:text-3xl font-extrabold text-white">100%</div>
+                    <div className="font-mono text-[10px] text-white/40 uppercase tracking-wider mt-1">Gratuit</div>
+                  </div>
+                  <div className="text-center lg:text-left">
+                    <div className="font-sans text-2xl md:text-3xl font-extrabold text-white">0</div>
+                    <div className="font-mono text-[10px] text-white/40 uppercase tracking-wider mt-1">Pubs</div>
+                  </div>
+                  <div className="text-center lg:text-left">
+                    <div className="font-sans text-2xl md:text-3xl font-extrabold text-white">15</div>
+                    <div className="font-mono text-[10px] text-white/40 uppercase tracking-wider mt-1">Enseignes</div>
+                  </div>
+                </div>
+
+                <a
+                  href="https://www.ulule.com/basketbeta/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-3 rounded-full px-8 py-4 font-sans text-lg font-bold text-graphite transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(126,217,87,0.4)] active:scale-95"
+                  style={{ background: 'linear-gradient(135deg, #7ed957, #a3e635)', boxShadow: '0 4px 20px rgba(126,217,87,0.3)' }}
+                >
+                  Soutenir le projet sur Ulule
+                  <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none">
+                    <path d="M4 10h12m0 0l-4.5-4.5M16 10l-4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </a>
               </div>
-              <div>
-                <p className="font-sans text-sm font-bold text-white leading-tight">Soutenez Basket sur Ulule</p>
-                <p className="font-mono text-[10px] text-white/75 uppercase tracking-wider mt-0.5">Campagne de financement participatif</p>
+
+              <div className="flex-shrink-0 w-full lg:w-auto max-w-xs">
+                <div className="rounded-2xl p-5 space-y-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p className="font-mono text-[11px] text-white/40 uppercase tracking-wider text-center">Votre soutien finance</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(126,217,87,0.15)' }}>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2v10" stroke="#7ed957" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                      </div>
+                      <div>
+                        <p className="font-sans text-sm font-semibold text-white/90">Serveurs et infrastructure</p>
+                        <p className="font-mono text-[10px] text-white/40 mt-0.5">Hebergement, base de donnees, API</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(126,217,87,0.15)' }}>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><path d="M7 1v4l2.5 1.5M13 7A6 6 0 111 7a6 6 0 0112 0z" stroke="#7ed957" strokeWidth="1.3" strokeLinecap="round" /></svg>
+                      </div>
+                      <div>
+                        <p className="font-sans text-sm font-semibold text-white/90">Mise a jour des prix</p>
+                        <p className="font-mono text-[10px] text-white/40 mt-0.5">Scraping quotidien de 15 enseignes</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(126,217,87,0.15)' }}>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><path d="M7 2.5L1.5 5v4c0 2.76 2.2 5.34 5.5 5.96 3.3-.62 5.5-3.2 5.5-5.96V5L7 2.5z" stroke="#7ed957" strokeWidth="1.3" strokeLinejoin="round" /><path d="M5 7.25l1.5 1.5L9 6" stroke="#7ed957" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </div>
+                      <div>
+                        <p className="font-sans text-sm font-semibold text-white/90">Zero pub, zero revente</p>
+                        <p className="font-mono text-[10px] text-white/40 mt-0.5">Vos donnees restent les votres</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t border-white/10 text-center">
+                    <p className="font-sans text-xs text-white/50">Chaque contribution compte.</p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex-1 hidden sm:block" />
-            <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-2 flex-shrink-0">
-              <span className="font-sans text-sm font-bold text-white">Contribuer</span>
-              <svg className="w-4 h-4 text-white" viewBox="0 0 16 16" fill="none">
-                <path d="M3 8h10m0 0L9.5 4.5M13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+
             </div>
           </div>
-        </a>
+        </div>
       </section>
 
       {/* ==================== FEATURES ==================== */}
