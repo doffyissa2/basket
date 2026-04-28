@@ -43,12 +43,10 @@ export interface CachedLocation {
 export interface ShoppingListItem {
   id:                   string
   item_name:            string
-  item_name_normalised: string
-  estimated_price:      number | null
-  store_chain:          string | null
-  quantity:             number
-  is_bought:            boolean
-  added_at:             string
+  item_name_normalised: string | null
+  checked:              boolean
+  best_store:           string | null
+  best_price:           number | null
 }
 
 export type RefreshKey =
@@ -203,6 +201,19 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
               .select('postcode, onboarded, total_savings, beta_approved')
               .eq('id', userId)
               .maybeSingle()
+              .then(res => {
+                if (!res.error) return res
+                // Column doesn't exist yet — retry without beta_approved
+                return supabase
+                  .from('profiles')
+                  .select('postcode, onboarded, total_savings')
+                  .eq('id', userId)
+                  .maybeSingle()
+                  .then(fallback => ({
+                    data: fallback.data ? { ...fallback.data, beta_approved: true } : null,
+                    error: fallback.error,
+                  }))
+              })
           : Promise.resolve({ data: null, error: null }),
 
         Promise.resolve(readLocationCache()),
@@ -229,9 +240,9 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
         userId
           ? supabase
               .from('shopping_list_items')
-              .select('id, item_name, item_name_normalised, estimated_price, store_chain, quantity, is_bought, added_at')
+              .select('id, item_name, item_name_normalised, checked, best_store, best_price')
               .eq('user_id', userId)
-              .order('added_at', { ascending: false })
+              .order('created_at', { ascending: true })
               .limit(500)
           : Promise.resolve({ data: [], error: null }),
       ])
@@ -342,9 +353,9 @@ export function UserContextProvider({ children }: { children: React.ReactNode })
             case 'shoppingList': {
               const { data } = await supabase
                 .from('shopping_list_items')
-                .select('id, item_name, item_name_normalised, estimated_price, store_chain, quantity, is_bought, added_at')
+                .select('id, item_name, item_name_normalised, checked, best_store, best_price')
                 .eq('user_id', userId)
-                .order('added_at', { ascending: false })
+                .order('created_at', { ascending: true })
                 .limit(500)
               setShoppingListItems((data ?? []) as ShoppingListItem[])
               break
